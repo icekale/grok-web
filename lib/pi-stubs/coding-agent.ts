@@ -1,4 +1,4 @@
-import { notImplemented } from "./not-implemented";
+import { notImplemented } from "./not-implemented.ts";
 
 export type AgentSession = any;
 export type AgentSessionEvent = any;
@@ -20,9 +20,9 @@ export type SessionEntry = any;
 export type SessionInfo = any;
 export type Skill = any;
 export type SlashCommandInfo = any;
-export type Theme = any;
-
-export const Theme: any = {};
+export class Theme {
+  constructor(..._args: any[]) {}
+}
 
 export const SessionManager: any = {
   listAll: async () => [],
