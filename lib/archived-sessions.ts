@@ -1,4 +1,4 @@
-const KEY = "pi-web:archived-session-ids";
+let cachedArchivedIds: Set<string> | null = null;
 
 export function parseArchivedSessionIds(raw: string | null): Set<string> {
   try {
@@ -11,17 +11,38 @@ export function parseArchivedSessionIds(raw: string | null): Set<string> {
   }
 }
 
+export function rememberArchivedSessionIds(ids: Iterable<unknown>): Set<string> {
+  cachedArchivedIds = new Set(
+    [...ids].filter((item): item is string => typeof item === "string"),
+  );
+  return new Set(cachedArchivedIds);
+}
+
 export function readArchivedSessionIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  return parseArchivedSessionIds(localStorage.getItem(KEY));
+  return cachedArchivedIds ? new Set(cachedArchivedIds) : new Set();
 }
 
 export function writeArchivedSessionIds(ids: Set<string>): void {
+  const next = new Set([...ids].filter((item): item is string => typeof item === "string"));
+  const prev = cachedArchivedIds ?? new Set();
+  cachedArchivedIds = next;
   if (typeof window === "undefined") return;
+  for (const id of next) {
+    if (!prev.has(id)) void postArchive(id, true);
+  }
+  for (const id of prev) {
+    if (!next.has(id)) void postArchive(id, false);
+  }
+}
+
+async function postArchive(id: string, value: boolean): Promise<void> {
   try {
-    if (ids.size) localStorage.setItem(KEY, JSON.stringify([...ids]));
-    else localStorage.removeItem(KEY);
+    await fetch("/api/meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archive: { id, value } }),
+    });
   } catch {
-    // Browser storage is best-effort.
+    // Browser persistence is best-effort.
   }
 }

@@ -24,7 +24,7 @@ import {
 import { useI18n } from "@/hooks/useI18n";
 import type { ThemePreference } from "@/hooks/useTheme";
 import type { Locale, LocalePlugin } from "@/lib/i18n/types";
-import { readArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
+import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
 import { sidebarSessionTitle } from "@/lib/codex-sidebar-search";
 import type { ProjectPreference } from "@/lib/project-registry";
 import type { SessionInfo } from "@/lib/types";
@@ -189,8 +189,12 @@ export function SettingsPage({
       const projectData = await projectsResponse.json() as { projects: ProjectPreference[] };
       setProjects(projectData.projects);
       if (sessionsResponse.ok) {
-        const sessionData = await sessionsResponse.json() as { sessions: SessionInfo[] };
+        const sessionData = await sessionsResponse.json() as {
+          sessions: SessionInfo[];
+          meta?: { archivedIds?: string[] };
+        };
         setSessions(sessionData.sessions);
+        if (sessionData.meta) rememberArchivedSessionIds(sessionData.meta.archivedIds ?? []);
       }
       setArchivedSessionIds(readArchivedSessionIds());
     } catch (cause) {

@@ -169,6 +169,11 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
     await probe("GET", `/api/git/status?cwd=${encodeURIComponent(gitDir)}`, [200]);
     await probe("GET", `/api/git/diff?cwd=${encodeURIComponent(gitDir)}`, [200, 400]);
     await probe("GET", "/api/home", [200]);
+    await probe("POST", "/api/meta", [200], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    await probe("GET", "/api/meta", [405]);
     await probe("GET", "/api/models", [200, 403]);
     await probe("GET", "/api/models-config", [200]);
     // PUT /api/models-config is a real write with almost no validation and

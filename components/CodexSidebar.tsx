@@ -14,7 +14,7 @@ import { createPortal } from "react-dom";
 import { Archive, ArrowDown, ArrowUp, ChevronRight, Ellipsis, Folder, FolderPlus, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
-import { readArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
+import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
 import { filterProjectSessions, matchesSidebarQuery, sidebarProjectName, sidebarSessionTitle } from "@/lib/codex-sidebar-search";
 import type { ProjectPreference } from "@/lib/project-registry";
 import { buildRecentSessions } from "@/lib/recent-sessions";
@@ -186,10 +186,18 @@ export function CodexSidebar({
     if (!sessionsResponse.ok || !projectsResponse.ok) {
       throw new Error(`HTTP ${sessionsResponse.status}/${projectsResponse.status}`);
     }
-    const sessionData = await sessionsResponse.json() as { sessions: SessionInfo[]; runningSessionIds?: string[] };
+    const sessionData = await sessionsResponse.json() as {
+      sessions: SessionInfo[];
+      runningSessionIds?: string[];
+      meta?: { archivedIds?: string[] };
+    };
     const projectData = await projectsResponse.json() as { projects: ProjectPreference[] };
     setSessions(sessionData.sessions);
     setPreferences(projectData.projects);
+    if (sessionData.meta) {
+      rememberArchivedSessionIds(sessionData.meta.archivedIds ?? []);
+      setArchivedIds(readArchivedSessionIds());
+    }
     setRunningIds((current) => current.size ? current : new Set(sessionData.runningSessionIds ?? []));
     setError(null);
   }, []);

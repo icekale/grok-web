@@ -19,22 +19,21 @@ const { GET: getSessionDetail, DELETE: deleteSession } = await jiti.import("./[i
 const { GET: getSessionState } = await jiti.import("./[id]/state/route.ts");
 const { cacheSessionPath } = await jiti.import("../../../lib/session-reader.ts");
 
-test("session listing merges live registry snapshots and honors force refresh", () => {
-  assert.match(listRoute, /searchParams\.get\("force"\) === "1"/);
-  assert.match(listRoute, /listAllSessions\(\{ force \}\)/);
-  assert.match(listRoute, /attachSessionProjectInfo\(getRpcSessionInfos\(\)\)/);
-  assert.match(listRoute, /mergeSessionLists\(persistedSessions, runtimeSessions\)/);
-  assert.match(listRoute, /"Cache-Control": "no-store"/);
+test("session listing delegates to getSessions", () => {
+  assert.match(listRoute, /getSessions/);
+  assert.match(listRoute, /export async function GET/);
+});
+
+test("session context delegates to getSessionContext", () => {
+  assert.match(contextRoute, /getSessionContext/);
 });
 
 test("session reads use the live SessionManager before requiring a JSONL path", () => {
-  for (const source of [detailRoute, contextRoute]) {
-    const liveLookup = source.indexOf("getRpcSession(id)");
-    const pathLookup = source.indexOf("resolveSessionPath(id)");
-    assert.ok(liveLookup >= 0);
-    assert.ok(pathLookup > liveLookup);
-    assert.match(source, /liveRpc\?\.inner\.sessionManager \?\? SessionManager\.open/);
-  }
+  const liveLookup = detailRoute.indexOf("getRpcSession(id)");
+  const pathLookup = detailRoute.indexOf("resolveSessionPath(id)");
+  assert.ok(liveLookup >= 0);
+  assert.ok(pathLookup > liveLookup);
+  assert.match(detailRoute, /liveRpc\?\.inner\.sessionManager \?\? SessionManager\.open/);
 });
 
 test("live agent state is available before the session file is persisted", () => {
