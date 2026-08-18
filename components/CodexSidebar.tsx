@@ -651,7 +651,9 @@ export function CodexSidebar({
       )}
 
       <header className="codex-sidebar-brand-header">
-        <div className="codex-sidebar-brand">Pi Web</div>
+        <div className="codex-sidebar-brand">
+          <img src="/icons/favicon.svg" alt="Grok" className="codex-sidebar-brand-logo" />
+        </div>
         <IconButton label={t("sidebar.refresh")} onClick={() => void loadData(true)}>
           <RefreshCw size={14} aria-hidden="true" />
         </IconButton>

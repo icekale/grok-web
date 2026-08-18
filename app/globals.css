@@ -938,9 +938,14 @@ pre, code {
   flex-shrink: 0;
 }
 .codex-sidebar-brand {
-  color: var(--text);
-  font-size: var(--text-ui);
-  font-weight: var(--weight-semibold);
+  display: flex;
+  align-items: center;
+}
+.codex-sidebar-brand-logo {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
 }
 .codex-sidebar-workspace-toolbar {
   height: 32px;
