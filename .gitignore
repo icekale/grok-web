@@ -1,0 +1,5 @@
+node_modules/
+.output/
+.superpowers/brainstorm/
+*.log
+.DS_Store
