@@ -5,17 +5,31 @@ import {
   type PermissionUiRequest,
 } from "./permissions.ts";
 
+type PendingPermission = {
+  request: unknown;
+  startedAt: number;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 export class AcpConnection {
   private readonly rpc: JsonRpcConn;
-  private readonly pendingPermissions = new Map<string, unknown>();
+  private readonly permissionTimeoutMs: number;
+  private readonly now: () => number;
+  private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
 
-  constructor(rpc: JsonRpcConn) {
+  constructor(rpc: JsonRpcConn, options: { permissionTimeoutMs?: number; now?: () => number } = {}) {
     this.rpc = rpc;
+    this.permissionTimeoutMs = options.permissionTimeoutMs ?? 60_000;
+    this.now = options.now ?? Date.now;
     this.rpc.onNotification((method, params, id) => {
       if (method !== "session/request_permission" || typeof id !== "number") return;
       const key = String(id);
-      this.pendingPermissions.set(key, params);
+      const existing = this.pendingPermissions.get(key);
+      if (existing) clearTimeout(existing.timer);
+      const startedAt = this.now();
+      const timer = setTimeout(() => this.expirePermission(key), this.permissionTimeoutMs);
+      this.pendingPermissions.set(key, { request: params, startedAt, timer });
       const event = translatePermissionRequest(params, id);
       for (const handler of this.permissionHandlers) handler(event);
     });
@@ -29,9 +43,26 @@ export class AcpConnection {
   }
 
   completePermission(id: string, ui: { confirmed?: boolean; cancelled?: boolean }): void {
-    const request = this.pendingPermissions.get(id);
+    const pending = this.pendingPermissions.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
     this.pendingPermissions.delete(id);
-    this.rpc.respond(Number(id), resolvePermission(ui, request));
+    this.rpc.respond(Number(id), resolvePermission(ui, pending.request, {
+      startedAt: pending.startedAt,
+      now: this.now(),
+      timeoutMs: this.permissionTimeoutMs,
+    }));
+  }
+
+  private expirePermission(id: string): void {
+    const pending = this.pendingPermissions.get(id);
+    if (!pending) return;
+    this.pendingPermissions.delete(id);
+    this.rpc.respond(Number(id), resolvePermission({ cancelled: true }, pending.request, {
+      startedAt: pending.startedAt,
+      now: this.now(),
+      timeoutMs: this.permissionTimeoutMs,
+    }));
   }
 
   initialize(): Promise<unknown> {

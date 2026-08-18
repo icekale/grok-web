@@ -26,8 +26,10 @@ export function translatePermissionRequest(params: unknown, rpcId: number): Perm
 export function resolvePermission(
   ui: { confirmed?: boolean; cancelled?: boolean },
   request: unknown,
+  timing?: { startedAt: number; now: number; timeoutMs?: number },
 ): PermissionResult {
-  if (ui.cancelled || ui.confirmed !== true) {
+  const timedOut = timing != null && permissionTimedOut(timing.startedAt, timing.now, timing.timeoutMs);
+  if (timedOut || ui.cancelled || ui.confirmed !== true) {
     return { outcome: { outcome: "rejected" } };
   }
   return { outcome: { outcome: "selected", optionId: allowOptionId(request) } };
