@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { findGrokSession } from "../session-index.ts";
+import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
@@ -108,6 +110,8 @@ export class AgentRuntime {
         return this.sendPermission(command);
       case "abort":
         return this.sendAbort(sessionId);
+      case "fork":
+        return this.sendFork(sessionId);
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -220,6 +224,21 @@ export class AgentRuntime {
     await this.ensureProcess();
     this.requireAcp().sessionCancel(sessionId);
     return null;
+  }
+
+  private async sendFork(sessionId: string): Promise<{ cancelled: false; newSessionId: string }> {
+    await this.ensureProcess();
+    const session = this.ensureSession(sessionId);
+    const cwd = session.cwd ?? (await findGrokSession(sessionId))?.cwd;
+    if (!cwd) throw new Error("Cannot fork without a session cwd");
+    const forked = await this.requireAcp().sessionFork({
+      sourceSessionId: sessionId,
+      sourceCwd: cwd,
+      newCwd: cwd,
+    });
+    this.ensureSession(forked.newSessionId).cwd = cwd;
+    invalidateSessionListCache();
+    return { cancelled: false, newSessionId: forked.newSessionId };
   }
 
   private async startProcess(): Promise<void> {

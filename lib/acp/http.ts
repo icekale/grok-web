@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { toSlashPath } from "../paths.ts";
 import { nextPromptGeneration } from "../prompt-generation.ts";
+import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { formatGrokMissingError } from "./process.ts";
 import type { AgentCommand, AgentRuntime } from "./runtime.ts";
@@ -101,8 +102,11 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         const command = await req.json() as AgentCommand;
         commandType = typeof command.type === "string" ? command.type : undefined;
 
-        if (command.type === "prompt") {
+        if (command.type !== "get_state") {
           await loadSessionIfNeeded(runtime, id);
+        }
+
+        if (command.type === "prompt") {
           await runtime.send(id, command);
           promptAccepted = true;
           return Response.json({
@@ -148,8 +152,9 @@ function allowFileRoot(root: string): void {
 }
 
 async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<void> {
+  const session = await findGrokSession(id);
   try {
-    await runtime.loadSession(id);
+    await runtime.loadSession(id, session?.cwd);
   } catch (error) {
     if (errorMessage(error).includes("already loaded")) return;
     throw error;

@@ -98,6 +98,14 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/interject", { sessionId, text });
   }
 
+  sessionFork(params: {
+    sourceSessionId: string;
+    sourceCwd: string;
+    newCwd: string;
+  }): Promise<{ newSessionId: string }> {
+    return this.rpc.request("_x.ai/session/fork", params) as Promise<{ newSessionId: string }>;
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
