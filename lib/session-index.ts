@@ -1,18 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { grokSessionsDir } from "./grok-home.ts";
+import type { SessionInfo } from "./types";
 
-export interface SessionInfo {
-  id: string;
-  cwd: string;
-  path: string;
-  name: string;
-  created: string;
-  modified: string;
-  messageCount: number;
-  firstMessage: string;
-  parentSessionId?: string;
-}
+export type { SessionInfo };
 
 export async function listGrokSessions(): Promise<SessionInfo[]> {
   const root = grokSessionsDir();

@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+
+test("uses a compact mobile toolbar with a floating action layer", () => {
+  assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
+  assert.match(
+    source,
+    /data-mobile-toolbar-actions="true"[\s\S]*?position: "absolute"[\s\S]*?right: 0,[\s\S]*?left: TOP_BAR_ICON_BUTTON_SIZE/,
+  );
+
+  for (const action of ["history", "name", "branches", "system"]) {
+    assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
+  }
+});
+
+test("folds the mobile action layer only when toolbar icons overflow", () => {
+  assert.match(source, /const \[mobileToolbarOverflow, setMobileToolbarOverflow\] = useState\(/);
+  assert.match(source, /new ResizeObserver\(/);
+  assert.match(source, /scrollWidth\s*>\s*.*clientWidth/);
+  assert.match(source, /mobileToolbarOverflow &&[\s\S]*?data-mobile-toolbar-more="true"/);
+  assert.match(source, /!mobileToolbarOverflow[\s\S]*?renderChatToolbarActions\(true\)/);
+  assert.doesNotMatch(
+    source,
+    /\{isMobile && \(\s*<button[\s\S]*?data-mobile-toolbar-more="true"/,
+  );
+});
+
+test("keeps covered statistics and file controls out of interaction and focus", () => {
+  assert.match(source, /const covered = mobile && mobileToolbarMoreOpen;/);
+  assert.match(source, /disabled=\{!showChat \|\| covered\}[\s\S]*?tabIndex=\{covered \? -1 : undefined\}/);
+  assert.match(source, /data-mobile-toolbar-file=\{mobile \? "true" : undefined\}[\s\S]*?visibility: covered \? "hidden" : "visible"/);
+  assert.match(source, /aria-hidden=\{covered \? true : undefined\}/);
+});
+
+test("uses TaskHeader only on wide desktop and preserves narrower toolbars", () => {
+  assert.match(source, /const isWideDesktop = useIsWideDesktop\(\)/);
+  assert.match(source, /isWideDesktop && \([\s\S]*?<TaskHeader/);
+  assert.match(source, /!isMobile && !isWideDesktop[\s\S]*?renderChatToolbarActions\(false\)/);
+  assert.match(source, /isMobile && \([\s\S]*?data-mobile-toolbar="true"/);
+  assert.match(source, /data-mobile-toolbar-actions="true"/);
+  assert.match(source, /isWideDesktop[\s\S]*?renderProjectTrustWarning\(false\)/);
+  assert.match(source, /<BranchNavigator[\s\S]*?hideInlineButton/);
+});
+
+test("closes the mobile action layer on outside click, Escape, and session changes", () => {
+  assert.match(source, /event\.composedPath\(\)\.includes\(toolbar\)/);
+  assert.match(source, /document\.addEventListener\("pointerdown", handlePointerDown, true\)/);
+  assert.match(source, /event\.key !== "Escape"[\s\S]*?setMobileToolbarMoreOpen\(false\)/);
+  assert.match(source, /\}, \[isMobile, selectedSession\?\.id, newSessionDraftId\]\);/);
+});
+
+test("Android back runs the nested Settings handler before closing Settings", () => {
+  assert.match(source, /settingsBackHandlerRef = useRef/);
+  assert.match(source, /settingsBackHandlerRef\.current\?\.\(\)/);
+  assert.match(source, /if \(!settingsConsumed\) setSettingsOpen\(false\)/);
+  assert.match(source, /const remaining = settingsConsumed/);
+  assert.match(source, /onRegisterSettingsBack=\{\(handler\) => \{ settingsBackHandlerRef\.current = handler; \}\}/);
+});
+
+test("keeps the mobile action layer open after using an expanded action", () => {
+  const toggleTopPanel = source.match(/const toggleTopPanel = useCallback\([\s\S]*?\n  \}, \[isMobile\]\);/)?.[0];
+  const historyHandler = source.match(/onClick=\{\(\) => \{[\s\S]*?handleViewFullHistory\(\);[\s\S]*?\n          \}\}/)?.[0];
+  const autoNameHandler = source.match(/onClick=\{\(\) => \{[\s\S]*?void handleAutoName\(\);[\s\S]*?\n              \}\}/)?.[0];
+
+  for (const handler of [toggleTopPanel, historyHandler, autoNameHandler]) {
+    assert.ok(handler);
+    assert.doesNotMatch(handler, /setMobileToolbarMoreOpen\(false\)/);
+    assert.match(handler, /setMobileToolbarMoreOpen\(true\)/);
+  }
+
+  assert.match(source, /toggleTopPanel\("branches", true\)/);
+  assert.match(source, /toggleTopPanel\("system", mobile\)/);
+  assert.match(source, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
+});
+
+test("shows an icon-only session stats button on mobile so numbers don't crowd the top bar", () => {
+  assert.match(source, /\{mobile \? \(\n\s*<Info size=\{15\} strokeWidth=\{2\} aria-hidden="true" \/>/);
+  assert.match(source, /width: mobile \? TOP_BAR_ICON_BUTTON_SIZE_MOBILE : undefined/);
+  assert.match(source, /flex: mobile \? "0 0 auto" : undefined/);
+  assert.doesNotMatch(source, /\.mobile-session-stats/);
+  assert.doesNotMatch(source, /@container \(max-width: 158px\)/);
+  assert.doesNotMatch(source, /mobileContextText/);
+});
+
+test("places trust warnings below the mobile toolbar and the file toggle in toolbar flow", () => {
+  assert.match(source, /\{isMobile && renderProjectTrustWarning\(true\)\}/);
+  assert.match(source, /data-mobile-trust-banner=\{mobileBanner \? "true" : undefined\}/);
+  assert.doesNotMatch(source, /File panel toggle — always visible at top-right/);
+  assert.doesNotMatch(source, /position: "fixed", top: "env\(safe-area-inset-top\)"/);
+});

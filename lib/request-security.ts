@@ -1,0 +1,160 @@
+import { isIP } from "node:net";
+import { readRemoteAccessAllowedHosts } from "./remote-access-config";
+import { isValidBasicAuthorization, isWebPasswordEnabled } from "./web-auth";
+
+function normalizeHostname(value: string): string {
+  const unbracketed = value.startsWith("[") && value.endsWith("]")
+    ? value.slice(1, -1)
+    : value;
+  return unbracketed.toLowerCase().replace(/\.$/, "");
+}
+
+function hostnameFromAuthority(value: string): string | null {
+  if (!value || /[\s/@\\]/.test(value)) return null;
+  try {
+    const parsed = new URL(`http://${value}`);
+    if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      return null;
+    }
+    return normalizeHostname(parsed.hostname);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeConfiguredHostname(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return isIP(trimmed) ? normalizeHostname(trimmed) : hostnameFromAuthority(trimmed);
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname.endsWith(".localhost");
+}
+
+function configuredHostnamesFromEnvironment(): string[] {
+  return [
+    process.env.GROK_WEB_HOSTNAME,
+    ...(process.env.GROK_WEB_ALLOWED_HOSTS?.split(",") ?? []),
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+function configuredHostnames(): string[] {
+  return [
+    ...configuredHostnamesFromEnvironment(),
+    ...readRemoteAccessAllowedHosts(),
+  ];
+}
+
+function requestHostname(request: Request): string | null {
+  const host = request.headers.get("host");
+  return host ? hostnameFromAuthority(host) : null;
+}
+
+function isUserInitiatedSessionExportNavigation(request: Request): boolean {
+  if (
+    request.method !== "GET"
+    || request.headers.get("sec-fetch-mode") !== "navigate"
+    || request.headers.get("sec-fetch-dest") !== "document"
+    || request.headers.get("sec-fetch-user") !== "?1"
+  ) {
+    return false;
+  }
+
+  try {
+    return /^\/api\/sessions\/[^/]+\/export$/.test(new URL(request.url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function isLoopbackApiRequest(request: Request): boolean {
+  const hostname = requestHostname(request);
+  if (!hostname) return false;
+  return isLoopbackHostname(hostname) || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+/**
+ * Only trust local names, IP literals, or the hostname explicitly selected by
+ * the operator. IP literals preserve LAN access but cannot be DNS-rebound
+ * because the browser keeps the literal address in the Host header.
+ */
+export function isApiRequestHostAllowed(
+  request: Request,
+  configured = configuredHostnames(),
+): boolean {
+  const hostname = requestHostname(request);
+  if (!hostname) return false;
+  if (isLoopbackHostname(hostname) || isIP(hostname)) return true;
+
+  return configured.some(
+    (value) => normalizeConfiguredHostname(value) === hostname,
+  );
+}
+
+/** Reject browser cross-site API requests while preserving non-browser clients. */
+export function isApiRequestOriginAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite === "cross-site") return false;
+  if (!origin) return true;
+
+  const host = requestHostname(request);
+  if (!host) return false;
+  try {
+    return normalizeHostname(new URL(origin).hostname) === host;
+  } catch {
+    return false;
+  }
+}
+
+export function shouldCheckApiRequestOrigin(request: Request): boolean {
+  return request.headers.has("origin") || request.headers.has("sec-fetch-site");
+}
+
+export function isApiRequestAllowed(
+  request: Request,
+  configured = configuredHostnames(),
+): boolean {
+  if (!isApiRequestHostAllowed(request, configured)) return false;
+  if (isUserInitiatedSessionExportNavigation(request)) return true;
+  return !shouldCheckApiRequestOrigin(request) || isApiRequestOriginAllowed(request);
+}
+
+export function hasJsonContentType(request: Request): boolean {
+  const mediaType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  return mediaType === "application/json"
+    || Boolean(mediaType?.startsWith("application/") && mediaType.endsWith("+json"));
+}
+
+export function getRequestSecurityRejection(request: Request): Response | undefined {
+  const pathname = new URL(request.url).pathname;
+  if (pathname !== "/" && pathname !== "/api" && !pathname.startsWith("/api/")) {
+    return undefined;
+  }
+  const isApiRequest = pathname === "/api" || pathname.startsWith("/api/");
+  const isTrustedRequest = isApiRequest
+    ? isApiRequestAllowed(request)
+    : isApiRequestHostAllowed(request);
+
+  if (!isTrustedRequest) {
+    return isApiRequest
+      ? Response.json({ error: "Untrusted API request" }, { status: 403 })
+      : new Response("Untrusted request", { status: 403 });
+  }
+
+  if (
+    isWebPasswordEnabled()
+    && !isValidBasicAuthorization(request.headers.get("authorization"))
+  ) {
+    return new Response("Authentication required", {
+      status: 401,
+      headers: {
+        "Cache-Control": "no-store",
+        "WWW-Authenticate": 'Basic realm="Pi Web", charset="UTF-8"',
+      },
+    });
+  }
+
+  return undefined;
+}
