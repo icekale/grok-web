@@ -31,7 +31,9 @@ export class AcpConnection {
       const timer = setTimeout(() => this.expirePermission(key), this.permissionTimeoutMs);
       this.pendingPermissions.set(key, { request: params, startedAt, timer });
       const event = translatePermissionRequest(params, id);
-      for (const handler of this.permissionHandlers) handler(event);
+      const sessionId = isRecord(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
+      const uiRequest = sessionId ? { ...event, sessionId } : event;
+      for (const handler of this.permissionHandlers) handler(uiRequest);
     });
   }
 

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { AcpConnection } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
+import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 
 export type AgentCommand =
@@ -27,6 +28,8 @@ export class AgentRuntime {
   private acp: AcpConnection | undefined;
   private starting: Promise<void> | undefined;
   private unsubUpdate: (() => void) | undefined;
+  private unsubPermission: (() => void) | undefined;
+  private lastPermissionSessionId: string | undefined;
   private child: ChildProcess | undefined;
   private readonly sessions = new Map<string, SessionState>();
 
@@ -149,10 +152,14 @@ export class AgentRuntime {
       throw error;
     }
     this.unsubUpdate?.();
+    this.unsubPermission?.();
     this.unsubUpdate = acp.onSessionUpdate((sessionId, update) => {
       const session = this.sessions.get(sessionId);
       if (!session) return;
       this.emit(sessionId, session.mapper.push(update));
+    });
+    this.unsubPermission = acp.onPermission((event) => {
+      this.forwardPermission(event);
     });
     this.acp = acp;
   }
@@ -175,9 +182,27 @@ export class AgentRuntime {
 
   private dropConnection(): void {
     this.unsubUpdate?.();
+    this.unsubPermission?.();
     this.unsubUpdate = undefined;
+    this.unsubPermission = undefined;
+    this.lastPermissionSessionId = undefined;
     this.acp = undefined;
     this.starting = undefined;
+  }
+
+  private forwardPermission(event: PermissionUiRequest & { sessionId?: string }): void {
+    if (typeof event.sessionId === "string" && event.sessionId) {
+      this.lastPermissionSessionId = event.sessionId;
+    }
+    const sessionId = typeof event.sessionId === "string" && event.sessionId
+      ? event.sessionId
+      : this.lastPermissionSessionId;
+    if (sessionId) {
+      this.emit(sessionId, [event]);
+      return;
+    }
+    const targets = this.listBusyIds().length > 0 ? this.listBusyIds() : [...this.sessions.keys()];
+    for (const id of targets) this.emit(id, [{ ...event, sessionId: id }]);
   }
 
   private ensureSession(sessionId: string): SessionState {
