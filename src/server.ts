@@ -1,3 +1,4 @@
+import "@/lib/http-dispatcher-init";
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 import { configureHttpDispatcher } from "@/lib/http-dispatcher";
 

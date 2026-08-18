@@ -275,7 +275,7 @@ function configuredBindHostname(): string {
 }
 
 function configuredBindPort(): string {
-  return process.env.NITRO_PORT?.trim() || process.env.PORT?.trim() || "30141";
+  return process.env.NITRO_PORT?.trim() || process.env.PORT?.trim() || "30142";
 }
 
 function isUnspecifiedBindHost(hostname: string): boolean {

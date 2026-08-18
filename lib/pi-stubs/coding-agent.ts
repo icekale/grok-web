@@ -1,3 +1,4 @@
+import { grokHome } from "../grok-home.ts";
 import { notImplemented } from "./not-implemented.ts";
 
 export type AgentSession = any;
@@ -60,7 +61,7 @@ export const DefaultPackageManager: any = class DefaultPackageManager {
 };
 
 export function getAgentDir(): string {
-  throw new Error("not implemented in foundation");
+  return grokHome();
 }
 
 export function getPackageDir(): string {

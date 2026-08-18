@@ -1,3 +1,4 @@
+import "@/lib/http-dispatcher-init";
 import {
   createCsrfMiddleware,
   createMiddleware,

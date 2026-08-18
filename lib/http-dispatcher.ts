@@ -79,7 +79,16 @@ export function configureHttpDispatcher(
   // Keep fetch and the dispatcher on the same undici implementation. Preserve
   // an intentional fetch override installed after this module was loaded.
   if (globalThis.fetch === originalGlobalFetch) {
+    const platformRequest = globalThis.Request;
+    const platformResponse = globalThis.Response;
+    const platformHeaders = globalThis.Headers;
     undici.install?.();
+    // Nitro/h3 capture Response at load time. undici.install() replaces the
+    // globals afterwards, so route handlers would return a Response that fails
+    // `instanceof` and gets stringified to "[object Response]".
+    globalThis.Request = platformRequest;
+    globalThis.Response = platformResponse;
+    globalThis.Headers = platformHeaders;
   }
 
   dispatcherGlobal.__piWebHttpDispatcherConfigured = true;
