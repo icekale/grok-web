@@ -90,6 +90,10 @@ export class AcpConnection {
     });
   }
 
+  sessionCancel(sessionId: string): void {
+    this.rpc.notify("session/cancel", { sessionId });
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
