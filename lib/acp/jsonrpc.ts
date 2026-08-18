@@ -44,6 +44,10 @@ export class JsonRpcConn {
   private onLine(line: string): void {
     let msg: Record<string, unknown>;
     try { msg = JSON.parse(line) as Record<string, unknown>; } catch { return; }
+    if (typeof msg.method === "string") {
+      this.notes.emit("n", msg.method, msg.params, typeof msg.id === "number" ? msg.id : undefined);
+      return;
+    }
     if (typeof msg.id === "number" && this.pending.has(msg.id)) {
       const pending = this.pending.get(msg.id)!;
       this.pending.delete(msg.id);
@@ -53,10 +57,6 @@ export class JsonRpcConn {
       } else {
         pending.resolve(msg.result);
       }
-      return;
-    }
-    if (typeof msg.method === "string") {
-      this.notes.emit("n", msg.method, msg.params, typeof msg.id === "number" ? msg.id : undefined);
     }
   }
 }
