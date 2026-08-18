@@ -1,10 +1,9 @@
-import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/lib/rpc-manager";
-
+import { getAgentRuntime } from "@/lib/acp/runtime";
 
 // GET /api/agent/running/events - SSE stream of the set of currently-running
-// session ids. Pushes an update whenever any session starts or stops working,
-// so the sidebar never has to poll.
+// session ids. Pushes a snapshot immediately, then again every second.
 export async function GET(req: Request) {
+  const runtime = getAgentRuntime();
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -13,21 +12,18 @@ export async function GET(req: Request) {
         controller.enqueue(encoder.encode(text));
       };
 
-      // Subscribe BEFORE taking the initial snapshot so no state change can slip
-      // through the gap between snapshot and subscription.
-      const unsubscribe = subscribeRunningSessions((ids) => {
+      const emit = () => {
         try {
-          encode({ type: "running", runningSessionIds: ids });
+          encode({ type: "running", runningSessionIds: runtime.listBusyIds() });
         } catch {
           // controller already closed
         }
-      });
+      };
 
-      // Initial snapshot so the client renders the correct state immediately.
-      // (A duplicate frame here is harmless: the client just sets the same set.)
-      encode({ type: "running", runningSessionIds: getRunningRpcSessionIds() });
+      emit();
 
-      // Heartbeat to keep the connection alive through proxies/timeouts.
+      const poll = setInterval(emit, 1000);
+
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(":\n\n"));
@@ -37,8 +33,8 @@ export async function GET(req: Request) {
       }, 30_000);
 
       const cleanup = () => {
+        clearInterval(poll);
         clearInterval(heartbeat);
-        unsubscribe();
         try { controller.close(); } catch { /* already closed */ }
       };
 
