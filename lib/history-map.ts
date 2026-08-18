@@ -10,6 +10,7 @@ export type HistoryMessage =
             toolCallId: string;
             toolName: string;
             input: Record<string, unknown>;
+            status?: string;
           }
       >;
       model: string;
@@ -28,6 +29,7 @@ export function mapUpdatesJsonl(text: string): {
   const messages: HistoryMessage[] = [];
   const entryIds: string[] = [];
   let fallbackId = 0;
+  let lastModelId: string | undefined;
   let current: HistoryMessage | null = null;
   let currentEntryId: string | undefined;
 
@@ -62,6 +64,7 @@ export function mapUpdatesJsonl(text: string): {
     const meta = isRecord(params._meta) ? params._meta : {};
     const eventId = typeof meta.eventId === "string" && meta.eventId ? meta.eventId : undefined;
     const modelId = typeof meta.modelId === "string" && meta.modelId ? meta.modelId : undefined;
+    if (modelId) lastModelId = modelId;
     const timestamp =
       typeof record.timestamp === "number" && Number.isFinite(record.timestamp)
         ? record.timestamp
@@ -85,7 +88,7 @@ export function mapUpdatesJsonl(text: string): {
         const assistant: AssistantMessage = {
           role: "assistant",
           content: [],
-          model: modelId ?? "grok",
+          model: lastModelId ?? "grok",
           provider: "grok",
         };
         if (timestamp !== undefined) assistant.timestamp = timestamp;
@@ -117,6 +120,7 @@ export function mapUpdatesJsonl(text: string): {
       const tool = findToolCall(current, messages, id);
       if (!tool) continue;
       Object.assign(tool.input, asRecord(update.input ?? update.rawInput));
+      if (typeof update.status === "string") tool.status = update.status;
     }
   }
 
