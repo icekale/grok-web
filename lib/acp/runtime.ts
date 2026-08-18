@@ -1,0 +1,219 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { AcpConnection } from "./connection.ts";
+import { JsonRpcConn } from "./jsonrpc.ts";
+import { AcpTurnMapper } from "./map-events.ts";
+import { grokAgentArgs, resolveGrokBin } from "./process.ts";
+
+export type AgentCommand =
+  | { type: "prompt"; message: string; images?: unknown[] }
+  | { type: "get_state" }
+  | { type: "extension_ui_response"; id: string; confirmed?: boolean; cancelled?: boolean; value?: string }
+  | { type: string; [key: string]: unknown };
+
+type SessionListener = (event: Record<string, unknown>) => void;
+
+type SessionState = {
+  mapper: AcpTurnMapper;
+  listeners: Set<SessionListener>;
+  busy: boolean;
+};
+
+type AcpWithCancel = AcpConnection & {
+  sessionCancel?: (sessionId: string) => Promise<unknown>;
+};
+
+export class AgentRuntime {
+  private readonly connectFn: () => Promise<AcpConnection>;
+  private acp: AcpConnection | undefined;
+  private starting: Promise<void> | undefined;
+  private unsubUpdate: (() => void) | undefined;
+  private child: ChildProcess | undefined;
+  private readonly sessions = new Map<string, SessionState>();
+
+  constructor(options?: { connect?: () => Promise<AcpConnection> }) {
+    this.connectFn = options?.connect ?? (() => this.connectDefault());
+  }
+
+  async ensureProcess(): Promise<void> {
+    if (this.acp) return;
+    this.starting ??= this.startProcess();
+    try {
+      await this.starting;
+    } catch (error) {
+      this.starting = undefined;
+      throw error;
+    }
+    if (!this.acp) throw new Error("ACP process is not available");
+  }
+
+  async createSession(cwd: string): Promise<string> {
+    await this.ensureProcess();
+    const { sessionId } = await this.requireAcp().sessionNew(cwd);
+    this.ensureSession(sessionId);
+    return sessionId;
+  }
+
+  async loadSession(sessionId: string, cwd?: string): Promise<void> {
+    await this.ensureProcess();
+    await this.requireAcp().sessionLoad(sessionId, cwd);
+    this.ensureSession(sessionId);
+  }
+
+  async send(sessionId: string, command: AgentCommand): Promise<unknown> {
+    switch (command.type) {
+      case "get_state":
+        return this.getState(sessionId);
+      case "prompt":
+        return this.sendPrompt(sessionId, stringField(command.message));
+      case "extension_ui_response":
+        return this.sendPermission(command);
+      case "abort":
+        return this.sendAbort(sessionId);
+      default:
+        throw new Error("not implemented in this phase: " + command.type);
+    }
+  }
+
+  subscribe(sessionId: string, listener: SessionListener): () => void {
+    this.ensureSession(sessionId).listeners.add(listener);
+    return () => {
+      this.sessions.get(sessionId)?.listeners.delete(listener);
+    };
+  }
+
+  isBusy(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.busy === true;
+  }
+
+  listBusyIds(): string[] {
+    const ids: string[] = [];
+    for (const [sessionId, session] of this.sessions) {
+      if (session.busy) ids.push(sessionId);
+    }
+    return ids;
+  }
+
+  private getState(sessionId: string): {
+    isStreaming: boolean;
+    isPromptRunning: boolean;
+    model: { provider: "grok"; id: "grok" };
+    thinkingLevel: "off";
+  } {
+    const busy = this.isBusy(sessionId);
+    return {
+      isStreaming: busy,
+      isPromptRunning: busy,
+      model: { provider: "grok", id: "grok" },
+      thinkingLevel: "off",
+    };
+  }
+
+  private async sendPrompt(sessionId: string, message: string): Promise<unknown> {
+    await this.ensureProcess();
+    const session = this.ensureSession(sessionId);
+    session.busy = true;
+    session.mapper.begin();
+    try {
+      const result = await this.requireAcp().sessionPrompt(sessionId, message);
+      this.emit(sessionId, session.mapper.endTurn());
+      return result;
+    } finally {
+      session.busy = false;
+    }
+  }
+
+  private async sendPermission(command: AgentCommand): Promise<void> {
+    await this.ensureProcess();
+    this.requireAcp().completePermission(stringField(command.id), {
+      confirmed: command.confirmed === true,
+      cancelled: command.cancelled === true,
+    });
+  }
+
+  private async sendAbort(sessionId: string): Promise<unknown> {
+    await this.ensureProcess();
+    const acp = this.requireAcp() as AcpWithCancel;
+    if (typeof acp.sessionCancel !== "function") {
+      throw new Error("ACP cancel is not available");
+    }
+    return acp.sessionCancel(sessionId);
+  }
+
+  private async startProcess(): Promise<void> {
+    const acp = await this.connectFn();
+    try {
+      await acp.initialize();
+    } catch (error) {
+      this.child?.kill();
+      this.child = undefined;
+      throw error;
+    }
+    this.unsubUpdate?.();
+    this.unsubUpdate = acp.onSessionUpdate((sessionId, update) => {
+      const session = this.sessions.get(sessionId);
+      if (!session) return;
+      this.emit(sessionId, session.mapper.push(update));
+    });
+    this.acp = acp;
+  }
+
+  private async connectDefault(): Promise<AcpConnection> {
+    const bin = resolveGrokBin();
+    const child = spawn(bin, grokAgentArgs(), { stdio: ["pipe", "pipe", "inherit"] });
+    if (!child.stdin || !child.stdout) {
+      child.kill();
+      throw new Error("failed to open grok stdio");
+    }
+    this.child = child;
+    child.once("exit", () => {
+      if (this.child !== child) return;
+      this.child = undefined;
+      this.dropConnection();
+    });
+    return new AcpConnection(new JsonRpcConn({ stdin: child.stdin, stdout: child.stdout }));
+  }
+
+  private dropConnection(): void {
+    this.unsubUpdate?.();
+    this.unsubUpdate = undefined;
+    this.acp = undefined;
+    this.starting = undefined;
+  }
+
+  private ensureSession(sessionId: string): SessionState {
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      session = { mapper: new AcpTurnMapper(), listeners: new Set(), busy: false };
+      this.sessions.set(sessionId, session);
+    }
+    return session;
+  }
+
+  private emit(sessionId: string, events: Array<Record<string, unknown>>): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || events.length === 0) return;
+    for (const event of events) {
+      for (const listener of [...session.listeners]) listener(event);
+    }
+  }
+
+  private requireAcp(): AcpConnection {
+    if (!this.acp) throw new Error("ACP process is not available");
+    return this.acp;
+  }
+}
+
+let singleton: AgentRuntime | undefined;
+
+export function getAgentRuntime(): AgentRuntime {
+  singleton ??= new AgentRuntime();
+  return singleton;
+}
+
+export function resetAgentRuntime(): void {
+  singleton = undefined;
+}
+
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
