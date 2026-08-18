@@ -7,6 +7,7 @@ import { AcpTurnMapper } from "./map-events.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
+import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
 
 export type AgentCommand =
   | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
@@ -29,6 +30,7 @@ type SessionState = {
 
 export class AgentRuntime {
   private readonly connectFn: () => Promise<AcpConnection>;
+  private readonly resolveEntries: typeof resolveSessionEntries;
   private acp: AcpConnection | undefined;
   private starting: Promise<void> | undefined;
   private unsubUpdate: (() => void) | undefined;
@@ -37,8 +39,12 @@ export class AgentRuntime {
   private child: ChildProcess | undefined;
   private readonly sessions = new Map<string, SessionState>();
 
-  constructor(options?: { connect?: () => Promise<AcpConnection> }) {
+  constructor(options?: {
+    connect?: () => Promise<AcpConnection>;
+    resolveEntries?: typeof resolveSessionEntries;
+  }) {
     this.connectFn = options?.connect ?? (() => this.connectDefault());
+    this.resolveEntries = options?.resolveEntries ?? resolveSessionEntries;
   }
 
   async ensureProcess(): Promise<void> {
@@ -111,7 +117,9 @@ export class AgentRuntime {
       case "abort":
         return this.sendAbort(sessionId);
       case "fork":
-        return this.sendFork(sessionId);
+        return this.sendFork(sessionId, command);
+      case "navigate_tree":
+        return this.sendNavigateTree(sessionId, command);
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -226,7 +234,7 @@ export class AgentRuntime {
     return null;
   }
 
-  private async sendFork(sessionId: string): Promise<{ cancelled: false; newSessionId: string }> {
+  private async sendFork(sessionId: string, command: AgentCommand): Promise<{ cancelled: false; newSessionId: string }> {
     await this.ensureProcess();
     const session = this.ensureSession(sessionId);
     const cwd = session.cwd ?? (await findGrokSession(sessionId))?.cwd;
@@ -238,7 +246,26 @@ export class AgentRuntime {
     });
     this.ensureSession(forked.newSessionId).cwd = cwd;
     invalidateSessionListCache();
+    const entryId = typeof command.entryId === "string" ? command.entryId : "";
+    if (entryId) {
+      await this.rewindSession(forked.newSessionId, sessionId, entryId);
+    }
     return { cancelled: false, newSessionId: forked.newSessionId };
+  }
+
+  private async sendNavigateTree(sessionId: string, command: AgentCommand): Promise<{ cancelled: false }> {
+    await this.ensureProcess();
+    await this.rewindSession(sessionId, sessionId, stringField(command.targetId));
+    return { cancelled: false };
+  }
+
+  private async rewindSession(targetSessionId: string, sourceSessionId: string, entryId: string): Promise<void> {
+    const { messages, entryIds } = await this.resolveEntries(sourceSessionId);
+    const index = promptIndexForEntry(entryId, messages, entryIds);
+    const rewinded = await this.requireAcp().rewindExecute(targetSessionId, index);
+    if (rewinded.success === false) {
+      throw new Error(rewinded.error || "Rewind failed");
+    }
   }
 
   private async startProcess(): Promise<void> {
