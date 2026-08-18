@@ -62,14 +62,23 @@ export class AcpTurnMapper {
     kind: "thinking" | "text",
     delta: string,
   ): AcpSseEvent[] {
+    const firstBlock = kind === "thinking" ? this.thinkingIndex === undefined : this.textIndex === undefined;
     const contentIndex = this.blockIndex(kind);
-    return [
-      ...this.startPrefix(),
-      {
+    const events = this.startPrefix();
+    if (firstBlock) {
+      events.push({
         type: "message_update",
-        assistantMessageEvent: { type, delta, contentIndex },
-      },
-    ];
+        assistantMessageEvent: {
+          type: kind === "thinking" ? "thinking_start" : "text_start",
+          contentIndex,
+        },
+      });
+    }
+    events.push({
+      type: "message_update",
+      assistantMessageEvent: { type, delta, contentIndex },
+    });
+    return events;
   }
 
   private toolCall(update: Record<string, unknown>): AcpSseEvent[] {
