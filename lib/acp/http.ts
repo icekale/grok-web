@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { toSlashPath } from "../paths.ts";
 import { nextPromptGeneration } from "../prompt-generation.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
-import * as grokProcess from "./process.ts";
+import { formatGrokMissingError } from "./process.ts";
 import type { AgentCommand, AgentRuntime } from "./runtime.ts";
 
 type AgentBody = {
@@ -172,9 +172,7 @@ function isGrokMissing(error: unknown): boolean {
 }
 
 function formatHandlerError(error: unknown): string {
-  if (!isGrokMissing(error)) return errorMessage(error);
-  const format = (grokProcess as { formatGrokMissingError?: () => string }).formatGrokMissingError;
-  return typeof format === "function" ? format() : errorMessage(error);
+  return isGrokMissing(error) ? formatGrokMissingError() : errorMessage(error);
 }
 
 function agentErrorResponse(
