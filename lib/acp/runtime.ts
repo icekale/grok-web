@@ -76,6 +76,34 @@ export class AgentRuntime {
         return this.sendPrompt(sessionId, stringField(command.message), "followUp");
       case "clear_queue":
         return this.clearQueue(sessionId);
+      case "queue_remove":
+        return this.mutateQueue(sessionId, () =>
+          this.ensureSession(sessionId).queue.remove(kindField(command), stringField(command.text)));
+      case "queue_edit":
+        return this.mutateQueue(sessionId, () =>
+          this.ensureSession(sessionId).queue.edit(kindField(command), stringField(command.text), stringField(command.replacement)));
+      case "queue_steer_item": {
+        const text = this.ensureSession(sessionId).queue.take(kindField(command), stringField(command.text));
+        this.emitQueue(sessionId);
+        if (text && this.isBusy(sessionId)) {
+          await this.ensureProcess();
+          await this.requireAcp().sessionInterject(sessionId, text);
+        } else if (text) {
+          return this.sendPrompt(sessionId, text);
+        }
+        return this.ensureSession(sessionId).queue.snapshot();
+      }
+      case "queue_steer_all": {
+        const session = this.ensureSession(sessionId);
+        const items = [...session.queue.snapshot().steering, ...session.queue.snapshot().followUp];
+        session.queue.clear();
+        this.emitQueue(sessionId);
+        if (this.isBusy(sessionId)) {
+          await this.ensureProcess();
+          for (const item of items) await this.requireAcp().sessionInterject(sessionId, item);
+        }
+        return session.queue.snapshot();
+      }
       case "extension_ui_response":
         return this.sendPermission(command);
       case "abort":
@@ -166,8 +194,18 @@ export class AgentRuntime {
   private clearQueue(sessionId: string): QueueSnapshot {
     const session = this.ensureSession(sessionId);
     const snap = session.queue.clear();
-    this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
+    this.emitQueue(sessionId);
     return snap;
+  }
+
+  private mutateQueue(sessionId: string, fn: () => void): QueueSnapshot {
+    fn();
+    this.emitQueue(sessionId);
+    return this.ensureSession(sessionId).queue.snapshot();
+  }
+
+  private emitQueue(sessionId: string): void {
+    this.emit(sessionId, [{ type: "queue_update", ...this.ensureSession(sessionId).queue.snapshot() }]);
   }
 
   private async sendPermission(command: AgentCommand): Promise<void> {
@@ -288,4 +326,9 @@ function stringField(value: unknown): string {
 function promptBehavior(command: AgentCommand): "steer" | "followUp" | undefined {
   const behavior = "streamingBehavior" in command ? command.streamingBehavior : undefined;
   return behavior === "steer" || behavior === "followUp" ? behavior : undefined;
+}
+
+function kindField(command: AgentCommand): "steering" | "followUp" {
+  const kind = "kind" in command ? command.kind : undefined;
+  return kind === "steering" || kind === "followUp" ? kind : "followUp";
 }
