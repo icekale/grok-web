@@ -94,6 +94,10 @@ export class AcpConnection {
     this.rpc.notify("session/cancel", { sessionId });
   }
 
+  sessionInterject(sessionId: string, text: string): Promise<unknown> {
+    return this.rpc.request("_x.ai/interject", { sessionId, text });
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {

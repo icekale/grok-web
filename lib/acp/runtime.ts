@@ -4,9 +4,13 @@ import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
+import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 
 export type AgentCommand =
-  | { type: "prompt"; message: string; images?: unknown[] }
+  | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
+  | { type: "steer"; message: string }
+  | { type: "follow_up"; message: string }
+  | { type: "clear_queue" }
   | { type: "get_state" }
   | { type: "extension_ui_response"; id: string; confirmed?: boolean; cancelled?: boolean; value?: string }
   | { type: string; [key: string]: unknown };
@@ -17,6 +21,8 @@ type SessionState = {
   mapper: AcpTurnMapper;
   listeners: Set<SessionListener>;
   busy: boolean;
+  queue: SessionQueue;
+  cwd?: string;
 };
 
 export class AgentRuntime {
@@ -48,14 +54,14 @@ export class AgentRuntime {
   async createSession(cwd: string): Promise<string> {
     await this.ensureProcess();
     const { sessionId } = await this.requireAcp().sessionNew(cwd);
-    this.ensureSession(sessionId);
+    this.ensureSession(sessionId).cwd = cwd;
     return sessionId;
   }
 
   async loadSession(sessionId: string, cwd?: string): Promise<void> {
     await this.ensureProcess();
     await this.requireAcp().sessionLoad(sessionId, cwd);
-    this.ensureSession(sessionId);
+    this.ensureSession(sessionId).cwd = cwd;
   }
 
   async send(sessionId: string, command: AgentCommand): Promise<unknown> {
@@ -63,7 +69,13 @@ export class AgentRuntime {
       case "get_state":
         return this.getState(sessionId);
       case "prompt":
-        return this.sendPrompt(sessionId, stringField(command.message));
+        return this.sendPrompt(sessionId, stringField(command.message), promptBehavior(command));
+      case "steer":
+        return this.sendPrompt(sessionId, stringField(command.message), "steer");
+      case "follow_up":
+        return this.sendPrompt(sessionId, stringField(command.message), "followUp");
+      case "clear_queue":
+        return this.clearQueue(sessionId);
       case "extension_ui_response":
         return this.sendPermission(command);
       case "abort":
@@ -97,6 +109,7 @@ export class AgentRuntime {
     isPromptRunning: boolean;
     model: { provider: "grok"; id: "grok" };
     thinkingLevel: "off";
+    queuedMessages: QueueSnapshot;
   } {
     const busy = this.isBusy(sessionId);
     return {
@@ -104,21 +117,58 @@ export class AgentRuntime {
       isPromptRunning: busy,
       model: { provider: "grok", id: "grok" },
       thinkingLevel: "off",
+      queuedMessages: this.sessions.get(sessionId)?.queue.snapshot() ?? { steering: [], followUp: [] },
     };
   }
 
-  private async sendPrompt(sessionId: string, message: string): Promise<unknown> {
+  private async sendPrompt(
+    sessionId: string,
+    message: string,
+    streamingBehavior?: "steer" | "followUp",
+  ): Promise<unknown> {
     await this.ensureProcess();
+    const session = this.ensureSession(sessionId);
+    if (session.busy) {
+      if (streamingBehavior === "steer") {
+        return this.requireAcp().sessionInterject(sessionId, message);
+      }
+      const snap = session.queue.enqueue("followUp", message);
+      this.emit(sessionId, [{ type: "queue_update", ...snap }]);
+      return snap;
+    }
+    return this.runPrompt(sessionId, message);
+  }
+
+  private async runPrompt(sessionId: string, message: string): Promise<unknown> {
     const session = this.ensureSession(sessionId);
     session.busy = true;
     session.mapper.begin();
     try {
       const result = await this.requireAcp().sessionPrompt(sessionId, message);
       this.emit(sessionId, session.mapper.endTurn());
+      const stopReason = result && typeof result === "object" && "stopReason" in result
+        && typeof (result as { stopReason?: unknown }).stopReason === "string"
+        ? (result as { stopReason: string }).stopReason
+        : "";
+      if (stopReason !== "cancelled") {
+        const next = session.queue.takeNext("followUp");
+        if (next !== undefined) {
+          this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
+          session.busy = false;
+          return this.runPrompt(sessionId, next);
+        }
+      }
       return result;
     } finally {
       session.busy = false;
     }
+  }
+
+  private clearQueue(sessionId: string): QueueSnapshot {
+    const session = this.ensureSession(sessionId);
+    const snap = session.queue.clear();
+    this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
+    return snap;
   }
 
   private async sendPermission(command: AgentCommand): Promise<void> {
@@ -201,7 +251,7 @@ export class AgentRuntime {
   private ensureSession(sessionId: string): SessionState {
     let session = this.sessions.get(sessionId);
     if (!session) {
-      session = { mapper: new AcpTurnMapper(), listeners: new Set(), busy: false };
+      session = { mapper: new AcpTurnMapper(), listeners: new Set(), busy: false, queue: new SessionQueue() };
       this.sessions.set(sessionId, session);
     }
     return session;
@@ -234,4 +284,9 @@ export function resetAgentRuntime(): void {
 
 function stringField(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function promptBehavior(command: AgentCommand): "steer" | "followUp" | undefined {
+  const behavior = "streamingBehavior" in command ? command.streamingBehavior : undefined;
+  return behavior === "steer" || behavior === "followUp" ? behavior : undefined;
 }
