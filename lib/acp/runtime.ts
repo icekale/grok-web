@@ -106,11 +106,16 @@ export class AgentRuntime {
         const items = [...session.queue.snapshot().steering, ...session.queue.snapshot().followUp];
         session.queue.clear();
         this.emitQueue(sessionId);
-        if (this.isBusy(sessionId)) {
-          await this.ensureProcess();
-          for (const item of items) await this.requireAcp().sessionInterject(sessionId, item);
+        let last: unknown = session.queue.snapshot();
+        for (const item of items) {
+          if (this.isBusy(sessionId)) {
+            await this.ensureProcess();
+            last = await this.requireAcp().sessionInterject(sessionId, item);
+          } else {
+            last = await this.sendPrompt(sessionId, item);
+          }
         }
-        return session.queue.snapshot();
+        return last;
       }
       case "extension_ui_response":
         return this.sendPermission(command);

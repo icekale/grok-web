@@ -20,7 +20,12 @@ export async function GET(req: Request) {
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
-    const loaded = await loadSkillsWithInstallInfo(cwd);
+    let loaded = { skills: [], diagnostics: [], projectResourcesLoaded: false };
+    try {
+      loaded = await loadSkillsWithInstallInfo(cwd);
+    } catch {
+      loaded = { skills: [], diagnostics: [], projectResourcesLoaded: false };
+    }
     const extra = listGrokSkills(undefined, cwd).filter((skill) => (
       !loaded.skills.some((item) => item.filePath === skill.path)
     )).map((skill) => ({

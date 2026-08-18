@@ -51,8 +51,11 @@ export const ProjectTrustStore: any = class ProjectTrustStore {
 
 export const DefaultResourceLoader: any = class DefaultResourceLoader {
   constructor(..._args: any[]) {}
+  async reload(..._args: any[]) {
+    return this;
+  }
   getSkills() {
-    return { skills: [] };
+    return { skills: [], diagnostics: [] };
   }
 };
 
