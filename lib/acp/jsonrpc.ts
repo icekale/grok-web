@@ -19,15 +19,24 @@ export class JsonRpcConn {
 
   request(method: string, params?: unknown): Promise<unknown> {
     const id = this.nextId++;
+    const promise = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
     this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    return promise;
   }
 
   notify(method: string, params?: unknown): void {
     this.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
   }
 
-  onNotification(handler: (method: string, params: unknown) => void): () => void {
+  respond(id: number, result?: unknown, error?: { code: number; message: string }): void {
+    if (error) {
+      this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, error }) + "\n");
+      return;
+    }
+    this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
+  }
+
+  onNotification(handler: (method: string, params: unknown, id?: number) => void): () => void {
     this.notes.on("n", handler);
     return () => this.notes.off("n", handler);
   }
@@ -46,6 +55,8 @@ export class JsonRpcConn {
       }
       return;
     }
-    if (typeof msg.method === "string") this.notes.emit("n", msg.method, msg.params);
+    if (typeof msg.method === "string") {
+      this.notes.emit("n", msg.method, msg.params, typeof msg.id === "number" ? msg.id : undefined);
+    }
   }
 }
