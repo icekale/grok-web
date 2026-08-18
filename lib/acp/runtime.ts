@@ -154,8 +154,7 @@ export class AgentRuntime {
         const next = session.queue.takeNext("followUp");
         if (next !== undefined) {
           this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
-          session.busy = false;
-          return this.runPrompt(sessionId, next);
+          return await this.runPrompt(sessionId, next);
         }
       }
       return result;
