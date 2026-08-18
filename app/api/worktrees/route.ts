@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
+import { refuseWorktreeWrite } from "@/lib/grok-fs/workspace.ts";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -66,11 +67,13 @@ export async function POST(req: Request) {
       return Response.json({ error: `Directory does not exist: ${body.cwd}` }, { status: 400 });
     }
 
+    refuseWorktreeWrite();
     const result = await addWorktree(body.cwd, body.branch);
     return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return Response.json({ error: message }, { status: 400 });
+    const status = message.includes("read-only") ? 501 : 400;
+    return Response.json({ error: message }, { status });
   }
 }
 
@@ -87,10 +90,14 @@ export async function DELETE(req: Request) {
     const denied = await checkCwdAllowed(body.cwd);
     if (denied) return denied;
 
+    refuseWorktreeWrite();
     await removeWorktree(body.cwd, body.path, body.force === true);
     return Response.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("read-only")) {
+      return Response.json({ error: message }, { status: 501 });
+    }
     // git refuses to remove dirty worktrees without --force; surface that so
     // the UI can offer a force-remove confirmation.
     const dirty = /contains modified or untracked files|is dirty/i.test(message);

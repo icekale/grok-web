@@ -1,12 +1,19 @@
 import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
 import { buildOAuthProviderList } from "@/lib/provider-listing";
 import { collectProviderListingInputs } from "@/lib/provider-listing-runtime";
+import { readGrokAuth } from "@/lib/grok-settings/home-config.ts";
 
-
-// Providers that declare an OAuth login method, including anthropic
-// (Claude Pro/Max) — see lib/provider-listing.ts (#309).
 export async function GET() {
-  const modelRuntime = await ModelRuntime.create();
-  const providers = buildOAuthProviderList(await collectProviderListingInputs(modelRuntime));
-  return Response.json({ providers });
+  const grok = {
+    id: "grok.com",
+    name: "Grok",
+    connected: readGrokAuth().loggedIn,
+  };
+  try {
+    const modelRuntime = await ModelRuntime.create();
+    const providers = buildOAuthProviderList(await collectProviderListingInputs(modelRuntime));
+    return Response.json({ providers: [...providers, grok] });
+  } catch {
+    return Response.json({ providers: [grok] });
+  }
 }

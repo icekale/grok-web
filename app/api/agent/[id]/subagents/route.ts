@@ -4,6 +4,8 @@ import { getRpcSession, notifyRunningChange, startRpcSession, type AgentSessionW
 import { listAllSessions, resolveSessionPath } from "@/lib/session-reader";
 import type { SubagentTreeResponse, SubagentControlResponse } from "@/lib/api-types";
 import type { SessionInfo } from "@/lib/types";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
+import { controlGrokSubagent, findGrokChild, grokSubagentTree } from "@/lib/acp/subagents.ts";
 
 type SubagentTreeReason = NonNullable<SubagentTreeResponse["unavailableReason"]>;
 
@@ -216,10 +218,50 @@ export function createSubagentHandlers(deps: SubagentRouteDeps = defaultDeps) {
   return { GET, POST };
 }
 
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
-  return createSubagentHandlers().GET(req, ctx);
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  const { id: rootId } = await ctx.params;
+  try {
+    const sessions = await listAllSessions();
+    const root = sessions.find((session) => session.id === rootId);
+    if (!root) return Response.json({ error: "Session not found" }, { status: 404 });
+    return Response.json(grokSubagentTree(rootId, sessions));
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
-  return createSubagentHandlers().POST(req, ctx);
+  const { id: rootId } = await ctx.params;
+  try {
+    const body = await req.json() as { childSessionId?: unknown; action?: unknown; message?: unknown };
+    const action = body.action;
+    if (action !== "steer" && action !== "interrupt" && action !== "resume") {
+      return Response.json({ error: "Unsupported subagent control action" }, { status: 400 });
+    }
+    if (typeof body.childSessionId !== "string" || !body.childSessionId) {
+      return Response.json({ error: "childSessionId is required" }, { status: 400 });
+    }
+    const sessions = await listAllSessions();
+    const child = findGrokChild(rootId, body.childSessionId, sessions);
+    if (!child) {
+      return Response.json({ error: "Child session does not belong to this root" }, { status: 400 });
+    }
+    const data = await controlGrokSubagent(
+      getAgentRuntime(),
+      rootId,
+      body.childSessionId,
+      action,
+      typeof body.message === "string" ? body.message : undefined,
+    );
+    return Response.json({
+      success: true,
+      data: {
+        action: data.action,
+        childSessionId: data.childSessionId,
+        tree: grokSubagentTree(rootId, sessions),
+      },
+    } satisfies SubagentControlResponse);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
 }

@@ -4,6 +4,7 @@ import path from "path";
 import { getAgentDir, parseFrontmatter } from "@/lib/pi-stubs/coding-agent";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { listGrokSkills } from "@/lib/grok-settings/home-config.ts";
 
 
 // GET /api/skills?cwd=<path>
@@ -19,7 +20,18 @@ export async function GET(req: Request) {
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
-    return Response.json(await loadSkillsWithInstallInfo(cwd));
+    const loaded = await loadSkillsWithInstallInfo(cwd);
+    const extra = listGrokSkills(undefined, cwd).filter((skill) => (
+      !loaded.skills.some((item) => item.filePath === skill.path)
+    )).map((skill) => ({
+      name: skill.name,
+      description: "",
+      filePath: skill.path,
+      baseDir: cwd,
+      disableModelInvocation: false,
+      sourceInfo: { source: "grok", scope: "project" },
+    }));
+    return Response.json({ ...loaded, skills: [...loaded.skills, ...extra] });
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 500 });
   }

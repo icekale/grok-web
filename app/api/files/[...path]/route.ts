@@ -26,6 +26,7 @@ import {
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { samePath } from "@/lib/paths";
+import { refuseWorkspaceWrite } from "@/lib/grok-fs/workspace.ts";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -127,6 +128,12 @@ export async function POST(
 ) {
   if (!isApiRequestAllowed(request)) {
     return Response.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+
+  try {
+    refuseWorkspaceWrite();
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 501 });
   }
 
   try {
