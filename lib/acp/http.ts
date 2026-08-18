@@ -153,8 +153,9 @@ function allowFileRoot(root: string): void {
 
 async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<void> {
   const session = await findGrokSession(id);
+  if (!session) return;
   try {
-    await runtime.loadSession(id, session?.cwd);
+    await runtime.loadSession(id, session.cwd);
   } catch (error) {
     if (errorMessage(error).includes("already loaded")) return;
     throw error;
