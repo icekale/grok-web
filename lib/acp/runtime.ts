@@ -19,10 +19,6 @@ type SessionState = {
   busy: boolean;
 };
 
-type AcpWithCancel = AcpConnection & {
-  sessionCancel?: (sessionId: string) => Promise<unknown>;
-};
-
 export class AgentRuntime {
   private readonly connectFn: () => Promise<AcpConnection>;
   private acp: AcpConnection | undefined;
@@ -135,11 +131,8 @@ export class AgentRuntime {
 
   private async sendAbort(sessionId: string): Promise<unknown> {
     await this.ensureProcess();
-    const acp = this.requireAcp() as AcpWithCancel;
-    if (typeof acp.sessionCancel !== "function") {
-      throw new Error("ACP cancel is not available");
-    }
-    return acp.sessionCancel(sessionId);
+    this.requireAcp().sessionCancel(sessionId);
+    return null;
   }
 
   private async startProcess(): Promise<void> {
