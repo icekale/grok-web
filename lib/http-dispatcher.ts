@@ -58,6 +58,7 @@ function createUndiciOriginDispatcher(origin: string | URL, options: object): un
 export function configureHttpDispatcher(
   timeoutMs: number = DEFAULT_HTTP_IDLE_TIMEOUT_MS,
 ): void {
+  if (typeof window !== "undefined") return;
   if (dispatcherGlobal.__piWebHttpDispatcherConfigured) return;
 
   const normalizedTimeoutMs = parseHttpIdleTimeoutMs(timeoutMs);

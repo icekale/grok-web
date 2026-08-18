@@ -83,8 +83,9 @@ test("settings footer is a gear with a label", () => {
 test("sidebar header restores restrained branding above the compact workspace toolbar", () => {
   assert.match(sidebar, /className="codex-sidebar-brand-header"/);
   assert.match(sidebar, /className="codex-sidebar-brand"/);
-  assert.match(sidebar, /src="\/icons\/favicon\.svg"/);
-  assert.match(sidebar, /alt="Grok"/);
+  assert.match(sidebar, /codex-sidebar-brand-logo/);
+  assert.match(sidebar, /aria-label="Grok"/);
+  assert.match(styles, /mask:\s*url\("\/icons\/logo\.svg"\)/);
   assert.doesNotMatch(sidebar, />Pi Web</);
   assert.match(sidebar, /<RefreshCw size=\{14\}/);
   assert.match(sidebar, /className="codex-sidebar-new-task"/);

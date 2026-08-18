@@ -943,9 +943,11 @@ pre, code {
 }
 .codex-sidebar-brand-logo {
   display: block;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  background: var(--text);
+  -webkit-mask: url("/icons/logo.svg") center / contain no-repeat;
+  mask: url("/icons/logo.svg") center / contain no-repeat;
 }
 .codex-sidebar-workspace-toolbar {
   height: 32px;
