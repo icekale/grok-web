@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Pi Web",
-  "short_name": "Pi Web",
-  "description": "Local web interface for the pi coding agent",
+  "name": "Grok Web",
+  "short_name": "Grok Web",
+  "description": "Local web interface for the Grok coding agent",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

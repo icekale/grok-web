@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import { pwaServiceWorkerAction } from "@/lib/pwa-registration";
 
 export function PwaRegistration() {
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) {
+    if (!("serviceWorker" in navigator)) return;
+
+    if (pwaServiceWorkerAction(process.env.NODE_ENV ?? "development") === "unregister") {
+      void navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) void reg.unregister();
+      });
       return;
     }
 
@@ -16,7 +22,7 @@ export function PwaRegistration() {
         scope: "/",
         updateViaCache: "none",
       }).catch((error: unknown) => {
-        console.error("Failed to register the Pi Web service worker:", error);
+        console.error("Failed to register the Grok Web service worker:", error);
       });
     };
 
