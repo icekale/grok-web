@@ -5,6 +5,7 @@ import { mapUpdatesJsonl } from "./history-map.ts";
 import { findGrokSession } from "./session-index.ts";
 import { listAllSessions } from "./session-reader.ts";
 import type { SessionInfo } from "./types.ts";
+import { getAgentRuntime } from "./acp/runtime.ts";
 
 const SESSION_LIST_FIRST_MESSAGE_CHARS = 512;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
@@ -20,7 +21,7 @@ export async function getSessions(_req: Request): Promise<Response> {
     return Response.json(
       {
         sessions: sessions.map(compactSessionForList),
-        runningSessionIds: [],
+        runningSessionIds: getAgentRuntime().listBusyIds(),
         meta,
       },
       NO_STORE,
