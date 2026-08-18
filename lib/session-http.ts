@@ -30,20 +30,54 @@ export async function getSessions(_req: Request): Promise<Response> {
   }
 }
 
+async function loadMappedSession(id: string) {
+  const session = await findGrokSession(id);
+  if (!session) return null;
+  let text = "";
+  try {
+    text = await readFile(join(session.path, "updates.jsonl"), "utf8");
+  } catch {
+    text = "";
+  }
+  return { session, ...mapUpdatesJsonl(text) };
+}
+
 export async function getSessionContext(_req: Request, id: string): Promise<Response> {
   try {
-    const session = await findGrokSession(id);
-    if (!session) {
+    const loaded = await loadMappedSession(id);
+    if (!loaded) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
-    let text = "";
-    try {
-      text = await readFile(join(session.path, "updates.jsonl"), "utf8");
-    } catch {
-      text = "";
+    return Response.json({ context: { messages: loaded.messages, entryIds: loaded.entryIds } });
+  } catch (error) {
+    return Response.json({ error: String(error) }, { status: 500 });
+  }
+}
+
+export async function getSessionDetail(_req: Request, id: string): Promise<Response> {
+  try {
+    const loaded = await loadMappedSession(id);
+    if (!loaded) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
     }
-    const { messages, entryIds } = mapUpdatesJsonl(text);
-    return Response.json({ context: { messages, entryIds } });
+    const { session, messages, entryIds } = loaded;
+    const lastAssistant = messages.findLast((message) => message.role === "assistant");
+    return Response.json({
+      sessionId: id,
+      filePath: session.path,
+      totalActiveMs: 0,
+      tree: [],
+      leafId: entryIds.at(-1) ?? null,
+      info: session,
+      context: {
+        messages,
+        entryIds,
+        thinkingLevel: "off",
+        model: lastAssistant
+          ? { provider: lastAssistant.provider, modelId: lastAssistant.model }
+          : null,
+      },
+    });
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 });
   }
