@@ -223,6 +223,21 @@ export class AcpConnection {
     }).then(unwrapResult);
   }
 
+  skillsList(cwd: string): Promise<{ skills: Array<{
+    name: string;
+    description?: string;
+    path: string;
+    scope?: string;
+    enabled?: boolean;
+    disable_model_invocation?: boolean;
+  }> }> {
+    return this.rpc.request("_x.ai/skills/list", { cwd }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  skillsToggle(name: string, enabled: boolean): Promise<{ skills: Array<{ name: string; enabled?: boolean; path?: string }> }> {
+    return this.rpc.request("_x.ai/skills/toggle", { name, enabled }).then((raw) => unwrapResult(raw) as never);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {

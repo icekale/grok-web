@@ -147,6 +147,16 @@ export class AgentRuntime {
     return this.withSession(cwd, (sessionId) => this.requireAcp().mcpDelete(sessionId, name));
   }
 
+  async listSkills(cwd: string) {
+    await this.ensureProcess();
+    return this.requireAcp().skillsList(cwd);
+  }
+
+  async toggleSkill(name: string, enabled: boolean) {
+    await this.ensureProcess();
+    return this.requireAcp().skillsToggle(name, enabled);
+  }
+
   async worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
     await this.ensureProcess();
     return this.requireAcp().worktreeCreate(sessionId, sourcePath);

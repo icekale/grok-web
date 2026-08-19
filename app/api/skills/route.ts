@@ -1,11 +1,41 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import path from "path";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { getAgentDir, parseFrontmatter } from "@/lib/pi-stubs/coding-agent";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { listGrokSkills } from "@/lib/grok-settings/home-config.ts";
 
+type AcpSkill = {
+  name: string;
+  description?: string;
+  path: string;
+  scope?: string;
+  enabled?: boolean;
+  disable_model_invocation?: boolean;
+};
+
+let lastListedSkills: AcpSkill[] = [];
+let lastListCwd: string | undefined;
+
+function mapAcpSkill(skill: AcpSkill, cwd: string) {
+  return {
+    name: skill.name,
+    description: skill.description ?? "",
+    filePath: skill.path,
+    baseDir: cwd,
+    disableModelInvocation: skill.enabled === false || skill.disable_model_invocation === true,
+    sourceInfo: { source: "grok", scope: skill.scope === "user" ? "user" : "project" },
+  };
+}
+
+async function listAcpSkills(cwd: string): Promise<AcpSkill[]> {
+  const listed = await getAgentRuntime().listSkills(cwd);
+  lastListedSkills = listed.skills ?? [];
+  lastListCwd = cwd;
+  return lastListedSkills;
+}
 
 // GET /api/skills?cwd=<path>
 // Uses DefaultResourceLoader (same logic as AgentSession startup) so settings.json
@@ -19,6 +49,16 @@ export async function GET(req: Request) {
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
+    }
+    try {
+      const skills = await listAcpSkills(cwd);
+      return Response.json({
+        skills: skills.map((skill) => mapAcpSkill(skill, cwd)),
+        diagnostics: [],
+        projectResourcesLoaded: true,
+      });
+    } catch {
+      // ACP unavailable — fall back to disk loaders
     }
     let loaded = { skills: [], diagnostics: [], projectResourcesLoaded: false };
     try {
@@ -48,6 +88,22 @@ export async function PATCH(req: Request) {
     const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return Response.json({ error: "filePath required" }, { status: 400 });
+    try {
+      const runtime = getAgentRuntime();
+      let skill = lastListedSkills.find((item) => item.path === filePath);
+      if (!skill) {
+        const listed = await listAcpSkills(lastListCwd ?? process.cwd());
+        skill = listed.find((item) => item.path === filePath);
+      }
+      if (skill) {
+        await runtime.toggleSkill(skill.name, !disableModelInvocation);
+        const cached = lastListedSkills.find((item) => item.name === skill.name);
+        if (cached) cached.enabled = !disableModelInvocation;
+        return Response.json({ success: true });
+      }
+    } catch {
+      // ACP unavailable — fall back to SKILL.md frontmatter
+    }
     if (!existsSync(filePath)) return Response.json({ error: "file not found" }, { status: 404 });
     const allowedRoots = new Set(await getAllowedFileRoots());
     allowedRoots.add(getAgentDir());
