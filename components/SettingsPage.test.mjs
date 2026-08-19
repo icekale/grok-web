@@ -12,6 +12,14 @@ test("AppShell exposes one unified settings entry", () => {
   assert.doesNotMatch(shell, /<ModelsConfig|<SkillsConfig|<PluginsConfig/);
 });
 
+test("general settings can change Grok permission mode", () => {
+  assert.match(settings, /settings\.permissionMode/);
+  assert.match(settings, /\/api\/settings/);
+  assert.match(settings, /permissionMode: mode/);
+  assert.match(settings, /always-approve/);
+  assert.match(settings, /<Shield /);
+});
+
 test("settings embeds the model, skill, plugin, vision, and remote modules", () => {
   assert.match(settings, /<ModelsConfig onControllerChange=\{setModelsController\} \/>/);
   assert.match(settings, /<SkillsConfig cwd=\{cwd\} onControllerChange=\{setSkillsController\} \/>/);

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
@@ -64,7 +65,10 @@ export class AgentRuntime {
 
   async createSession(cwd: string): Promise<string> {
     await this.ensureProcess();
-    const { sessionId } = await this.requireAcp().sessionNew(cwd);
+    const { sessionId } = await this.requireAcp().sessionNew(
+      cwd,
+      sessionNewMeta(readPermissionMode()),
+    );
     const session = this.ensureSession(sessionId);
     session.cwd = cwd;
     session.modelId = "grok-4.6";

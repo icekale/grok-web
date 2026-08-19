@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { writePrivateFileAtomicSync } from "../atomic-file.ts";
 import { grokHome, grokWebMetaDir } from "../grok-home.ts";
 
+export type PermissionMode = "ask" | "auto" | "always-approve";
+
 export type GrokSettings = {
   home: string;
   username: "grok";
@@ -11,7 +13,64 @@ export type GrokSettings = {
   auth: { loggedIn: boolean; methods: string[] };
   mcpServers: Array<{ name: string; command?: string; enabled?: boolean }>;
   skills: Array<{ name: string; path: string }>;
+  permissionMode: PermissionMode;
 };
+
+const PERMISSION_MODES = new Set<PermissionMode>(["ask", "auto", "always-approve"]);
+
+export function normalizePermissionMode(value: unknown): PermissionMode {
+  if (value === "bypassPermissions" || value === "yolo") return "always-approve";
+  if (value === "default") return "ask";
+  if (typeof value === "string" && PERMISSION_MODES.has(value as PermissionMode)) {
+    return value as PermissionMode;
+  }
+  return "ask";
+}
+
+export function readPermissionMode(config: Record<string, unknown> = readGrokConfig()): PermissionMode {
+  const ui = config.ui;
+  if (ui && typeof ui === "object" && !Array.isArray(ui)) {
+    const mode = (ui as Record<string, unknown>).permission_mode;
+    if (mode !== undefined) return normalizePermissionMode(mode);
+  }
+  if (config.permission_mode !== undefined) return normalizePermissionMode(config.permission_mode);
+  if (config.yolo === true) return "always-approve";
+  return "ask";
+}
+
+export function sessionNewMeta(mode: PermissionMode): Record<string, unknown> {
+  if (mode === "always-approve") return { yoloMode: true };
+  if (mode === "auto") return { autoMode: true };
+  return {};
+}
+
+export function upsertUiPermissionMode(text: string, mode: PermissionMode): string {
+  const line = `permission_mode = ${JSON.stringify(mode)}`;
+  let next = text;
+  const uiMatch = /^\[ui\][^\[]*/m.exec(next);
+  if (uiMatch) {
+    const block = uiMatch[0];
+    const nextBlock = /^permission_mode\s*=.*$/m.test(block)
+      ? block.replace(/^permission_mode\s*=.*$/m, line)
+      : block.replace(/\[ui\]\s*\n?/, `[ui]\n${line}\n`);
+    next = `${next.slice(0, uiMatch.index)}${nextBlock}${next.slice(uiMatch.index + block.length)}`;
+  } else {
+    const suffix = next.length === 0 || next.endsWith("\n") ? "" : "\n";
+    next = `${next}${suffix}[ui]\n${line}\n`;
+  }
+  const { preamble, rest } = splitTopLevelToml(next);
+  if (/^permission_mode\s*=.*$/m.test(preamble)) {
+    return `${preamble.replace(/^permission_mode\s*=.*$/m, line)}${rest}`;
+  }
+  return next;
+}
+
+export function writePermissionMode(mode: PermissionMode, home = grokHome()): void {
+  mkdirSync(home, { recursive: true });
+  const file = join(home, "config.toml");
+  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+  writePrivateFileAtomicSync(file, upsertUiPermissionMode(current, mode));
+}
 
 function unquote(value: string): string | boolean | number {
   const trimmed = value.trim();
@@ -204,6 +263,7 @@ export function loadGrokSettings(home = grokHome(), cwd?: string): GrokSettings 
     auth: readGrokAuth(home),
     mcpServers: listMcpServers(config),
     skills: listGrokSkills(home, cwd),
+    permissionMode: readPermissionMode(config),
   };
 }
 

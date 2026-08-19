@@ -88,16 +88,19 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
   }
 }
 
-export async function patchSession(req: Request, id: string): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const name = body && typeof body === "object" && !Array.isArray(body) && typeof (body as { name?: unknown }).name === "string"
-    ? (body as { name: string }).name.trim()
-    : "";
+const MAX_AUTO_NAME_LENGTH = 80;
+
+export function titleFromHistory(messages: { role: string; content: unknown }[]): string {
+  const user = messages.find((message) => message.role === "user");
+  const text = typeof user?.content === "string" ? user.content : "";
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed.length <= MAX_AUTO_NAME_LENGTH
+    ? collapsed
+    : collapsed.slice(0, MAX_AUTO_NAME_LENGTH).trimEnd();
+}
+
+export async function persistSessionName(id: string, name: string): Promise<Response> {
   if (!name) return Response.json({ error: "name is required" }, { status: 400 });
   if (isReservedSubagentSessionName(name)) {
     return Response.json({ error: "Reserved subagent session name" }, { status: 409 });
@@ -128,6 +131,55 @@ export async function patchSession(req: Request, id: string): Promise<Response> 
     }
   }
   return Response.json({ ok: true, id, name });
+}
+
+export async function patchSession(req: Request, id: string): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const name = body && typeof body === "object" && !Array.isArray(body) && typeof (body as { name?: unknown }).name === "string"
+    ? (body as { name: string }).name.trim()
+    : "";
+  return persistSessionName(id, name);
+}
+
+export async function autoNameSession(id: string): Promise<Response> {
+  const loaded = await loadMappedSession(id);
+  if (!loaded) return Response.json({ error: "Session not found" }, { status: 404 });
+  if (loaded.session.sessionRole === "subagent") {
+    return Response.json({ error: "Cannot rename a subagent session" }, { status: 409 });
+  }
+  const title = titleFromHistory(loaded.messages);
+  if (!title) {
+    return Response.json({ error: "The session has no user messages to name" }, { status: 400 });
+  }
+  const persisted = await persistSessionName(id, title);
+  if (!persisted.ok) return persisted;
+  return Response.json({ title, usage: null });
+}
+
+export async function getSessionState(_req: Request, id: string): Promise<Response> {
+  const session = await findGrokSession(id);
+  if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  const runtime = peekAgentRuntime();
+  if (runtime) {
+    try {
+      const state = await runtime.send(id, { type: "get_state" });
+      return Response.json({ running: runtime.isBusy(id), state });
+    } catch {
+      // Session is on disk but not loaded in ACP; return idle state.
+    }
+  }
+  return Response.json({
+    running: false,
+    state: {
+      thinkingLevel: "off",
+      queuedMessages: { steering: [], followUp: [] },
+    },
+  });
 }
 
 export async function deleteSession(id: string): Promise<Response> {

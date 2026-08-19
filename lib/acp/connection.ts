@@ -71,11 +71,11 @@ export class AcpConnection {
     return this.rpc.request("initialize", { protocolVersion: 1 });
   }
 
-  sessionNew(cwd: string): Promise<{ sessionId: string }> {
+  sessionNew(cwd: string, meta: Record<string, unknown> = {}): Promise<{ sessionId: string }> {
     return this.rpc.request("session/new", {
       cwd,
       mcpServers: [],
-      _meta: {},
+      _meta: meta,
     }) as Promise<{ sessionId: string }>;
   }
 
