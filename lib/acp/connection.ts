@@ -158,6 +158,38 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/git/worktree/remove", { worktreePath }).then(unwrapResult);
   }
 
+  authCheck(): Promise<{ authenticated: boolean; meta?: unknown }> {
+    return this.rpc.request("_x.ai/auth/check_subscription", {}) as Promise<{ authenticated: boolean; meta?: unknown }>;
+  }
+
+  authGetUrl(): Promise<{ auth_url: string; external_provider?: boolean; mode?: string }> {
+    return this.rpc.request("_x.ai/auth/get_url", {}) as Promise<{
+      auth_url: string;
+      external_provider?: boolean;
+      mode?: string;
+    }>;
+  }
+
+  authSubmitCode(code: string): Promise<{ submitted?: boolean }> {
+    return this.rpc.request("_x.ai/auth/submit_code", { code }) as Promise<{ submitted?: boolean }>;
+  }
+
+  authCancel(): Promise<{ cancelled?: boolean }> {
+    return this.rpc.request("_x.ai/auth/cancel", {}) as Promise<{ cancelled?: boolean }>;
+  }
+
+  authLogout(): Promise<{ ok?: boolean; was_logged_in?: boolean; api_key_still_set?: boolean }> {
+    return this.rpc.request("_x.ai/auth/logout", {}) as Promise<{
+      ok?: boolean;
+      was_logged_in?: boolean;
+      api_key_still_set?: boolean;
+    }>;
+  }
+
+  authenticate(methodId: string): Promise<unknown> {
+    return this.rpc.request("authenticate", { methodId });
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
