@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -127,5 +127,30 @@ describe("/api/plugins MCP adapter", () => {
     assert.equal(res.status, 200, await res.clone().text());
     const body = await res.json();
     assert.ok(Array.isArray(body.diagnostics));
+  });
+
+  it("GET disk fallback keeps enabled=false from GROK_HOME config", async () => {
+    const home = mkdtempSync(join(tmpdir(), "grok-plugins-home-"));
+    writeFileSync(join(home, "config.toml"), `[mcp_servers.offbox]
+enabled = false
+`);
+    const previousHome = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    try {
+      setAgentRuntime({
+        listMcp: async () => {
+          throw new Error("down");
+        },
+      });
+      const res = await getPlugins();
+      assert.equal(res.status, 200, await res.clone().text());
+      const body = await res.json();
+      const offbox = body.packages.find((pkg) => pkg.source === "offbox");
+      assert.ok(offbox);
+      assert.equal(offbox.disabled, true);
+    } finally {
+      if (previousHome === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = previousHome;
+    }
   });
 });

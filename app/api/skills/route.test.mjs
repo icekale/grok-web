@@ -126,6 +126,55 @@ describe("/api/skills ACP adapter", () => {
     assert.deepEqual(toggles, [{ name: "demo", enabled: false }]);
   });
 
+  it("PATCH finds skills via listSkills without a prior GET", async () => {
+    const toggles = [];
+    const listCwds = [];
+    setAgentRuntime({
+      listSkills: async (listCwd) => {
+        listCwds.push(listCwd);
+        return {
+          skills: [
+            {
+              name: "demo",
+              description: "demo skill",
+              path: "/tmp/demo/SKILL.md",
+              scope: "user",
+              enabled: true,
+            },
+            {
+              name: "local",
+              description: "local skill",
+              path: "/tmp/local/SKILL.md",
+              scope: "project",
+              enabled: true,
+            },
+          ],
+        };
+      },
+      toggleSkill: async (name, enabled) => {
+        toggles.push({ name, enabled });
+        return { skills: [{ name, enabled }] };
+      },
+    });
+    const { PATCH } = await loadRoute();
+    async function patch(filePath) {
+      return PATCH(new Request("http://127.0.0.1:30141/api/skills", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filePath, disableModelInvocation: true }),
+      }));
+    }
+    const first = await patch("/tmp/demo/SKILL.md");
+    const second = await patch("/tmp/local/SKILL.md");
+    assert.equal(first.status, 200, await first.clone().text());
+    assert.equal(second.status, 200, await second.clone().text());
+    assert.deepEqual(toggles, [
+      { name: "demo", enabled: false },
+      { name: "local", enabled: false },
+    ]);
+    assert.ok(listCwds.length >= 2);
+  });
+
   it("GET maps disableModelInvocation true after toggle", async () => {
     setAgentRuntime(createRuntime());
     const { PATCH } = await loadRoute();

@@ -44,6 +44,17 @@ export function parseSimpleToml(text: string): Record<string, unknown> {
     }
     const eq = line.indexOf("=");
     if (eq === -1) continue;
+    const rawValue = line.slice(eq + 1).trim();
+    if (/^\[.*\]$/.test(rawValue)) {
+      const inner = rawValue.slice(1, -1).trim();
+      cursor[line.slice(0, eq).trim()] = inner
+        ? inner.split(",").map((item) => {
+          const parsed = unquote(item);
+          return typeof parsed === "string" ? parsed : String(parsed);
+        })
+        : [];
+      continue;
+    }
     cursor[line.slice(0, eq).trim()] = unquote(line.slice(eq + 1));
   }
   return root;

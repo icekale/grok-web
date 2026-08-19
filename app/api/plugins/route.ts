@@ -68,7 +68,10 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
       type: "error",
       message: error instanceof Error ? error.message : String(error),
     }];
-    const servers = listMcpServers(readGrokConfig()).map((server) => ({ name: server.name }));
+    const servers = listMcpServers(readGrokConfig()).map((server) => ({
+      name: server.name,
+      session: server.enabled === false ? { enabled: false } : undefined,
+    }));
     return toPluginsResponse(servers, cwd, diagnostics);
   }
 }

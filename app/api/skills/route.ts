@@ -16,9 +16,6 @@ type AcpSkill = {
   disable_model_invocation?: boolean;
 };
 
-let lastListedSkills: AcpSkill[] = [];
-let lastListCwd: string | undefined;
-
 function mapAcpSkill(skill: AcpSkill, cwd: string) {
   return {
     name: skill.name,
@@ -32,9 +29,19 @@ function mapAcpSkill(skill: AcpSkill, cwd: string) {
 
 async function listAcpSkills(cwd: string): Promise<AcpSkill[]> {
   const listed = await getAgentRuntime().listSkills(cwd);
-  lastListedSkills = listed.skills ?? [];
-  lastListCwd = cwd;
-  return lastListedSkills;
+  return listed.skills ?? [];
+}
+
+async function skillPatchAllowedRoots(): Promise<Set<string>> {
+  const allowedRoots = new Set(await getAllowedFileRoots());
+  allowedRoots.add(getAgentDir());
+  // Globally installed skills live in ~/.agents/skills and are symlinked into
+  // the agent's skills dir; isExistingFilePathAllowed resolves the symlink, so
+  // the real target sits outside getAgentDir(). Allow the global skills root
+  // too (the SDK always treats ~/.agents/skills as trusted).
+  const globalSkillsDir = path.join(homedir(), ".agents", "skills");
+  if (existsSync(globalSkillsDir)) allowedRoots.add(globalSkillsDir);
+  return allowedRoots;
 }
 
 // GET /api/skills?cwd=<path>
@@ -85,34 +92,32 @@ export async function GET(req: Request) {
 // PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
+    const body = await req.json() as {
+      filePath: string;
+      disableModelInvocation: boolean;
+      cwd?: string;
+    };
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return Response.json({ error: "filePath required" }, { status: 400 });
+    if (existsSync(filePath)) {
+      const allowedRoots = await skillPatchAllowedRoots();
+      if (!isExistingFilePathAllowed(filePath, allowedRoots)) {
+        return Response.json({ error: "Access denied" }, { status: 403 });
+      }
+    }
     try {
       const runtime = getAgentRuntime();
-      let skill = lastListedSkills.find((item) => item.path === filePath);
-      if (!skill) {
-        const listed = await listAcpSkills(lastListCwd ?? process.cwd());
-        skill = listed.find((item) => item.path === filePath);
-      }
+      const listCwd = body.cwd || path.dirname(filePath);
+      const skill = (await listAcpSkills(listCwd)).find((item) => item.path === filePath);
       if (skill) {
         await runtime.toggleSkill(skill.name, !disableModelInvocation);
-        const cached = lastListedSkills.find((item) => item.name === skill.name);
-        if (cached) cached.enabled = !disableModelInvocation;
         return Response.json({ success: true });
       }
     } catch {
       // ACP unavailable — fall back to SKILL.md frontmatter
     }
     if (!existsSync(filePath)) return Response.json({ error: "file not found" }, { status: 404 });
-    const allowedRoots = new Set(await getAllowedFileRoots());
-    allowedRoots.add(getAgentDir());
-    // Globally installed skills live in ~/.agents/skills and are symlinked into
-    // the agent's skills dir; isExistingFilePathAllowed resolves the symlink, so
-    // the real target sits outside getAgentDir(). Allow the global skills root
-    // too (the SDK always treats ~/.agents/skills as trusted).
-    const globalSkillsDir = path.join(homedir(), ".agents", "skills");
-    if (existsSync(globalSkillsDir)) allowedRoots.add(globalSkillsDir);
+    const allowedRoots = await skillPatchAllowedRoots();
     if (!isExistingFilePathAllowed(filePath, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
