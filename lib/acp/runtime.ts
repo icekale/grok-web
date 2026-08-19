@@ -558,7 +558,6 @@ function rejectUnsupportedImages(images: unknown): void {
 async function diskHasUserMessages(sessionId: string): Promise<boolean> {
   const found = await findGrokSession(sessionId);
   if (!found) return false;
-  if (found.messageCount > 0) return true;
   try {
     const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
     return mapUpdatesJsonl(text).messages.some((message) => (
