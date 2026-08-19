@@ -13,6 +13,7 @@ import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
+import { PRESET_FULL } from "../tool-presets.ts";
 
 export type AgentCommand =
   | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
@@ -249,6 +250,20 @@ export class AgentRuntime {
         const instructions = typeof command.customInstructions === "string" ? command.customInstructions : undefined;
         return this.requireAcp().compactConversation(sessionId, instructions);
       }
+      case "get_tools":
+        return PRESET_FULL.map((name) => ({
+          name,
+          description: name,
+          active: true,
+        }));
+      case "set_tools":
+        throw new Error("Tool presets are not supported");
+      case "abort_compaction":
+        return this.sendAbort(sessionId);
+      case "get_last_assistant_text":
+        return this.lastAssistantText(sessionId);
+      case "get_session_stats":
+        return this.sessionStats(sessionId);
       case "abort":
         return this.sendAbort(sessionId);
       case "fork":
@@ -390,6 +405,72 @@ export class AgentRuntime {
     await this.ensureProcess();
     this.requireAcp().sessionCancel(sessionId);
     return null;
+  }
+
+  private async lastAssistantText(sessionId: string): Promise<{ text: string }> {
+    const found = await findGrokSession(sessionId);
+    if (!found) return { text: "" };
+    try {
+      const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
+      const { messages } = mapUpdatesJsonl(text);
+      const last = [...messages].reverse().find((message) => message.role === "assistant");
+      if (!last || last.role !== "assistant") return { text: "" };
+      return {
+        text: last.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join(""),
+      };
+    } catch {
+      return { text: "" };
+    }
+  }
+
+  private async sessionStats(sessionId: string): Promise<{
+    sessionId: string;
+    sessionName?: string;
+    userMessages: number;
+    assistantMessages: number;
+    toolCalls: number;
+    toolResults: number;
+    totalMessages: number;
+    tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+    cost: number;
+  }> {
+    const empty = {
+      sessionId,
+      userMessages: 0,
+      assistantMessages: 0,
+      toolCalls: 0,
+      toolResults: 0,
+      totalMessages: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+    };
+    const found = await findGrokSession(sessionId);
+    if (!found) return empty;
+    try {
+      const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
+      const { messages } = mapUpdatesJsonl(text);
+      let toolCalls = 0;
+      for (const message of messages) {
+        if (message.role !== "assistant") continue;
+        toolCalls += message.content.filter((part) => part.type === "toolCall").length;
+      }
+      const userMessages = messages.filter((message) => message.role === "user").length;
+      const assistantMessages = messages.filter((message) => message.role === "assistant").length;
+      return {
+        ...empty,
+        sessionName: found.name || undefined,
+        userMessages,
+        assistantMessages,
+        toolCalls,
+        toolResults: toolCalls,
+        totalMessages: messages.length,
+      };
+    } catch {
+      return { ...empty, sessionName: found.name || undefined };
+    }
   }
 
   private async sendFork(sessionId: string, command: AgentCommand): Promise<{ cancelled: false; newSessionId: string }> {
