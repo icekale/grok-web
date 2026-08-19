@@ -22,7 +22,11 @@ export function isNewerStableVersion(candidate: string, current: string): boolea
   return false;
 }
 
-export function getPiWebReleaseUrl(version: string): string | null {
-  if (!parseStableVersion(version)) return null;
-  return `https://github.com/agegr/pi-web/releases/tag/v${version}`;
+export function currentUpdateStatus(currentVersion: string) {
+  return {
+    currentVersion,
+    latestVersion: currentVersion,
+    updateAvailable: false,
+    releaseUrl: "",
+  };
 }
