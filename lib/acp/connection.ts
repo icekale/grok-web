@@ -113,6 +113,23 @@ export class AcpConnection {
     }) as Promise<{ success?: boolean; error?: string }>;
   }
 
+  modelsList(): Promise<{ currentModelId: string; availableModels: Array<{ modelId: string; name?: string; _meta?: unknown }> }> {
+    return this.rpc.request("_x.ai/models/list", {}).then((raw) => unwrapResult(raw) as never);
+  }
+
+  sessionSetModel(sessionId: string, modelId: string): Promise<{ modelId: string }> {
+    return this.rpc.request("session/set_model", { sessionId, modelId }).then((raw) => {
+      const meta = raw && typeof raw === "object" && "_meta" in raw
+        ? (raw as { _meta?: { model?: { Ok?: string } } })._meta
+        : undefined;
+      return { modelId: meta?.model?.Ok ?? modelId };
+    });
+  }
+
+  sessionSetMode(sessionId: string, modeId: string): Promise<unknown> {
+    return this.rpc.request("session/set_mode", { sessionId, modeId });
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
@@ -125,4 +142,11 @@ export class AcpConnection {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function unwrapResult(value: unknown): unknown {
+  if (value && typeof value === "object" && "result" in value) {
+    return (value as { result: unknown }).result;
+  }
+  return value;
 }
