@@ -130,6 +130,18 @@ export class AcpConnection {
     return this.rpc.request("session/set_mode", { sessionId, modeId });
   }
 
+  fsList(path: string): Promise<{ nodes: Array<{ name: string; path: string; type: string }> }> {
+    return this.rpc.request("_x.ai/fs/list", { path }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  fsRead(path: string): Promise<{ content: string }> {
+    return this.rpc.request("_x.ai/fs/read_file", { path }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  fsWrite(path: string, content: string): Promise<void> {
+    return this.rpc.request("_x.ai/fs/write_file", { path, content }).then(() => undefined);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
