@@ -152,12 +152,14 @@ function allowFileRoot(root: string): void {
 }
 
 async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<void> {
+  if (runtime.hasSession(id)) return;
   const session = await findGrokSession(id);
   if (!session) return;
   try {
     await runtime.loadSession(id, session.cwd);
   } catch (error) {
-    if (errorMessage(error).includes("already loaded")) return;
+    const message = errorMessage(error);
+    if (message.includes("already loaded") || message.includes("Invalid params")) return;
     throw error;
   }
 }

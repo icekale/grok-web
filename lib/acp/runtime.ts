@@ -284,6 +284,10 @@ export class AgentRuntime {
     };
   }
 
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   isBusy(sessionId: string): boolean {
     return this.sessions.get(sessionId)?.busy === true;
   }
