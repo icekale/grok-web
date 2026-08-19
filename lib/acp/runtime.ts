@@ -287,6 +287,18 @@ export class AgentRuntime {
         this.ensureSession(sessionId).thinkingLevel = level;
         return { level };
       }
+      case "get_commands":
+        return this.listSlashCommands(sessionId);
+      case "reload":
+        return { success: true };
+      case "bash":
+        throw new Error("Shell commands are not supported");
+      case "abort_bash":
+        return this.sendAbort(sessionId);
+      case "extension_ui_input":
+        throw new Error("Extension custom UI is not supported");
+      case "run_command":
+        throw new Error("Extension commands are not supported");
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -405,6 +417,26 @@ export class AgentRuntime {
     await this.ensureProcess();
     this.requireAcp().sessionCancel(sessionId);
     return null;
+  }
+
+  private async listSlashCommands(sessionId: string) {
+    const cwd = this.ensureSession(sessionId).cwd || process.cwd();
+    const listed = await this.listSkills(cwd);
+    return {
+      commands: (listed.skills ?? [])
+        .filter((skill) => skill.enabled !== false)
+        .map((skill) => ({
+          name: skill.name,
+          description: skill.description ?? skill.name,
+          source: "skill" as const,
+          sourceInfo: {
+            path: skill.path,
+            source: "grok",
+            scope: skill.scope === "user" ? "user" as const : "project" as const,
+            origin: "top-level" as const,
+          },
+        })),
+    };
   }
 
   private async lastAssistantText(sessionId: string): Promise<{ text: string }> {
