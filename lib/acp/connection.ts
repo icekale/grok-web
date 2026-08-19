@@ -238,6 +238,26 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/skills/toggle", { name, enabled }).then((raw) => unwrapResult(raw) as never);
   }
 
+  subagentListRunning(sessionId: string): Promise<{
+    subagents: Array<{
+      subagentId: string;
+      childSessionId?: string;
+      description?: string;
+      status?: string;
+      subagentType?: string;
+    }>;
+  }> {
+    return this.rpc.request("_x.ai/subagent/list_running", { sessionId }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  subagentCancel(subagentId: string): Promise<{
+    subagentId?: string;
+    cancelled?: boolean;
+    outcome?: { kind?: string };
+  }> {
+    return this.rpc.request("_x.ai/subagent/cancel", { subagentId }).then((raw) => unwrapResult(raw) as never);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
