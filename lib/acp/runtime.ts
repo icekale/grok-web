@@ -4,6 +4,7 @@ import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
+import { mapGrokModels } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
@@ -75,6 +76,11 @@ export class AgentRuntime {
     await this.ensureProcess();
     await this.requireAcp().sessionLoad(sessionId, cwd);
     this.ensureSession(sessionId).cwd = cwd;
+  }
+
+  async listModels() {
+    await this.ensureProcess();
+    return mapGrokModels(await this.requireAcp().modelsList());
   }
 
   async send(sessionId: string, command: AgentCommand): Promise<unknown> {
