@@ -224,6 +224,11 @@ export class AgentRuntime {
       }
       case "extension_ui_response":
         return this.sendPermission(command);
+      case "compact": {
+        await this.ensureProcess();
+        const instructions = typeof command.customInstructions === "string" ? command.customInstructions : undefined;
+        return this.requireAcp().compactConversation(sessionId, instructions);
+      }
       case "abort":
         return this.sendAbort(sessionId);
       case "fork":

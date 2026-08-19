@@ -258,6 +258,16 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/subagent/cancel", { subagentId }).then((raw) => unwrapResult(raw) as never);
   }
 
+  compactConversation(sessionId: string, customInstructions?: string): Promise<{
+    tokensBefore?: number;
+    estimatedTokensAfter?: number;
+  }> {
+    return this.rpc.request("_x.ai/compact_conversation", {
+      session_id: sessionId,
+      ...(customInstructions ? { custom_instructions: customInstructions } : {}),
+    }).then((raw) => unwrapResult(raw) as never);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {

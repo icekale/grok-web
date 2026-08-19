@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
@@ -84,6 +85,13 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 });
   }
+}
+
+export async function deleteSession(id: string): Promise<Response> {
+  const session = await findGrokSession(id);
+  if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  rmSync(session.path, { recursive: true, force: true });
+  return Response.json({ ok: true, id });
 }
 
 export async function postMeta(req: Request): Promise<Response> {
