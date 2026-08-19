@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { envPasswordEnabled, hasStoredPasswordHash, verifyStoredPassword } from "./remote-access-config";
-export const GROK_WEB_AUTH_USERNAME = "pi";
+export const GROK_WEB_AUTH_USERNAME = "grok";
 
 function hashSecret(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();

@@ -6,10 +6,15 @@ import { after, test } from "node:test";
 import { createJiti } from "jiti";
 
 const agentDir = mkdtempSync(join(tmpdir(), "pi-web-remote-route-"));
-process.env.PI_CODING_AGENT_DIR = agentDir;
+const previousGrokHome = process.env.GROK_HOME;
+process.env.GROK_HOME = agentDir;
 delete process.env.GROK_WEB_PASSWORD;
 delete process.env.GROK_WEB_ALLOWED_HOSTS;
-after(() => rmSync(agentDir, { recursive: true, force: true }));
+after(() => {
+  if (previousGrokHome === undefined) delete process.env.GROK_HOME;
+  else process.env.GROK_HOME = previousGrokHome;
+  rmSync(agentDir, { recursive: true, force: true });
+});
 
 const jiti = createJiti(import.meta.url, {
   alias: { "@": process.cwd() },
@@ -42,7 +47,7 @@ test("GET snapshot never includes password or hash", async () => {
   assert.deepEqual(body.allowedHosts, ["pi.example.com"]);
   assert.equal(body.passwordConfigured, true);
   assert.equal(body.passwordSource, "file");
-  assert.equal(body.username, "pi");
+  assert.equal(body.username, "grok");
   assert.equal("password" in body, false);
   assert.equal("passwordHash" in body, false);
   assert.doesNotMatch(JSON.stringify(body), /twelve chars!|scrypt\$/);

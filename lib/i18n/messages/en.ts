@@ -65,7 +65,7 @@ export const enLocale: LocalePlugin = {
     "remote.saving": "Saving…",
     "remote.reload": "Reload",
     "remote.saved": "Settings saved and applied immediately.",
-    "remote.savedAuthHint": "Settings saved. The browser will ask for username pi and the password you just set.",
+    "remote.savedAuthHint": "Settings saved. The browser will ask for username grok and the password you just set.",
     "remote.help": "Point the reverse proxy at {address}, preserve the Host header, terminate TLS at the proxy, and disable response buffering so the event stream stays live.",
     "remote.loading": "Loading remote access settings…",
     "remote.configError": "The config file could not be parsed. Saving will replace it",

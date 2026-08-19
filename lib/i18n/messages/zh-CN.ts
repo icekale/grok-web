@@ -65,7 +65,7 @@ export const zhCNLocale: LocalePlugin = {
     "remote.saving": "正在保存…",
     "remote.reload": "重新加载",
     "remote.saved": "设置已保存并立即生效。",
-    "remote.savedAuthHint": "设置已保存。浏览器接下来会要求用户名 pi 和你刚设置的密码。",
+    "remote.savedAuthHint": "设置已保存。浏览器接下来会要求用户名 {username} 和你刚设置的密码。",
     "remote.help": "请把反向代理指到 {address}，保留 Host 头，在代理上终止 TLS，并关闭响应缓冲，以免事件流被卡住。",
     "remote.loading": "正在加载远程访问设置…",
     "remote.configError": "配置文件无法解析。保存将覆盖该文件",

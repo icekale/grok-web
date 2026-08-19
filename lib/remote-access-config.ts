@@ -28,7 +28,7 @@ export type RemoteAccessSnapshot = {
   envAllowedHosts: string[];
   passwordConfigured: boolean;
   passwordSource?: RemoteAccessPasswordSource;
-  username: "pi";
+  username: "grok";
   configError?: string;
 };
 
@@ -337,7 +337,7 @@ export function readRemoteAccessSnapshot(request?: Request): RemoteAccessSnapsho
     envAllowedHosts,
     passwordConfigured: Boolean(passwordSource),
     ...(passwordSource ? { passwordSource } : {}),
-    username: "pi",
+    username: "grok",
     ...(cache.kind === "invalid" ? { configError: cache.configError } : {}),
   };
 }

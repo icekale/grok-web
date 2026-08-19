@@ -20,7 +20,7 @@ interface RemoteAccessSnapshot {
   envAllowedHosts: string[];
   passwordConfigured: boolean;
   passwordSource?: "file" | "env";
-  username: "pi";
+  username: "grok";
   configError?: string;
 }
 
@@ -180,7 +180,7 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
           confirm: "",
           removePassword: false,
         });
-        setMessage(enabledAuth ? t("remote.savedAuthHint") : t("remote.saved"));
+        setMessage(enabledAuth ? t("remote.savedAuthHint", { username: next.username }) : t("remote.saved"));
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
