@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { writePrivateFileAtomicSync } from "../atomic-file.ts";
 import { grokHome, grokWebMetaDir } from "../grok-home.ts";
 
 export type GrokSettings = {
@@ -71,27 +72,36 @@ export function readGrokWebSettings(home = grokHome()): Record<string, unknown> 
     : {};
 }
 
+/** Keys before the first `[section]` header; section-local `api_key` is ignored. */
+function splitTopLevelToml(text: string): { preamble: string; rest: string } {
+  const match = /^\[/m.exec(text);
+  if (!match || match.index === undefined) return { preamble: text, rest: "" };
+  return { preamble: text.slice(0, match.index), rest: text.slice(match.index) };
+}
+
 export function hasGrokApiKey(home = grokHome()): boolean {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return false;
-  return /^api_key\s*=/m.test(readFileSync(file, "utf8"));
+  return /^api_key\s*=/m.test(splitTopLevelToml(readFileSync(file, "utf8")).preamble);
 }
 
 export function writeGrokApiKey(apiKey: string, home = grokHome()): void {
+  mkdirSync(home, { recursive: true });
   const file = join(home, "config.toml");
   const current = existsSync(file) ? readFileSync(file, "utf8") : "";
-  const line = `api_key = ${JSON.stringify(apiKey)}\n`;
-  const next = /^api_key\s*=.*$/m.test(current)
-    ? current.replace(/^api_key\s*=.*$/m, line.trimEnd())
-    : `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}${line}`;
-  writeFileSync(file, next);
+  const { preamble, rest } = splitTopLevelToml(current);
+  const line = `api_key = ${JSON.stringify(apiKey)}`;
+  const nextPreamble = /^api_key\s*=.*$/m.test(preamble)
+    ? preamble.replace(/^api_key\s*=.*$/m, line)
+    : `${preamble}${preamble.length === 0 || preamble.endsWith("\n") ? "" : "\n"}${line}\n`;
+  writePrivateFileAtomicSync(file, `${nextPreamble}${rest}`);
 }
 
 export function clearGrokApiKey(home = grokHome()): void {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return;
-  const next = readFileSync(file, "utf8").replace(/^api_key\s*=.*\r?\n?/m, "");
-  writeFileSync(file, next);
+  const { preamble, rest } = splitTopLevelToml(readFileSync(file, "utf8"));
+  writePrivateFileAtomicSync(file, `${preamble.replace(/^api_key\s*=.*\r?\n?/m, "")}${rest}`);
 }
 
 export function readGrokAuth(home = grokHome()): { loggedIn: boolean; methods: string[] } {

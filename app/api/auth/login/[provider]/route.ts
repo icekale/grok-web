@@ -87,6 +87,8 @@ export async function GET(
 
       const registry = getCallbackRegistry();
       const token = `${provider}-${Date.now()}-${randomBytes(16).toString("hex")}`;
+      let succeeded = false;
+      let startedDeviceFlow = false;
       const cleanup = () => {
         registry.get(token)?.reject(new Error("Login cancelled"));
         registry.delete(token);
@@ -102,11 +104,21 @@ export async function GET(
 
       abort.signal.addEventListener("abort", () => {
         cleanup();
-        void getAgentRuntime().authCancel().catch(() => {});
+        if (!succeeded) {
+          void getAgentRuntime().authCancel().catch(() => {});
+        }
       });
 
       try {
+        const existing = await getAgentRuntime().authCheck();
+        if (existing.authenticated === true) {
+          succeeded = true;
+          send(controller, { type: "success" });
+          return;
+        }
+
         const started = await getAgentRuntime().authGetUrl();
+        startedDeviceFlow = true;
         send(controller, {
           type: "auth",
           url: started.auth_url,
@@ -126,6 +138,7 @@ export async function GET(
         while (!abort.signal.aborted) {
           const status = await getAgentRuntime().authCheck();
           if (status.authenticated === true) {
+            succeeded = true;
             invalidateModelsCache();
             send(controller, { type: "success" });
             return;
@@ -134,6 +147,9 @@ export async function GET(
         }
         send(controller, { type: "cancelled" });
       } catch (err) {
+        if (startedDeviceFlow && !succeeded && !abort.signal.aborted) {
+          void getAgentRuntime().authCancel().catch(() => {});
+        }
         if (abort.signal.aborted) {
           send(controller, { type: "cancelled" });
         } else {
