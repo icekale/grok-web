@@ -190,6 +190,39 @@ export class AcpConnection {
     return this.rpc.request("authenticate", { methodId });
   }
 
+  mcpList(): Promise<{ servers: Array<{
+    name: string;
+    source?: string;
+    type?: string;
+    command?: string;
+    session?: { enabled?: boolean };
+  }> }> {
+    return this.rpc.request("_x.ai/mcp/list", {}).then((raw) => unwrapResult(raw) as never);
+  }
+
+  mcpToggle(sessionId: string, serverName: string, enabled: boolean): Promise<unknown> {
+    return this.rpc.request("_x.ai/mcp/toggle", {
+      session_id: sessionId,
+      server_name: serverName,
+      enabled,
+    }).then(unwrapResult);
+  }
+
+  mcpUpsert(sessionId: string, serverName: string, transport: { command?: string; url?: string; args?: string[] }): Promise<unknown> {
+    return this.rpc.request("_x.ai/mcp/upsert", {
+      session_id: sessionId,
+      server_name: serverName,
+      ...transport,
+    }).then(unwrapResult);
+  }
+
+  mcpDelete(sessionId: string, serverName: string): Promise<unknown> {
+    return this.rpc.request("_x.ai/mcp/delete", {
+      session_id: sessionId,
+      server_name: serverName,
+    }).then(unwrapResult);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
