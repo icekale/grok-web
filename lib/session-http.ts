@@ -258,6 +258,11 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
 export async function deleteSession(id: string): Promise<Response> {
   const session = await findGrokSession(id);
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  try {
+    await peekAgentRuntime()?.closeSession(id);
+  } catch {
+    // Disk delete still proceeds if the ACP session is already gone.
+  }
   rmSync(session.path, { recursive: true, force: true });
   return Response.json({ ok: true, id });
 }

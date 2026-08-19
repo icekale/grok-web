@@ -110,6 +110,21 @@ export class AgentRuntime {
     return this.requireAcp().gitStatus();
   }
 
+  async gitDiffs(paths: string[], includePatch = false) {
+    await this.ensureProcess();
+    return this.requireAcp().gitDiffs(paths, includePatch);
+  }
+
+  async searchFuzzy(cwd: string, query: string) {
+    await this.ensureProcess();
+    return this.requireAcp().searchFuzzy(cwd, query);
+  }
+
+  async closeSession(sessionId: string) {
+    await this.ensureProcess();
+    return this.requireAcp().sessionClose(sessionId);
+  }
+
   async authCheck() {
     await this.ensureProcess();
     return this.requireAcp().authCheck();

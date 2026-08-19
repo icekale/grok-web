@@ -1,5 +1,8 @@
+import path from "node:path";
+import { getAgentRuntime } from "@/lib/acp/runtime";
 import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import { getGitFileDiff } from "@/lib/git-changes";
+import { mapAcpGitFileDiff } from "@/lib/git-status";
 
 export async function GET(request: Request) {
   try {
@@ -23,6 +26,17 @@ export async function GET(request: Request) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
 
+    try {
+      const runtime = getAgentRuntime();
+      await runtime.ensureProcess();
+      const relativePath = path.relative(cwd, filePath).split(path.sep).join("/");
+      if (relativePath && !relativePath.startsWith("..")) {
+        const mapped = mapAcpGitFileDiff(await runtime.gitDiffs([relativePath], true), relativePath);
+        if (mapped) return Response.json(mapped);
+      }
+    } catch {
+      // ACP unavailable or git/diffs unsupported; use local git.
+    }
     return Response.json(await getGitFileDiff(cwd, filePath));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

@@ -1,4 +1,4 @@
-import type { GitFileStatus } from "./git-types";
+import type { GitFileDiffResponse, GitFileStatus, GitFileStatusKind } from "./git-types";
 
 export interface GitPorcelainEntry {
   path: string;
@@ -44,4 +44,24 @@ export function classifyGitStatus(entry: GitPorcelainEntry): Pick<GitFileStatus,
   if (pair.includes("R") || pair.includes("C")) return { status: "renamed", code: "R" };
   if (pair.includes("A")) return { status: "added", code: "A" };
   return { status: "modified", code: "M" };
+}
+
+export function mapAcpGitFileDiff(raw: unknown, relativePath: string): GitFileDiffResponse | null {
+  if (!raw || typeof raw !== "object") return null;
+  const files = (raw as { files?: unknown }).files;
+  if (!Array.isArray(files)) return null;
+  const file = files.find((item) => (
+    item && typeof item === "object" && typeof (item as { path?: unknown }).path === "string"
+    && ((item as { path: string }).path === relativePath || (item as { path: string }).path.endsWith(`/${relativePath}`))
+  )) as { path: string; type?: string; patch?: string } | undefined;
+  if (!file || typeof file.patch !== "string" || !file.patch.includes("\n@@ ")) return null;
+  const type = file.type ?? "edit";
+  const status: GitFileStatusKind = type === "add" || type === "added"
+    ? "added"
+    : type === "delete" || type === "deleted"
+      ? "deleted"
+      : type === "rename" || type === "renamed"
+        ? "renamed"
+        : "modified";
+  return { supported: true, status, patch: file.patch };
 }

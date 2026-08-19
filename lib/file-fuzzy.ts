@@ -115,6 +115,28 @@ function scoreEntry(entry: FileIndexEntry, lowerQuery: string): number {
   return score;
 }
 
+export function mapAcpFuzzyMatches(matches: unknown, cwd: string): FileIndexEntry[] {
+  if (!Array.isArray(matches)) return [];
+  const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;
+  const entries: FileIndexEntry[] = [];
+  for (const item of matches) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { path?: unknown; type?: unknown };
+    if (typeof rec.path !== "string" || !rec.path) continue;
+    const relative = rec.path === cwd
+      ? ""
+      : rec.path.startsWith(prefix)
+        ? rec.path.slice(prefix.length)
+        : rec.path.replace(/^\/+/, "");
+    if (!relative) continue;
+    entries.push({
+      path: relative.replace(/\\/g, "/").replace(/\/+$/, ""),
+      isDir: rec.type === "directory" || rec.type === "dir",
+    });
+  }
+  return entries;
+}
+
 export const AT_RESULT_LIMIT = 20;
 
 export function filterFileEntries(

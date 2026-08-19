@@ -17,6 +17,7 @@ export class AcpConnection {
   private readonly now: () => number;
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
+  private readonly fuzzyWaiters = new Map<string, (matches: Array<{ path: string; type?: string; name?: string }>) => void>();
   availableCommands: Array<{ name: string; description?: string }> = [];
 
   constructor(rpc: JsonRpcConn, options: { permissionTimeoutMs?: number; now?: () => number } = {}) {
@@ -24,6 +25,14 @@ export class AcpConnection {
     this.permissionTimeoutMs = options.permissionTimeoutMs ?? 60_000;
     this.now = options.now ?? Date.now;
     this.rpc.onNotification((method, params, id) => {
+      if (method === "_x.ai/search/fuzzy/status" && isRecord(params) && typeof params.searchId === "string") {
+        const waiter = this.fuzzyWaiters.get(params.searchId);
+        if (waiter) {
+          this.fuzzyWaiters.delete(params.searchId);
+          waiter(Array.isArray(params.matches) ? params.matches : []);
+        }
+        return;
+      }
       if (method !== "session/request_permission" || typeof id !== "number") return;
       const key = String(id);
       const existing = this.pendingPermissions.get(key);
@@ -96,6 +105,13 @@ export class AcpConnection {
     return this.rpc.request("session/resume", { sessionId, cwd }) as Promise<{ sessionId?: string }>;
   }
 
+  sessionClose(sessionId: string): Promise<{ _meta?: { "x.ai/closeOutcome"?: string }; outcome?: string }> {
+    return this.rpc.request("session/close", { sessionId }) as Promise<{
+      _meta?: { "x.ai/closeOutcome"?: string };
+      outcome?: string;
+    }>;
+  }
+
   sessionPrompt(sessionId: string, text: string): Promise<unknown> {
     return this.rpc.request("session/prompt", {
       sessionId,
@@ -157,6 +173,15 @@ export class AcpConnection {
 
   gitStatus(): Promise<unknown> {
     return this.rpc.request("_x.ai/git/status", {}).then(unwrapResult);
+  }
+
+  gitDiffs(paths: string[], includePatch = false): Promise<{
+    files: Array<{ path: string; type?: string; additions?: number; deletions?: number; patch?: string }>;
+  }> {
+    return this.rpc.request("_x.ai/git/diffs", {
+      ...(paths.length > 0 ? { paths } : {}),
+      ...(includePatch ? { includePatch: true } : {}),
+    }).then((raw) => unwrapResult(raw) as never);
   }
 
   worktreeList(): Promise<unknown> {
@@ -300,6 +325,26 @@ export class AcpConnection {
   }> {
     return this.rpc.request("_x.ai/terminal/output", { sessionId, terminalId })
       .then((raw) => unwrapResult(raw) as never);
+  }
+
+  async searchFuzzy(cwd: string, query: string): Promise<Array<{ path: string; type?: string; name?: string }>> {
+    const opened = await this.rpc.request("_x.ai/search/fuzzy/open", { cwd }).then((raw) => unwrapResult(raw) as {
+      searchId?: string;
+    });
+    const searchId = opened.searchId;
+    if (!searchId) throw new Error("fuzzy search did not return a searchId");
+    const matches = new Promise<Array<{ path: string; type?: string; name?: string }>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.fuzzyWaiters.delete(searchId);
+        reject(new Error("fuzzy search timed out"));
+      }, 3_000);
+      this.fuzzyWaiters.set(searchId, (found) => {
+        clearTimeout(timer);
+        resolve(found);
+      });
+    });
+    await this.rpc.request("_x.ai/search/fuzzy/change", { searchId, query }).then(unwrapResult);
+    return matches;
   }
 
   terminalKill(sessionId: string, terminalId: string): Promise<{ outcome?: string }> {

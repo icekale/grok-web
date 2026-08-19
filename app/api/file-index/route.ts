@@ -2,13 +2,14 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
+import { getAgentRuntime } from "@/lib/acp/runtime";
 import {
   getAllowedFileRoots,
   isExistingFilePathAllowed,
   isFilePathAllowed,
   isWindowsAbsolutePath,
 } from "@/lib/file-access";
-import { buildEntriesFromFiles, filterFileEntries, type FileIndexEntry } from "@/lib/file-fuzzy";
+import { AT_RESULT_LIMIT, buildEntriesFromFiles, filterFileEntries, mapAcpFuzzyMatches, type FileIndexEntry } from "@/lib/file-fuzzy";
 
 const execFileAsync = promisify(execFile);
 
@@ -153,6 +154,16 @@ export async function GET(req: Request) {
     }
 
     if (query) {
+      try {
+        const runtime = getAgentRuntime();
+        await runtime.ensureProcess();
+        const matches = mapAcpFuzzyMatches(await runtime.searchFuzzy(cwd, query), cwd);
+        if (matches.length > 0) {
+          return Response.json({ matches: matches.slice(0, AT_RESULT_LIMIT) });
+        }
+      } catch {
+        // ACP search unavailable; rank the local listing.
+      }
       cached.entries ??= buildEntriesFromFiles(cached.listing.files);
       return Response.json({ matches: filterFileEntries(cached.entries, query) });
     }
