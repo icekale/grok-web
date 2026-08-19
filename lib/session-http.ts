@@ -161,6 +161,26 @@ export async function autoNameSession(id: string): Promise<Response> {
   return Response.json({ title, usage: null });
 }
 
+export async function getThinking(req: Request, id: string, entryId: string): Promise<Response> {
+  const blockIndexParam = new URL(req.url).searchParams.get("blockIndex");
+  const blockIndex = blockIndexParam === null ? Number.NaN : Number(blockIndexParam);
+  if (!Number.isSafeInteger(blockIndex) || blockIndex < 0) {
+    return Response.json({ error: "Valid blockIndex is required" }, { status: 400 });
+  }
+  const loaded = await loadMappedSession(id);
+  if (!loaded) return Response.json({ error: "Session not found" }, { status: 404 });
+  const index = loaded.entryIds.indexOf(entryId);
+  const message = index >= 0 ? loaded.messages[index] : undefined;
+  if (!message || message.role !== "assistant") {
+    return Response.json({ error: "Assistant message not found" }, { status: 404 });
+  }
+  const block = message.content[blockIndex];
+  if (!block || block.type !== "thinking") {
+    return Response.json({ error: "Thinking block not found" }, { status: 404 });
+  }
+  return Response.json({ thinking: block.thinking });
+}
+
 export async function getToolResult(_req: Request, id: string, entryId: string): Promise<Response> {
   const session = await findGrokSession(id);
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
