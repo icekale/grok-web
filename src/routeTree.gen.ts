@@ -35,7 +35,10 @@ import { Route as ApiAuthProvidersRouteImport } from './routes/api/auth/provider
 import { Route as ApiCwdBrowseRouteImport } from './routes/api/cwd/browse'
 import { Route as ApiCwdValidateRouteImport } from './routes/api/cwd/validate'
 import { Route as ApiFilesSplatRouteImport } from './routes/api/files/$'
+import { Route as ApiGitCommitRouteImport } from './routes/api/git/commit'
 import { Route as ApiGitDiffRouteImport } from './routes/api/git/diff'
+import { Route as ApiGitDiscardRouteImport } from './routes/api/git/discard'
+import { Route as ApiGitStageRouteImport } from './routes/api/git/stage'
 import { Route as ApiGitStatusRouteImport } from './routes/api/git/status'
 import { Route as ApiModelsConfigCatalogRouteImport } from './routes/api/models-config/catalog'
 import { Route as ApiModelsConfigDiscoverRouteImport } from './routes/api/models-config/discover'
@@ -191,9 +194,24 @@ const ApiFilesSplatRoute = ApiFilesSplatRouteImport.update({
   path: '/api/files/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGitCommitRoute = ApiGitCommitRouteImport.update({
+  id: '/api/git/commit',
+  path: '/api/git/commit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGitDiffRoute = ApiGitDiffRouteImport.update({
   id: '/api/git/diff',
   path: '/api/git/diff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGitDiscardRoute = ApiGitDiscardRouteImport.update({
+  id: '/api/git/discard',
+  path: '/api/git/discard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGitStageRoute = ApiGitStageRouteImport.update({
+  id: '/api/git/stage',
+  path: '/api/git/stage',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGitStatusRoute = ApiGitStatusRouteImport.update({
@@ -346,7 +364,10 @@ export interface FileRoutesByFullPath {
   '/api/cwd/browse': typeof ApiCwdBrowseRoute
   '/api/cwd/validate': typeof ApiCwdValidateRoute
   '/api/files/$': typeof ApiFilesSplatRoute
+  '/api/git/commit': typeof ApiGitCommitRoute
   '/api/git/diff': typeof ApiGitDiffRoute
+  '/api/git/discard': typeof ApiGitDiscardRoute
+  '/api/git/stage': typeof ApiGitStageRoute
   '/api/git/status': typeof ApiGitStatusRoute
   '/api/models-config/catalog': typeof ApiModelsConfigCatalogRoute
   '/api/models-config/discover': typeof ApiModelsConfigDiscoverRoute
@@ -399,7 +420,10 @@ export interface FileRoutesByTo {
   '/api/cwd/browse': typeof ApiCwdBrowseRoute
   '/api/cwd/validate': typeof ApiCwdValidateRoute
   '/api/files/$': typeof ApiFilesSplatRoute
+  '/api/git/commit': typeof ApiGitCommitRoute
   '/api/git/diff': typeof ApiGitDiffRoute
+  '/api/git/discard': typeof ApiGitDiscardRoute
+  '/api/git/stage': typeof ApiGitStageRoute
   '/api/git/status': typeof ApiGitStatusRoute
   '/api/models-config/catalog': typeof ApiModelsConfigCatalogRoute
   '/api/models-config/discover': typeof ApiModelsConfigDiscoverRoute
@@ -453,7 +477,10 @@ export interface FileRoutesById {
   '/api/cwd/browse': typeof ApiCwdBrowseRoute
   '/api/cwd/validate': typeof ApiCwdValidateRoute
   '/api/files/$': typeof ApiFilesSplatRoute
+  '/api/git/commit': typeof ApiGitCommitRoute
   '/api/git/diff': typeof ApiGitDiffRoute
+  '/api/git/discard': typeof ApiGitDiscardRoute
+  '/api/git/stage': typeof ApiGitStageRoute
   '/api/git/status': typeof ApiGitStatusRoute
   '/api/models-config/catalog': typeof ApiModelsConfigCatalogRoute
   '/api/models-config/discover': typeof ApiModelsConfigDiscoverRoute
@@ -508,7 +535,10 @@ export interface FileRouteTypes {
     | '/api/cwd/browse'
     | '/api/cwd/validate'
     | '/api/files/$'
+    | '/api/git/commit'
     | '/api/git/diff'
+    | '/api/git/discard'
+    | '/api/git/stage'
     | '/api/git/status'
     | '/api/models-config/catalog'
     | '/api/models-config/discover'
@@ -561,7 +591,10 @@ export interface FileRouteTypes {
     | '/api/cwd/browse'
     | '/api/cwd/validate'
     | '/api/files/$'
+    | '/api/git/commit'
     | '/api/git/diff'
+    | '/api/git/discard'
+    | '/api/git/stage'
     | '/api/git/status'
     | '/api/models-config/catalog'
     | '/api/models-config/discover'
@@ -614,7 +647,10 @@ export interface FileRouteTypes {
     | '/api/cwd/browse'
     | '/api/cwd/validate'
     | '/api/files/$'
+    | '/api/git/commit'
     | '/api/git/diff'
+    | '/api/git/discard'
+    | '/api/git/stage'
     | '/api/git/status'
     | '/api/models-config/catalog'
     | '/api/models-config/discover'
@@ -668,7 +704,10 @@ export interface RootRouteChildren {
   ApiCwdBrowseRoute: typeof ApiCwdBrowseRoute
   ApiCwdValidateRoute: typeof ApiCwdValidateRoute
   ApiFilesSplatRoute: typeof ApiFilesSplatRoute
+  ApiGitCommitRoute: typeof ApiGitCommitRoute
   ApiGitDiffRoute: typeof ApiGitDiffRoute
+  ApiGitDiscardRoute: typeof ApiGitDiscardRoute
+  ApiGitStageRoute: typeof ApiGitStageRoute
   ApiGitStatusRoute: typeof ApiGitStatusRoute
   ApiAuthApiKeyProviderRoute: typeof ApiAuthApiKeyProviderRoute
   ApiAuthLoginProviderRoute: typeof ApiAuthLoginProviderRoute
@@ -859,11 +898,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFilesSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/git/commit': {
+      id: '/api/git/commit'
+      path: '/api/git/commit'
+      fullPath: '/api/git/commit'
+      preLoaderRoute: typeof ApiGitCommitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/git/diff': {
       id: '/api/git/diff'
       path: '/api/git/diff'
       fullPath: '/api/git/diff'
       preLoaderRoute: typeof ApiGitDiffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/git/discard': {
+      id: '/api/git/discard'
+      path: '/api/git/discard'
+      fullPath: '/api/git/discard'
+      preLoaderRoute: typeof ApiGitDiscardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/git/stage': {
+      id: '/api/git/stage'
+      path: '/api/git/stage'
+      fullPath: '/api/git/stage'
+      preLoaderRoute: typeof ApiGitStageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/git/status': {
@@ -1175,7 +1235,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCwdBrowseRoute: ApiCwdBrowseRoute,
   ApiCwdValidateRoute: ApiCwdValidateRoute,
   ApiFilesSplatRoute: ApiFilesSplatRoute,
+  ApiGitCommitRoute: ApiGitCommitRoute,
   ApiGitDiffRoute: ApiGitDiffRoute,
+  ApiGitDiscardRoute: ApiGitDiscardRoute,
+  ApiGitStageRoute: ApiGitStageRoute,
   ApiGitStatusRoute: ApiGitStatusRoute,
   ApiAuthApiKeyProviderRoute: ApiAuthApiKeyProviderRoute,
   ApiAuthLoginProviderRoute: ApiAuthLoginProviderRoute,

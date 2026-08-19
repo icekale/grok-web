@@ -133,7 +133,7 @@ export interface SlashCommandInfo {
 
 export type BuiltinSlashCommandResult =
   | { handled: false }
-  | { handled: true; message?: string; error?: string; action?: "openSessionStats" };
+  | { handled: true; message?: string; error?: string; action?: "openSessionStats" | "openFeedback" };
 
 export interface UseAgentSessionOptions {
   session: SessionInfo | null;
@@ -1715,6 +1715,22 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (!textToCopy) return complete({ handled: true, error: "No assistant message to copy" });
           await navigator.clipboard.writeText(textToCopy);
           return complete({ handled: true, message: "Copied last assistant message" });
+        }
+
+        case "feedback": {
+          if (!sid) return complete({ handled: true, error: "No active session" });
+          if (!args) return complete({ handled: true, action: "openFeedback" });
+          await sendAgentCommand(sid, { type: "feedback", text: args });
+          return complete({ handled: true, message: "Feedback sent" });
+        }
+
+        case "recap": {
+          if (!sid) return complete({ handled: true, error: "No active session" });
+          const recap = await sendAgentCommand<{ ok?: boolean; text?: string }>(sid, { type: "recap" });
+          return complete({
+            handled: true,
+            message: typeof recap?.text === "string" && recap.text.trim() ? recap.text : "Session recap requested",
+          });
         }
 
         default:

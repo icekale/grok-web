@@ -13,6 +13,13 @@ const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMess
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
 
+test("lists feedback and recap as builtin slash commands", async () => {
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /name: "feedback"/);
+  assert.match(source, /name: "recap"/);
+  assert.match(source, /action === "openFeedback"/);
+});
+
 test("disables image attach because Grok ACP has no image prompt capability", () => {
   const html = renderToStaticMarkup(
     React.createElement(

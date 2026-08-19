@@ -7,6 +7,14 @@ const chatWindowSource = await readFile(new URL("../components/ChatWindow.tsx", 
 const chatInputSource = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
 const appShellSource = await readFile(new URL("../components/AppShell.tsx", import.meta.url), "utf8");
 
+test("handles feedback and recap as builtin slash commands", () => {
+  const builtin = source.slice(source.indexOf('case "feedback":'), source.indexOf("const handleToolPresetChange"));
+  assert.match(builtin, /action: "openFeedback"/);
+  assert.match(builtin, /type: "feedback"/);
+  assert.match(builtin, /case "recap":/);
+  assert.match(builtin, /type: "recap"/);
+});
+
 test("keeps the session event stream open through the idle grace window", () => {
   const finishSource = source.slice(
     source.indexOf("const finishPromptWithoutStream"),

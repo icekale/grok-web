@@ -168,6 +168,18 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
     await probe("PATCH", `/api/files/${encodeURIComponent(fixtureDir)}?type=list`, [405]);
     await probe("GET", `/api/git/status?cwd=${encodeURIComponent(gitDir)}`, [200]);
     await probe("GET", `/api/git/diff?cwd=${encodeURIComponent(gitDir)}`, [200, 400]);
+    await probe("POST", "/api/git/stage", [400], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    await probe("POST", "/api/git/discard", [400], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    await probe("POST", "/api/git/commit", [400], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
     await probe("GET", "/api/home", [200]);
     await probe("POST", "/api/meta", [200], {
       headers: { "content-type": "application/json" },

@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
+import { DialogShell } from "./DialogShell";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
 import {
@@ -212,6 +213,8 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
   { name: "name", description: "chat.commandName", source: "builtin" },
   { name: "session", description: "chat.commandSession", source: "builtin" },
   { name: "copy", description: "chat.commandCopy", source: "builtin" },
+  { name: "feedback", description: "chat.commandFeedback", source: "builtin" },
+  { name: "recap", description: "chat.commandRecap", source: "builtin" },
 ];
 
 const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];
@@ -695,6 +698,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
@@ -1066,6 +1072,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       clearInput();
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
+        if (result.action === "openFeedback") {
+          setFeedbackText("");
+          setFeedbackOpen(true);
+          return;
+        }
         if (result.error && valueRef.current === "") {
           valueRef.current = msg;
           setValue(msg);
@@ -1741,6 +1752,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
 
   return (
+    <>
     <div
       style={{
         flexShrink: 0,
@@ -2673,5 +2685,43 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         </div>
       </div>
     </div>
+    {feedbackOpen && (
+      <DialogShell
+        size="editor"
+        title={t("chat.feedbackTitle")}
+        onClose={() => { if (!feedbackBusy) setFeedbackOpen(false); }}
+        footer={(
+          <>
+            <button type="button" className="codex-dialog-button" disabled={feedbackBusy} onClick={() => setFeedbackOpen(false)}>{t("i18n.cancel")}</button>
+            <button
+              type="button"
+              className="codex-dialog-button"
+              data-variant="primary"
+              disabled={feedbackBusy || !feedbackText.trim() || !onBuiltinCommand}
+              onClick={() => {
+                const text = feedbackText.trim();
+                if (!text || !onBuiltinCommand) return;
+                setFeedbackBusy(true);
+                void onBuiltinCommand(`/feedback ${text}`).finally(() => {
+                  setFeedbackBusy(false);
+                  setFeedbackOpen(false);
+                  setFeedbackText("");
+                });
+              }}
+            >
+              {t("chat.feedbackSend")}
+            </button>
+          </>
+        )}
+      >
+        <textarea
+          className="codex-dialog-editor"
+          value={feedbackText}
+          onChange={(event) => setFeedbackText(event.target.value)}
+          placeholder={t("chat.feedbackPlaceholder")}
+        />
+      </DialogShell>
+    )}
+    </>
   );
 });

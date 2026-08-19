@@ -18,6 +18,7 @@ import { GoalPanel } from "./GoalPanel";
 import { DialogShell } from "./DialogShell";
 import { filterGoalStatuses, filterGoalWidgets, resolveGoalPanelModel } from "@/lib/goal-panel";
 import { useI18n } from "@/hooks/useI18n";
+import { sendAgentCommand } from "@/lib/agent-client";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile, useIsWideDesktop } from "@/hooks/useIsMobile";
@@ -450,6 +451,23 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     });
     return map;
   }, [entryIds, messages]);
+  const [acpHistory, setAcpHistory] = useState<string[]>([]);
+  useEffect(() => {
+    const sid = session?.id;
+    if (!sid) {
+      setAcpHistory([]);
+      return;
+    }
+    let cancelled = false;
+    void sendAgentCommand<{ prompts?: string[] }>(sid, { type: "get_prompt_history" })
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.prompts)) setAcpHistory(data.prompts.filter((item) => typeof item === "string" && item.trim()));
+      })
+      .catch(() => {
+        if (!cancelled) setAcpHistory([]);
+      });
+    return () => { cancelled = true; };
+  }, [session?.id]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
@@ -460,8 +478,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       history.push(text);
       if (history.length >= 50) break;
     }
+    for (const text of acpHistory) {
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      history.push(text);
+      if (history.length >= 50) break;
+    }
     return history.reverse();
-  }, [messages]);
+  }, [acpHistory, messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
   const revealHistoryForMinimap = useCallback(() => {
     setVisibleCount((current) => Math.max(current, messages.length * 2));

@@ -27,6 +27,7 @@ import { FrontmatterCard } from "./FrontmatterCard";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
+import { DialogShell } from "./DialogShell";
 import {
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
@@ -977,6 +978,11 @@ function TextFileViewer({
   const [displayMode, setDisplayMode] = useState<DisplayMode>(requestedInitialDisplayMode);
   const [wrapLines, setWrapLines] = useState(initialWrapLines);
   const [watching, setWatching] = useState(false);
+  const [gitBusy, setGitBusy] = useState(false);
+  const [gitError, setGitError] = useState<string | null>(null);
+  const [commitOpen, setCommitOpen] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [localGitKey, setLocalGitKey] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const contentRequestRef = useRef(0);
   const gitDiffRequestRef = useRef(0);
@@ -1142,9 +1148,33 @@ function TextFileViewer({
     };
   }, [filePath, fetchContent, fetchGitDiff, sourceSessionId, watchEnabled]);
 
+  const runGitWrite = useCallback(async (action: "stage" | "discard" | "commit", message?: string) => {
+    if (!cwd) return;
+    setGitBusy(true);
+    setGitError(null);
+    try {
+      const res = await fetch(`/api/git/${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "commit" ? { cwd, message } : { cwd, path: filePath }),
+      });
+      const body = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      if (action === "commit") {
+        setCommitOpen(false);
+        setCommitMessage("");
+      }
+      setLocalGitKey((key) => key + 1);
+    } catch (error) {
+      setGitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGitBusy(false);
+    }
+  }, [cwd, filePath]);
+
   useEffect(() => {
     void fetchGitDiff(filePath);
-  }, [fetchGitDiff, filePath, gitRefreshKey]);
+  }, [fetchGitDiff, filePath, gitRefreshKey, localGitKey]);
 
   useEffect(() => {
     // HTML gets the same rendered-first treatment as markdown: a generated page
@@ -1327,6 +1357,13 @@ function TextFileViewer({
         )}
 
         <div className="file-viewer-controls">
+          {hasGitDiff && cwd && (
+            <div className="file-viewer-mode-switch" aria-label={t("files.gitActions")}>
+              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => void runGitWrite("stage")}>{t("files.stage")}</button>
+              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => void runGitWrite("discard")}>{t("files.discard")}</button>
+              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => { setGitError(null); setCommitOpen(true); }}>{t("files.commit")}</button>
+            </div>
+          )}
           {displayModes.length > 1 && (
             <div className="file-viewer-mode-switch" aria-label={t("i18n.fileViewMode")}>
               {displayModes.map((mode) => {
@@ -1521,6 +1558,30 @@ function TextFileViewer({
           </SyntaxHighlighter>
         )}
       </div>
+      {gitError && !commitOpen && (
+        <div role="alert" className="codex-dialog-error" style={{ padding: "8px 12px" }}>{gitError}</div>
+      )}
+      {commitOpen && (
+        <DialogShell
+          size="editor"
+          title={t("files.commitTitle")}
+          onClose={() => { if (!gitBusy) setCommitOpen(false); }}
+          footer={(
+            <>
+              <button type="button" className="codex-dialog-button" onClick={() => setCommitOpen(false)} disabled={gitBusy}>{t("i18n.cancel")}</button>
+              <button type="button" className="codex-dialog-button" data-variant="primary" disabled={gitBusy || !commitMessage.trim()} onClick={() => void runGitWrite("commit", commitMessage)}>{t("files.commit")}</button>
+            </>
+          )}
+        >
+          <textarea
+            className="codex-dialog-editor"
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            placeholder={t("files.commitPlaceholder")}
+          />
+          {gitError && <div role="alert" className="codex-dialog-error">{gitError}</div>}
+        </DialogShell>
+      )}
     </div>
   );
 }

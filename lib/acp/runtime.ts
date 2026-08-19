@@ -115,6 +115,21 @@ export class AgentRuntime {
     return this.requireAcp().gitDiffs(paths, includePatch);
   }
 
+  async gitStage(paths: string[]) {
+    await this.ensureProcess();
+    return this.requireAcp().gitStage(paths);
+  }
+
+  async gitDiscard(paths: string[]) {
+    await this.ensureProcess();
+    return this.requireAcp().gitDiscard(paths);
+  }
+
+  async gitCommit(message: string) {
+    await this.ensureProcess();
+    return this.requireAcp().gitCommit(message);
+  }
+
   async searchFuzzy(cwd: string, query: string) {
     await this.ensureProcess();
     return this.requireAcp().searchFuzzy(cwd, query);
@@ -326,6 +341,20 @@ export class AgentRuntime {
         const args = stringField(command.args).trim();
         return this.sendPrompt(sessionId, args ? `/${name} ${args}` : `/${name}`);
       }
+      case "feedback": {
+        const text = stringField(command.text).trim();
+        if (!text) throw new Error("feedback_text is required");
+        await this.ensureProcess();
+        return this.requireAcp().feedback(sessionId, text);
+      }
+      case "recap":
+        await this.ensureProcess();
+        return this.requireAcp().recap(sessionId);
+      case "get_prompt_history": {
+        await this.ensureProcess();
+        const cwd = this.ensureSession(sessionId).cwd || process.cwd();
+        return this.requireAcp().promptHistory(cwd);
+      }
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -484,7 +513,7 @@ export class AgentRuntime {
   private async listSlashCommands(sessionId: string) {
     const cwd = this.ensureSession(sessionId).cwd || process.cwd();
     const listed = await this.listSkills(cwd);
-    const webBuiltins = new Set(["compact", "reload", "name", "session", "copy"]);
+    const webBuiltins = new Set(["compact", "reload", "name", "session", "copy", "feedback", "recap"]);
     const allSkills = listed.skills ?? [];
     const skillNames = new Set(allSkills.map((skill) => skill.name));
     const fromAcp = (this.acp?.availableCommands ?? [])

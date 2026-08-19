@@ -175,6 +175,22 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/git/status", {}).then(unwrapResult);
   }
 
+  async gitStage(paths: string[]): Promise<{ paths: string[] }> {
+    if (paths.length === 0) throw new Error("paths are required");
+    return this.rpc.request("_x.ai/git/stage", { paths }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  async gitDiscard(paths: string[]): Promise<unknown> {
+    if (paths.length === 0) throw new Error("paths are required");
+    return this.rpc.request("_x.ai/git/discard", { paths }).then(unwrapResult);
+  }
+
+  async gitCommit(message: string): Promise<{ ok?: boolean }> {
+    const trimmed = message.trim();
+    if (!trimmed) throw new Error("message is required");
+    return this.rpc.request("_x.ai/git/commit", { message: trimmed }).then((raw) => unwrapResult(raw) as never);
+  }
+
   gitDiffs(paths: string[], includePatch = false): Promise<{
     files: Array<{ path: string; type?: string; additions?: number; deletions?: number; patch?: string }>;
   }> {
@@ -350,6 +366,20 @@ export class AcpConnection {
   terminalKill(sessionId: string, terminalId: string): Promise<{ outcome?: string }> {
     return this.rpc.request("_x.ai/terminal/kill", { sessionId, terminalId })
       .then((raw) => unwrapResult(raw) as never);
+  }
+
+  feedback(sessionId: string, text: string): Promise<{ success?: boolean }> {
+    const feedback_text = text.trim();
+    if (!feedback_text) throw new Error("feedback_text is required");
+    return this.rpc.request("_x.ai/feedback", { session_id: sessionId, feedback_text }) as Promise<{ success?: boolean }>;
+  }
+
+  recap(sessionId: string): Promise<{ ok?: boolean; text?: string }> {
+    return this.rpc.request("_x.ai/recap", { sessionId }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  promptHistory(cwd: string): Promise<{ prompts: string[] }> {
+    return this.rpc.request("_x.ai/prompt_history", { cwd }) as Promise<{ prompts: string[] }>;
   }
 
   compactConversation(sessionId: string, customInstructions?: string): Promise<{
