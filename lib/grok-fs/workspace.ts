@@ -57,11 +57,33 @@ export async function writeWorkspaceFile(
   return true;
 }
 
-export function readWorkspaceGitStatus(cwd: string): {
+export type WorkspaceGitStatus = {
   isGitRepository: boolean;
   branch: string | null;
   porcelain: string;
-} {
+} & Record<string, unknown>;
+
+export type WorkspaceGitIo = {
+  gitStatus: () => Promise<unknown>;
+};
+
+export async function readWorkspaceGitStatus(
+  cwd: string,
+  io?: WorkspaceGitIo,
+): Promise<WorkspaceGitStatus> {
+  if (io?.gitStatus) {
+    const raw = await io.gitStatus();
+    const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const branch = typeof record.branch === "string" || record.branch === null
+      ? (record.branch as string | null)
+      : null;
+    return {
+      ...record,
+      branch,
+      isGitRepository: record.isGitRepository === false ? false : Boolean(record.isGitRepository ?? true),
+      porcelain: typeof record.porcelain === "string" ? record.porcelain : "",
+    };
+  }
   try {
     const branch = execFileSync("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], {
       encoding: "utf8",
@@ -94,4 +116,29 @@ export function listWorkspaceWorktrees(cwd: string): Array<{ path: string; isMai
 
 export function refuseWorktreeWrite(): never {
   throw new Error(WORKTREE_WRITE_ERROR);
+}
+
+export type WorkspaceWorktreeCreateIo = {
+  worktreeCreate: (cwd: string, branch: string) => Promise<{ worktreePath?: string; status?: string }>;
+};
+
+export type WorkspaceWorktreeRemoveIo = {
+  worktreeRemove: (worktreePath: string) => Promise<unknown>;
+};
+
+export async function createWorkspaceWorktree(
+  cwd: string,
+  branch: string,
+  io?: WorkspaceWorktreeCreateIo,
+): Promise<{ worktreePath?: string; status?: string }> {
+  if (!io?.worktreeCreate) refuseWorktreeWrite();
+  return await io.worktreeCreate(cwd, branch);
+}
+
+export async function removeWorkspaceWorktree(
+  worktreePath: string,
+  io?: WorkspaceWorktreeRemoveIo,
+): Promise<unknown> {
+  if (!io?.worktreeRemove) refuseWorktreeWrite();
+  return await io.worktreeRemove(worktreePath);
 }

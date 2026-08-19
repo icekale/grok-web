@@ -88,6 +88,21 @@ export class AgentRuntime {
     await this.requireAcp().fsWrite(path, content);
   }
 
+  async gitStatus(): Promise<unknown> {
+    await this.ensureProcess();
+    return this.requireAcp().gitStatus();
+  }
+
+  async worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
+    await this.ensureProcess();
+    return this.requireAcp().worktreeCreate(sessionId, sourcePath);
+  }
+
+  async worktreeRemove(worktreePath: string): Promise<unknown> {
+    await this.ensureProcess();
+    return this.requireAcp().worktreeRemove(worktreePath);
+  }
+
   async send(sessionId: string, command: AgentCommand): Promise<unknown> {
     switch (command.type) {
       case "get_state":

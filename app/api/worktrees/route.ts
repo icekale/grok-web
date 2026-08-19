@@ -1,7 +1,12 @@
 import { existsSync } from "fs";
-import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
+import { findCurrentWorktreePath, listWorktrees, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
-import { refuseWorktreeWrite } from "@/lib/grok-fs/workspace.ts";
+import {
+  createWorkspaceWorktree,
+  refuseWorktreeWrite,
+  removeWorkspaceWorktree,
+} from "@/lib/grok-fs/workspace.ts";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -54,7 +59,7 @@ export async function GET(req: Request) {
 // POST /api/worktrees  body: { cwd, branch }  →  { path, branch }
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { cwd?: string; branch?: string };
+    const body = await req.json() as { cwd?: string; branch?: string; sessionId?: string };
     if (!body.cwd || typeof body.cwd !== "string") {
       return Response.json({ error: "cwd is required" }, { status: 400 });
     }
@@ -67,9 +72,21 @@ export async function POST(req: Request) {
       return Response.json({ error: `Directory does not exist: ${body.cwd}` }, { status: 400 });
     }
 
+    let runtime: ReturnType<typeof getAgentRuntime>;
+    try {
+      runtime = getAgentRuntime();
+      await runtime.ensureProcess();
+    } catch {
+      refuseWorktreeWrite();
+    }
+    if (typeof body.sessionId === "string") {
+      const result = await createWorkspaceWorktree(body.cwd, body.branch, {
+        worktreeCreate: () => runtime.worktreeCreate(body.sessionId as string, body.cwd as string),
+      });
+      if (result.worktreePath) allowFileRoot(result.worktreePath);
+      return Response.json({ path: result.worktreePath, branch: body.branch });
+    }
     refuseWorktreeWrite();
-    const result = await addWorktree(body.cwd, body.branch);
-    return Response.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = message.includes("read-only") ? 501 : 400;
@@ -90,8 +107,16 @@ export async function DELETE(req: Request) {
     const denied = await checkCwdAllowed(body.cwd);
     if (denied) return denied;
 
-    refuseWorktreeWrite();
-    await removeWorktree(body.cwd, body.path, body.force === true);
+    let runtime: ReturnType<typeof getAgentRuntime>;
+    try {
+      runtime = getAgentRuntime();
+      await runtime.ensureProcess();
+    } catch {
+      refuseWorktreeWrite();
+    }
+    await removeWorkspaceWorktree(body.path, {
+      worktreeRemove: (worktreePath) => runtime.worktreeRemove(worktreePath),
+    });
     return Response.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -142,6 +142,22 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/fs/write_file", { path, content }).then(() => undefined);
   }
 
+  gitStatus(): Promise<unknown> {
+    return this.rpc.request("_x.ai/git/status", {}).then(unwrapResult);
+  }
+
+  worktreeList(): Promise<unknown> {
+    return this.rpc.request("_x.ai/git/worktree/list", {}).then(unwrapResult);
+  }
+
+  worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
+    return this.rpc.request("_x.ai/git/worktree/create", { sessionId, sourcePath }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  worktreeRemove(worktreePath: string): Promise<unknown> {
+    return this.rpc.request("_x.ai/git/worktree/remove", { worktreePath }).then(unwrapResult);
+  }
+
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
