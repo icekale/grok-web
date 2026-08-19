@@ -17,6 +17,7 @@ export class AcpConnection {
   private readonly now: () => number;
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
+  availableCommands: Array<{ name: string; description?: string }> = [];
 
   constructor(rpc: JsonRpcConn, options: { permissionTimeoutMs?: number; now?: () => number } = {}) {
     this.rpc = rpc;
@@ -67,8 +68,16 @@ export class AcpConnection {
     }));
   }
 
-  initialize(): Promise<unknown> {
-    return this.rpc.request("initialize", { protocolVersion: 1 });
+  async initialize(): Promise<unknown> {
+    const raw = await this.rpc.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: {
+        fs: { readTextFile: true, writeTextFile: true },
+        terminal: true,
+      },
+    });
+    this.availableCommands = readAvailableCommands(raw);
+    return raw;
   }
 
   sessionNew(cwd: string, meta: Record<string, unknown> = {}): Promise<{ sessionId: string }> {
@@ -81,6 +90,10 @@ export class AcpConnection {
 
   sessionLoad(sessionId: string, cwd?: string): Promise<{ sessionId: string }> {
     return this.rpc.request("session/load", { sessionId, cwd }) as Promise<{ sessionId: string }>;
+  }
+
+  sessionResume(sessionId: string, cwd: string): Promise<{ sessionId?: string }> {
+    return this.rpc.request("session/resume", { sessionId, cwd }) as Promise<{ sessionId?: string }>;
   }
 
   sessionPrompt(sessionId: string, text: string): Promise<unknown> {
@@ -262,6 +275,38 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/session/rename", { sessionId, title }) as Promise<{ success?: boolean }>;
   }
 
+  terminalCreate(
+    sessionId: string,
+    command: string,
+    options: { cwd?: string; excludeFromContext?: boolean } = {},
+  ): Promise<{ terminalId: string }> {
+    return this.rpc.request("_x.ai/terminal/create", {
+      sessionId,
+      command,
+      ...(options.cwd ? { cwd: options.cwd } : {}),
+      ...(options.excludeFromContext ? { excludeFromContext: true } : {}),
+    }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  terminalWaitForExit(sessionId: string, terminalId: string): Promise<{ exitCode?: number }> {
+    return this.rpc.request("_x.ai/terminal/wait_for_exit", { sessionId, terminalId })
+      .then((raw) => unwrapResult(raw) as never);
+  }
+
+  terminalOutput(sessionId: string, terminalId: string): Promise<{
+    output?: string;
+    truncated?: boolean;
+    exitStatus?: { exitCode?: number };
+  }> {
+    return this.rpc.request("_x.ai/terminal/output", { sessionId, terminalId })
+      .then((raw) => unwrapResult(raw) as never);
+  }
+
+  terminalKill(sessionId: string, terminalId: string): Promise<{ outcome?: string }> {
+    return this.rpc.request("_x.ai/terminal/kill", { sessionId, terminalId })
+      .then((raw) => unwrapResult(raw) as never);
+  }
+
   compactConversation(sessionId: string, customInstructions?: string): Promise<{
     tokensBefore?: number;
     estimatedTokensAfter?: number;
@@ -277,6 +322,8 @@ export class AcpConnection {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
         return;
       }
+      const commands = readAvailableCommands({ update: params.update });
+      if (commands.length > 0) this.availableCommands = commands;
       handler(params.sessionId, params.update);
     });
   }
@@ -284,6 +331,24 @@ export class AcpConnection {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function readAvailableCommands(value: unknown): Array<{ name: string; description?: string }> {
+  const record = isRecord(value) ? value : {};
+  const meta = isRecord(record._meta) ? record._meta : {};
+  const update = isRecord(record.update) ? record.update : {};
+  const raw = Array.isArray(meta.availableCommands)
+    ? meta.availableCommands
+    : update.sessionUpdate === "available_commands_update" && Array.isArray(update.availableCommands)
+      ? update.availableCommands
+      : [];
+  return raw.flatMap((item) => {
+    if (!isRecord(item) || typeof item.name !== "string" || !item.name) return [];
+    return [{
+      name: item.name,
+      ...(typeof item.description === "string" ? { description: item.description } : {}),
+    }];
+  });
 }
 
 function unwrapResult(value: unknown): unknown {

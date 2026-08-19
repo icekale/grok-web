@@ -35,6 +35,7 @@ type SessionState = {
   modelId?: string;
   thinkingLevel?: string;
   hasUserPrompt?: boolean;
+  bashTerminalId?: string;
 };
 
 export class AgentRuntime {
@@ -85,6 +86,13 @@ export class AgentRuntime {
     await this.ensureProcess();
     await this.requireAcp().sessionLoad(sessionId, cwd);
     this.ensureSession(sessionId).cwd = cwd;
+  }
+
+  async resumeSession(sessionId: string, cwd?: string): Promise<void> {
+    await this.ensureProcess();
+    const directory = cwd || this.ensureSession(sessionId).cwd || process.cwd();
+    await this.requireAcp().sessionResume(sessionId, directory);
+    this.ensureSession(sessionId).cwd = directory;
   }
 
   async listModels() {
@@ -292,13 +300,17 @@ export class AgentRuntime {
       case "reload":
         return { success: true };
       case "bash":
-        throw new Error("Shell commands are not supported");
+        return this.runBash(sessionId, command);
       case "abort_bash":
-        return this.sendAbort(sessionId);
+        return this.abortBash(sessionId);
       case "extension_ui_input":
         throw new Error("Extension custom UI is not supported");
-      case "run_command":
-        throw new Error("Extension commands are not supported");
+      case "run_command": {
+        const name = stringField(command.name).replace(/^\//, "");
+        if (!name) throw new Error("name is required");
+        const args = stringField(command.args).trim();
+        return this.sendPrompt(sessionId, args ? `/${name} ${args}` : `/${name}`);
+      }
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -419,24 +431,68 @@ export class AgentRuntime {
     return null;
   }
 
+  private async runBash(sessionId: string, command: AgentCommand): Promise<{
+    output: string;
+    exitCode?: number;
+    truncated: boolean;
+  }> {
+    const script = stringField(command.command);
+    if (!script) throw new Error("command is required");
+    if (this.isBusy(sessionId)) throw new Error("Cannot run a shell command while the session is busy");
+    await this.ensureProcess();
+    const session = this.ensureSession(sessionId);
+    const created = await this.requireAcp().terminalCreate(sessionId, script, {
+      cwd: session.cwd,
+      excludeFromContext: command.excludeFromContext === true,
+    });
+    session.bashTerminalId = created.terminalId;
+    try {
+      const waited = await this.requireAcp().terminalWaitForExit(sessionId, created.terminalId);
+      const out = await this.requireAcp().terminalOutput(sessionId, created.terminalId);
+      return {
+        output: typeof out.output === "string" ? out.output : "",
+        exitCode: waited.exitCode ?? out.exitStatus?.exitCode,
+        truncated: out.truncated === true,
+      };
+    } finally {
+      session.bashTerminalId = undefined;
+    }
+  }
+
+  private async abortBash(sessionId: string): Promise<unknown> {
+    const terminalId = this.sessions.get(sessionId)?.bashTerminalId;
+    if (!terminalId) return null;
+    await this.ensureProcess();
+    return this.requireAcp().terminalKill(sessionId, terminalId);
+  }
+
   private async listSlashCommands(sessionId: string) {
     const cwd = this.ensureSession(sessionId).cwd || process.cwd();
     const listed = await this.listSkills(cwd);
-    return {
-      commands: (listed.skills ?? [])
-        .filter((skill) => skill.enabled !== false)
-        .map((skill) => ({
-          name: skill.name,
-          description: skill.description ?? skill.name,
-          source: "skill" as const,
-          sourceInfo: {
-            path: skill.path,
-            source: "grok",
-            scope: skill.scope === "user" ? "user" as const : "project" as const,
-            origin: "top-level" as const,
-          },
-        })),
-    };
+    const webBuiltins = new Set(["compact", "reload", "name", "session", "copy"]);
+    const allSkills = listed.skills ?? [];
+    const skillNames = new Set(allSkills.map((skill) => skill.name));
+    const fromAcp = (this.acp?.availableCommands ?? [])
+      .filter((command) => !webBuiltins.has(command.name) && !skillNames.has(command.name))
+      .map((command) => ({
+        name: command.name,
+        description: command.description ?? command.name,
+        source: "extension" as const,
+      }));
+    const fromSkills = allSkills
+      .filter((skill) => skill.enabled !== false)
+      .map((skill) => ({
+        name: skill.name,
+        description: skill.description ?? skill.name,
+        source: "skill" as const,
+        sourceInfo: {
+          path: skill.path,
+          source: "grok",
+          scope: skill.scope === "user" ? "user" as const : "project" as const,
+          origin: "top-level" as const,
+        },
+      }));
+    return { commands: [...fromAcp, ...fromSkills] };
   }
 
   private async lastAssistantText(sessionId: string): Promise<{ text: string }> {

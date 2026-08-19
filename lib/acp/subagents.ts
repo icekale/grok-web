@@ -7,6 +7,7 @@ import type { AgentRuntime } from "./runtime.ts";
 export type SubagentRuntime = {
   send: AgentRuntime["send"];
   cancelSubagent?: (subagentId: string) => Promise<unknown>;
+  resumeSession?: (sessionId: string, cwd?: string) => Promise<unknown>;
 };
 
 type LiveSubagentRow = {
@@ -176,7 +177,14 @@ export async function controlGrokSubagent(
     }
     await runtime.cancelSubagent(childSessionId);
   } else {
-    throw new Error("Subagent resume is not supported");
+    if (!runtime.resumeSession) {
+      throw new Error("Subagent resume is not supported");
+    }
+    await runtime.resumeSession(childSessionId);
+    await runtime.send(childSessionId, {
+      type: "prompt",
+      message: message ?? "",
+    });
   }
   return { action, childSessionId, rootSessionId: rootId };
 }
