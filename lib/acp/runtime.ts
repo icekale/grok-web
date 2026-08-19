@@ -123,6 +123,30 @@ export class AgentRuntime {
     return this.requireAcp().authenticate(methodId);
   }
 
+  async listMcp() {
+    await this.ensureProcess();
+    return this.requireAcp().mcpList();
+  }
+
+  async withSession(cwd: string, fn: (sessionId: string) => Promise<unknown>) {
+    await this.ensureProcess();
+    const existing = [...this.sessions.keys()][0];
+    const sessionId = existing ?? await this.createSession(cwd);
+    return fn(sessionId);
+  }
+
+  async toggleMcp(cwd: string, name: string, enabled: boolean) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpToggle(sessionId, name, enabled));
+  }
+
+  async upsertMcp(cwd: string, name: string, transport: { command?: string; url?: string; args?: string[] }) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpUpsert(sessionId, name, transport));
+  }
+
+  async deleteMcp(cwd: string, name: string) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpDelete(sessionId, name));
+  }
+
   async worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
     await this.ensureProcess();
     return this.requireAcp().worktreeCreate(sessionId, sourcePath);
