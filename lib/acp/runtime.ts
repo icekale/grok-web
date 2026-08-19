@@ -224,6 +224,12 @@ export class AgentRuntime {
       }
       case "extension_ui_response":
         return this.sendPermission(command);
+      case "set_session_name": {
+        const name = stringField(command.name).trim();
+        if (!name) throw new Error("Session name cannot be empty");
+        await this.ensureProcess();
+        return this.requireAcp().sessionRename(sessionId, name);
+      }
       case "compact": {
         await this.ensureProcess();
         const instructions = typeof command.customInstructions === "string" ? command.customInstructions : undefined;
@@ -491,6 +497,10 @@ let singleton: AgentRuntime | undefined;
 
 export function getAgentRuntime(): AgentRuntime {
   singleton ??= new AgentRuntime();
+  return singleton;
+}
+
+export function peekAgentRuntime(): AgentRuntime | undefined {
   return singleton;
 }
 

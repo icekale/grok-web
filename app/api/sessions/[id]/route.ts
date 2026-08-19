@@ -1,4 +1,4 @@
-import { deleteSession, getSessionDetail } from "@/lib/session-http";
+import { deleteSession, getSessionDetail, patchSession } from "@/lib/session-http";
 
 export async function GET(
   req: Request,
@@ -8,8 +8,12 @@ export async function GET(
   return getSessionDetail(req, id);
 }
 
-export async function PATCH() {
-  return Response.json({ error: "Session not found" }, { status: 404 });
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  return patchSession(req, id);
 }
 
 export async function DELETE(

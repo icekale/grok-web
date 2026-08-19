@@ -258,6 +258,10 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/subagent/cancel", { subagentId }).then((raw) => unwrapResult(raw) as never);
   }
 
+  sessionRename(sessionId: string, title: string): Promise<{ success?: boolean }> {
+    return this.rpc.request("_x.ai/session/rename", { sessionId, title }) as Promise<{ success?: boolean }>;
+  }
+
   compactConversation(sessionId: string, customInstructions?: string): Promise<{
     tokensBefore?: number;
     estimatedTokensAfter?: number;

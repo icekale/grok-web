@@ -1,12 +1,13 @@
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
 import { mapUpdatesJsonl } from "./history-map.ts";
 import { findGrokSession } from "./session-index.ts";
+import { isReservedSubagentSessionName } from "./session-relations.ts";
 import { listAllSessions } from "./session-reader.ts";
 import type { SessionInfo } from "./types.ts";
-import { getAgentRuntime } from "./acp/runtime.ts";
+import { getAgentRuntime, peekAgentRuntime } from "./acp/runtime.ts";
 
 const SESSION_LIST_FIRST_MESSAGE_CHARS = 512;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
@@ -85,6 +86,48 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 });
   }
+}
+
+export async function patchSession(req: Request, id: string): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const name = body && typeof body === "object" && !Array.isArray(body) && typeof (body as { name?: unknown }).name === "string"
+    ? (body as { name: string }).name.trim()
+    : "";
+  if (!name) return Response.json({ error: "name is required" }, { status: 400 });
+  if (isReservedSubagentSessionName(name)) {
+    return Response.json({ error: "Reserved subagent session name" }, { status: 409 });
+  }
+  const session = await findGrokSession(id);
+  if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  if (session.sessionRole === "subagent") {
+    return Response.json({ error: "Cannot rename a subagent session" }, { status: 409 });
+  }
+  const summaryPath = join(session.path, "summary.json");
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(summaryPath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return Response.json({ error: "Invalid session summary" }, { status: 500 });
+    }
+    const rec = parsed as Record<string, unknown>;
+    rec.generated_title = name;
+    writeFileSync(summaryPath, `${JSON.stringify(rec, null, 2)}\n`);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+  const runtime = peekAgentRuntime();
+  if (runtime) {
+    try {
+      await runtime.send(id, { type: "set_session_name", name });
+    } catch {
+      // Disk title is enough when ACP is down.
+    }
+  }
+  return Response.json({ ok: true, id, name });
 }
 
 export async function deleteSession(id: string): Promise<Response> {
