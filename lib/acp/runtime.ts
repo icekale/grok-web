@@ -26,6 +26,8 @@ type SessionState = {
   busy: boolean;
   queue: SessionQueue;
   cwd?: string;
+  modelId?: string;
+  thinkingLevel?: string;
 };
 
 export class AgentRuntime {
@@ -62,7 +64,10 @@ export class AgentRuntime {
   async createSession(cwd: string): Promise<string> {
     await this.ensureProcess();
     const { sessionId } = await this.requireAcp().sessionNew(cwd);
-    this.ensureSession(sessionId).cwd = cwd;
+    const session = this.ensureSession(sessionId);
+    session.cwd = cwd;
+    session.modelId = "grok-4.6";
+    session.thinkingLevel = "off";
     return sessionId;
   }
 
@@ -125,6 +130,23 @@ export class AgentRuntime {
         return this.sendFork(sessionId, command);
       case "navigate_tree":
         return this.sendNavigateTree(sessionId, command);
+      case "set_model": {
+        await this.ensureProcess();
+        const modelId = stringField(command.modelId);
+        if (!modelId) throw new Error("modelId is required");
+        const set = await this.requireAcp().sessionSetModel(sessionId, modelId);
+        const session = this.ensureSession(sessionId);
+        session.modelId = set.modelId;
+        return { provider: "grok", id: session.modelId };
+      }
+      case "set_thinking_level": {
+        await this.ensureProcess();
+        const level = stringField(command.level);
+        if (!level) throw new Error("level is required");
+        if (level !== "off") await this.requireAcp().sessionSetMode(sessionId, level);
+        this.ensureSession(sessionId).thinkingLevel = level;
+        return { level };
+      }
       default:
         throw new Error("not implemented in this phase: " + command.type);
     }
@@ -152,17 +174,18 @@ export class AgentRuntime {
   private getState(sessionId: string): {
     isStreaming: boolean;
     isPromptRunning: boolean;
-    model: { provider: "grok"; id: "grok" };
-    thinkingLevel: "off";
+    model: { provider: "grok"; id: string };
+    thinkingLevel: string;
     queuedMessages: QueueSnapshot;
   } {
+    const session = this.sessions.get(sessionId);
     const busy = this.isBusy(sessionId);
     return {
       isStreaming: busy,
       isPromptRunning: busy,
-      model: { provider: "grok", id: "grok" },
-      thinkingLevel: "off",
-      queuedMessages: this.sessions.get(sessionId)?.queue.snapshot() ?? { steering: [], followUp: [] },
+      model: { provider: "grok", id: session?.modelId ?? "grok" },
+      thinkingLevel: session?.thinkingLevel ?? "off",
+      queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
     };
   }
 
