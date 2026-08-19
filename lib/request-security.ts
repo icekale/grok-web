@@ -145,6 +145,7 @@ export function getRequestSecurityRejection(request: Request): Response | undefi
 
   if (
     isWebPasswordEnabled()
+    && !isLoopbackApiRequest(request)
     && !isValidBasicAuthorization(request.headers.get("authorization"))
   ) {
     return new Response("Authentication required", {

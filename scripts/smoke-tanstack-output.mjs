@@ -80,13 +80,7 @@ try {
 
   if (password) {
     const unauthenticated = await fetch(`${origin}/`);
-    assert.equal(unauthenticated.status, 401);
-    assert.equal(unauthenticated.headers.get("cache-control"), "no-store");
-    assert.equal(
-      unauthenticated.headers.get("www-authenticate"),
-      'Basic realm="Grok Web", charset="UTF-8"',
-    );
-    assert.equal(await unauthenticated.text(), "Authentication required");
+    assert.equal(unauthenticated.status, 200, "loopback stays open even when a remote password is set");
   }
 
   // Static PWA surface and cache headers.
