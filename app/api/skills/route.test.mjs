@@ -21,25 +21,25 @@ after(() => {
 mkdirSync(join(home, "skills", "demo"), { recursive: true });
 writeFileSync(join(home, "skills", "demo", "SKILL.md"), "# demo skill\n");
 
-const jiti = createJiti(import.meta.url, {
-  alias: { "@": process.cwd() },
-  moduleCache: false,
-});
+const acpJiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
+const { AgentRuntime, resetAgentRuntime, setAgentRuntime } = await acpJiti.import("@/lib/acp/runtime.ts");
 
 test("GET /api/skills returns GROK_HOME skills without throwing", async () => {
   globalThis.__piAdditionalAllowedRoots ??= new Set();
   globalThis.__piAdditionalAllowedRoots.add(cwd);
   globalThis.__piAllowedRootsCache = undefined;
-  const { GET } = await jiti.import("./route.ts");
-  const res = await GET(new Request(`http://127.0.0.1/api/skills?cwd=${encodeURIComponent(cwd)}`));
-  assert.equal(res.status, 200, await res.clone().text());
-  const body = await res.json();
-  assert.ok(Array.isArray(body.skills));
-  assert.ok(body.skills.some((skill) => skill.name === "demo" && String(skill.filePath).includes("demo")));
+  setAgentRuntime({ listSkills: async () => { throw new Error("offline"); } });
+  try {
+    const { GET } = await acpJiti.import("./route.ts");
+    const res = await GET(new Request(`http://127.0.0.1/api/skills?cwd=${encodeURIComponent(cwd)}`));
+    assert.equal(res.status, 200, await res.clone().text());
+    const body = await res.json();
+    assert.ok(Array.isArray(body.skills));
+    assert.ok(body.skills.some((skill) => skill.name === "demo" && String(skill.filePath).includes("demo")));
+  } finally {
+    resetAgentRuntime();
+  }
 });
-
-const acpJiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
-const { AgentRuntime, resetAgentRuntime, setAgentRuntime } = await acpJiti.import("@/lib/acp/runtime.ts");
 
 globalThis.__piAdditionalAllowedRoots ??= new Set();
 globalThis.__piAdditionalAllowedRoots.add(cwd);

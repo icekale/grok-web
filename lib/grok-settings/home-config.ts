@@ -9,7 +9,7 @@ export type GrokSettings = {
   config: Record<string, unknown>;
   web: Record<string, unknown>;
   auth: { loggedIn: boolean; methods: string[] };
-  mcpServers: Array<{ name: string; command?: string }>;
+  mcpServers: Array<{ name: string; command?: string; enabled?: boolean }>;
   skills: Array<{ name: string; path: string }>;
 };
 
@@ -119,17 +119,25 @@ export function readGrokAuth(home = grokHome()): { loggedIn: boolean; methods: s
   }
 }
 
-export function listMcpServers(config: Record<string, unknown> = readGrokConfig()): Array<{ name: string; command?: string }> {
-  const mcp = config.mcp;
-  if (!mcp || typeof mcp !== "object" || Array.isArray(mcp)) return [];
-  const servers = (mcp as Record<string, unknown>).servers;
-  if (!servers || typeof servers !== "object" || Array.isArray(servers)) return [];
-  return Object.entries(servers as Record<string, unknown>).map(([name, value]) => {
-    const command = value && typeof value === "object" && !Array.isArray(value)
-      && typeof (value as Record<string, unknown>).command === "string"
-      ? (value as Record<string, unknown>).command as string
-      : undefined;
-    return { name, ...(command ? { command } : {}) };
+export function listMcpServers(config: Record<string, unknown> = readGrokConfig()): Array<{
+  name: string;
+  command?: string;
+  enabled?: boolean;
+}> {
+  const table = config.mcp_servers;
+  if (!table || typeof table !== "object" || Array.isArray(table)) return [];
+  const disabled = new Set(
+    Array.isArray(config.disabled_mcp_servers)
+      ? config.disabled_mcp_servers.filter((name): name is string => typeof name === "string")
+      : [],
+  );
+  return Object.entries(table as Record<string, unknown>).map(([name, value]) => {
+    const rec = value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+    const command = typeof rec.command === "string" ? rec.command : undefined;
+    const enabled = rec.enabled === false || disabled.has(name) ? false : true;
+    return { name, ...(command ? { command } : {}), enabled };
   });
 }
 
