@@ -86,10 +86,11 @@ export function buildSessionContext(..._args: unknown[]): { thinkingLevel: strin
 export function resolveModelScopeWithDiagnostics(..._args: unknown[]): {
   models: unknown[];
   scopedModels: unknown[];
+  diagnostics: Array<{ message: string }>;
   thinkingLevelPins: Record<string, string>;
   warnings: string[];
 } {
-  return { models: [], scopedModels: [], thinkingLevelPins: {}, warnings: [] };
+  return { models: [], scopedModels: [], diagnostics: [], thinkingLevelPins: {}, warnings: [] };
 }
 
 export function createBashToolDefinition(..._args: unknown[]): unknown {

@@ -161,6 +161,59 @@ export async function autoNameSession(id: string): Promise<Response> {
   return Response.json({ title, usage: null });
 }
 
+export async function getToolResult(_req: Request, id: string, entryId: string): Promise<Response> {
+  const session = await findGrokSession(id);
+  if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  let text = "";
+  try {
+    text = await readFile(join(session.path, "updates.jsonl"), "utf8");
+  } catch {
+    text = "";
+  }
+  let found = false;
+  let resultText = "";
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+    let record: unknown;
+    try {
+      record = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+    const params = (record as { params?: unknown }).params;
+    if (!params || typeof params !== "object" || Array.isArray(params)) continue;
+    const update = (params as { update?: unknown }).update;
+    if (!update || typeof update !== "object" || Array.isArray(update)) continue;
+    const kind = (update as { sessionUpdate?: unknown }).sessionUpdate;
+    const toolCallId =
+      typeof (update as { toolCallId?: unknown }).toolCallId === "string"
+        ? (update as { toolCallId: string }).toolCallId
+        : typeof (update as { id?: unknown }).id === "string"
+          ? (update as { id: string }).id
+          : "";
+    if (toolCallId !== entryId) continue;
+    if (kind === "tool_call" || kind === "tool_call_update") found = true;
+    if (kind === "tool_call_update") {
+      const content = (update as { content?: unknown }).content;
+      const chunk = typeof content === "string"
+        ? content
+        : content && typeof content === "object" && !Array.isArray(content) && typeof (content as { text?: unknown }).text === "string"
+          ? (content as { text: string }).text
+          : "";
+      resultText += chunk;
+    }
+  }
+  if (!found) return Response.json({ error: "Tool result not found" }, { status: 404 });
+  return Response.json({
+    result: {
+      role: "toolResult",
+      toolCallId: entryId,
+      content: resultText ? [{ type: "text", text: resultText }] : [],
+    },
+  });
+}
+
 export async function getSessionState(_req: Request, id: string): Promise<Response> {
   const session = await findGrokSession(id);
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });

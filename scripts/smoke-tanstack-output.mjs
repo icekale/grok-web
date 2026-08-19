@@ -61,7 +61,7 @@ function rawRequest(host, pathname, method = "GET") {
 
 try {
   const root = await waitFor(`${origin}/`, password ? { headers: authHeaders } : {});
-  assert.match(await root.text(), /Pi Web/);
+  assert.match(await root.text(), /Grok Web/);
   const sessions = await fetch(`${origin}/api/sessions`, password ? { headers: authHeaders } : {});
   assert.equal(sessions.status, 200);
   assert.equal(sessions.headers.get("cache-control"), "no-store");
@@ -84,7 +84,7 @@ try {
     assert.equal(unauthenticated.headers.get("cache-control"), "no-store");
     assert.equal(
       unauthenticated.headers.get("www-authenticate"),
-      'Basic realm="Pi Web", charset="UTF-8"',
+      'Basic realm="Grok Web", charset="UTF-8"',
     );
     assert.equal(await unauthenticated.text(), "Authentication required");
   }
@@ -103,11 +103,11 @@ try {
   assert.equal(manifestResponse.status, 200);
   assert.equal(manifestResponse.headers.get("cache-control"), "public, max-age=0, must-revalidate");
   const manifestBody = await manifestResponse.json();
-  assert.equal(manifestBody.name, "Pi Web");
+  assert.equal(manifestBody.name, "Grok Web");
 
   const offline = await fetch(`${origin}/offline.html`);
   assert.equal(offline.status, 200);
-  assert.match(await offline.text(), /Pi Web/);
+  assert.match(await offline.text(), /Grok Web/);
 
   const icon = await fetch(`${origin}/icons/icon-192.png`);
   assert.equal(icon.status, 200);

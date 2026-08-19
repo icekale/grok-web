@@ -166,7 +166,7 @@ try {
   const root = await waitFor(`${origin}/`, password ? { headers: authHeaders } : {});
   assert.equal(root.status, 200);
   const rootHtml = await root.text();
-  assert.match(rootHtml, /Pi Web/);
+  assert.match(rootHtml, /Grok Web/);
   assert.match(rootHtml, /codex-sidebar/, "installed root must render the real AppShell");
 
   const sessions = await fetch(`${origin}/api/sessions`, password ? { headers: authHeaders } : {});
@@ -179,7 +179,7 @@ try {
   const manifest = await fetch(`${origin}/manifest.webmanifest`);
   assert.equal(manifest.status, 200);
   const manifestBody = await manifest.json();
-  assert.equal(manifestBody.name, "Pi Web");
+  assert.equal(manifestBody.name, "Grok Web");
 
   const sw = await fetch(`${origin}/sw.js`);
   assert.equal(sw.status, 200);
@@ -199,7 +199,7 @@ try {
     assert.equal(unauthenticated.headers.get("cache-control"), "no-store");
     assert.equal(
       unauthenticated.headers.get("www-authenticate"),
-      'Basic realm="Pi Web", charset="UTF-8"',
+      'Basic realm="Grok Web", charset="UTF-8"',
     );
     assert.equal(await unauthenticated.text(), "Authentication required");
   }
