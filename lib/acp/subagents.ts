@@ -29,13 +29,27 @@ export function findGrokChild(
   rootId: string,
   childSessionId: string,
   sessions: SessionInfo[],
+  metas?: GrokSubagentMeta[],
 ): SessionInfo | null {
   if (childSessionId === rootId) return null;
   const related = attachSessionRelations(sessions);
   const child = related.find((session) => session.id === childSessionId);
-  if (!child) return null;
-  if (child.rootSessionId === rootId || child.parentSessionId === rootId) return child;
-  return null;
+  if (child && (child.rootSessionId === rootId || child.parentSessionId === rootId)) return child;
+  const meta = metas?.find((item) => (
+    item.childSessionId === childSessionId || item.subagentId === childSessionId
+  ));
+  if (!meta) return null;
+  return {
+    id: meta.childSessionId || meta.subagentId,
+    path: "",
+    cwd: "",
+    name: meta.task,
+    created: "",
+    modified: "",
+    messageCount: 0,
+    firstMessage: meta.task,
+    parentSessionId: meta.parentSessionId || rootId,
+  };
 }
 
 export function mapDiskStatus(status: string): SubagentLifecycleState {

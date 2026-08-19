@@ -2,10 +2,12 @@ import { attachSessionRelations } from "@/lib/session-relations";
 import { buildSubagentTree, collectLiveSubagentSessionIds, findOwnedSubagent } from "@/lib/subagent-tree";
 import { getRpcSession, notifyRunningChange, startRpcSession, type AgentSessionWrapper } from "@/lib/rpc-manager";
 import { listAllSessions, resolveSessionPath } from "@/lib/session-reader";
+import { findGrokSession } from "@/lib/session-index.ts";
+import { listSubagentMetas } from "@/lib/grok-fs/subagent-meta.ts";
 import type { SubagentTreeResponse, SubagentControlResponse } from "@/lib/api-types";
 import type { SessionInfo } from "@/lib/types";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { controlGrokSubagent, findGrokChild, grokSubagentTree } from "@/lib/acp/subagents.ts";
+import { controlGrokSubagent, findGrokChild, grokSubagentTree, type GrokSubagentTreeExtras } from "@/lib/acp/subagents.ts";
 
 type SubagentTreeReason = NonNullable<SubagentTreeResponse["unavailableReason"]>;
 
@@ -218,13 +220,34 @@ export function createSubagentHandlers(deps: SubagentRouteDeps = defaultDeps) {
   return { GET, POST };
 }
 
+async function listGrokMetas(rootId: string) {
+  const grokSession = await findGrokSession(rootId);
+  return grokSession ? listSubagentMetas(grokSession.path) : [];
+}
+
+async function mergedGrokSubagentTree(rootId: string, sessions: SessionInfo[]): Promise<SubagentTreeResponse> {
+  const extras: GrokSubagentTreeExtras = {
+    metas: await listGrokMetas(rootId),
+    live: [],
+    rpcAvailable: false,
+  };
+  try {
+    extras.live = (await getAgentRuntime().listRunningSubagents(rootId)).subagents ?? [];
+    extras.rpcAvailable = true;
+  } catch {
+    extras.live = [];
+    extras.rpcAvailable = false;
+  }
+  return grokSubagentTree(rootId, sessions, Date.now(), extras);
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id: rootId } = await ctx.params;
   try {
     const sessions = await listAllSessions();
     const root = sessions.find((session) => session.id === rootId);
     if (!root) return Response.json({ error: "Session not found" }, { status: 404 });
-    return Response.json(grokSubagentTree(rootId, sessions));
+    return Response.json(await mergedGrokSubagentTree(rootId, sessions));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
@@ -242,25 +265,34 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return Response.json({ error: "childSessionId is required" }, { status: 400 });
     }
     const sessions = await listAllSessions();
-    const child = findGrokChild(rootId, body.childSessionId, sessions);
+    const metas = await listGrokMetas(rootId);
+    const child = findGrokChild(rootId, body.childSessionId, sessions, metas);
     if (!child) {
       return Response.json({ error: "Child session does not belong to this root" }, { status: 400 });
     }
-    const data = await controlGrokSubagent(
-      getAgentRuntime(),
-      rootId,
-      body.childSessionId,
-      action,
-      typeof body.message === "string" ? body.message : undefined,
-    );
-    return Response.json({
-      success: true,
-      data: {
-        action: data.action,
-        childSessionId: data.childSessionId,
-        tree: grokSubagentTree(rootId, sessions),
-      },
-    } satisfies SubagentControlResponse);
+    try {
+      const data = await controlGrokSubagent(
+        getAgentRuntime(),
+        rootId,
+        body.childSessionId,
+        action,
+        typeof body.message === "string" ? body.message : undefined,
+      );
+      return Response.json({
+        success: true,
+        data: {
+          action: data.action,
+          childSessionId: data.childSessionId,
+          tree: await mergedGrokSubagentTree(rootId, sessions),
+        },
+      } satisfies SubagentControlResponse);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (action === "resume") {
+        return Response.json({ error: message }, { status: 400 });
+      }
+      throw error;
+    }
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
