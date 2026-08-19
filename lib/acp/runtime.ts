@@ -167,6 +167,16 @@ export class AgentRuntime {
     return this.requireAcp().worktreeRemove(worktreePath);
   }
 
+  async listRunningSubagents(sessionId: string) {
+    await this.ensureProcess();
+    return this.requireAcp().subagentListRunning(sessionId);
+  }
+
+  async cancelSubagent(subagentId: string) {
+    await this.ensureProcess();
+    return this.requireAcp().subagentCancel(subagentId);
+  }
+
   async send(sessionId: string, command: AgentCommand): Promise<unknown> {
     switch (command.type) {
       case "get_state":
