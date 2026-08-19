@@ -90,10 +90,37 @@ function splitTopLevelToml(text: string): { preamble: string; rest: string } {
   return { preamble: text.slice(0, match.index), rest: text.slice(match.index) };
 }
 
+function tomlSectionName(line: string): string | undefined {
+  const match = line.trim().match(/^\[([^\]]+)\]$/);
+  return match?.[1];
+}
+
+function isGrokApiKeySection(section: string | undefined): boolean {
+  if (!section) return true;
+  const name = section.replace(/^"+|"+$/g, "");
+  return name === "models" || name.startsWith("models.") || name === "model" || name.startsWith("model.");
+}
+
+function apiKeyLineHasValue(line: string): boolean {
+  const match = line.match(/^api_key\s*=\s*(.*)$/);
+  if (!match) return false;
+  const value = match[1].trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
+  return value.length > 0;
+}
+
 export function hasGrokApiKey(home = grokHome()): boolean {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return false;
-  return /^api_key\s*=/m.test(splitTopLevelToml(readFileSync(file, "utf8")).preamble);
+  let section: string | undefined;
+  for (const raw of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const next = tomlSectionName(raw);
+    if (next !== undefined) {
+      section = next;
+      continue;
+    }
+    if (isGrokApiKeySection(section) && apiKeyLineHasValue(raw.trim())) return true;
+  }
+  return false;
 }
 
 export function writeGrokApiKey(apiKey: string, home = grokHome()): void {

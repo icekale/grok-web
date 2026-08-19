@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +93,29 @@ describe("auth HTTP routes", () => {
       },
     });
   }
+
+  it("GET /api/auth/providers is logged in when a model table api_key exists even if authCheck is false", async () => {
+    const home = mkdtempSync(join(tmpdir(), "grok-login-model-key-"));
+    const prev = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    writeFileSync(join(home, "config.toml"), `[model."grok-4.6"]\napi_key = "model-secret"\n`);
+    setAgentRuntime({
+      authCheck: async () => ({ authenticated: false }),
+    });
+    try {
+      const { GET } = await jiti.import("../providers/route.ts");
+      const res = await GET();
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(body.providers[0].loggedIn, true);
+      const { GET: getKeys } = await jiti.import("../all-providers/route.ts");
+      const keys = await (await getKeys()).json();
+      assert.equal(keys.providers[0].configured, true);
+    } finally {
+      if (prev === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = prev;
+    }
+  });
 
   it("GET /api/auth/providers lists grok.com from runtime.authCheck", async () => {
     const runtime = createRuntime();

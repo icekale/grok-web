@@ -20,7 +20,9 @@ export async function getSessions(_req: Request): Promise<Response> {
     const [sessions, meta] = await Promise.all([listAllSessions(), readAppMeta()]);
     return Response.json(
       {
-        sessions: sessions.map(compactSessionForList),
+        sessions: sessions
+          .filter((session) => session.sessionRole !== "subagent")
+          .map(compactSessionForList),
         runningSessionIds: getAgentRuntime().listBusyIds(),
         meta,
       },

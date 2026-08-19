@@ -84,6 +84,7 @@ async function readSession(
   const firstMessage = stringField(body.session_summary) || "(no messages)";
   const parentSessionId =
     stringField(info.parent_session_id) || stringField(body.parent_session_id) || undefined;
+  const sessionKind = stringField(body.session_kind);
 
   const session: SessionInfo = {
     id,
@@ -96,6 +97,9 @@ async function readSession(
     firstMessage,
   };
   if (parentSessionId) session.parentSessionId = parentSessionId;
+  if (sessionKind === "subagent" || sessionKind === "subagent_resume") {
+    session.sessionRole = "subagent";
+  }
   return session;
 }
 
