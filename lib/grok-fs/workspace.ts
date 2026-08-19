@@ -41,6 +41,22 @@ export function refuseWorkspaceWrite(): never {
   throw new Error(WORKSPACE_WRITE_ERROR);
 }
 
+export type WorkspaceWriter = {
+  write: (absPath: string, content: string) => Promise<void>;
+};
+
+export async function writeWorkspaceFile(
+  root: string,
+  relPath: string,
+  content: string,
+  io?: WorkspaceWriter,
+): Promise<boolean> {
+  const abs = assertInsideRoot(root, join(root, relPath));
+  if (!io) refuseWorkspaceWrite();
+  await io.write(abs, content);
+  return true;
+}
+
 export function readWorkspaceGitStatus(cwd: string): {
   isGitRepository: boolean;
   branch: string | null;

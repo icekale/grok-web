@@ -26,7 +26,8 @@ import {
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { samePath } from "@/lib/paths";
-import { refuseWorkspaceWrite } from "@/lib/grok-fs/workspace.ts";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
+import { refuseWorkspaceWrite, writeWorkspaceFile } from "@/lib/grok-fs/workspace.ts";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -130,10 +131,16 @@ export async function POST(
     return Response.json({ error: "Untrusted API request" }, { status: 403 });
   }
 
+  let runtime: ReturnType<typeof getAgentRuntime>;
   try {
-    refuseWorkspaceWrite();
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 501 });
+    runtime = getAgentRuntime();
+    await runtime.ensureProcess();
+  } catch {
+    try {
+      refuseWorkspaceWrite();
+    } catch (error) {
+      return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 501 });
+    }
   }
 
   try {
@@ -232,7 +239,9 @@ export async function POST(
       }
 
       try {
-        fs.writeFileSync(destination, bytes, { flag: "wx" });
+        await writeWorkspaceFile(directory, file.name, bytes.toString("utf8"), {
+          write: (abs, content) => runtime.fsWrite(abs, content),
+        });
         uploaded.push(file.name);
       } catch (error) {
         errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });

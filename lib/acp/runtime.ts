@@ -83,6 +83,11 @@ export class AgentRuntime {
     return mapGrokModels(await this.requireAcp().modelsList());
   }
 
+  async fsWrite(path: string, content: string): Promise<void> {
+    await this.ensureProcess();
+    await this.requireAcp().fsWrite(path, content);
+  }
+
   async send(sessionId: string, command: AgentCommand): Promise<unknown> {
     switch (command.type) {
       case "get_state":
