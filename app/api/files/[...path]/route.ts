@@ -26,8 +26,8 @@ import {
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { samePath } from "@/lib/paths";
-import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { refuseWorkspaceWrite, writeWorkspaceFile } from "@/lib/grok-fs/workspace.ts";
+import { peekAgentRuntime } from "@/lib/acp/runtime.ts";
+import { WORKSPACE_WRITE_ERROR, writeWorkspaceFile } from "@/lib/grok-fs/workspace.ts";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -131,18 +131,6 @@ export async function POST(
     return Response.json({ error: "Untrusted API request" }, { status: 403 });
   }
 
-  let runtime: ReturnType<typeof getAgentRuntime>;
-  try {
-    runtime = getAgentRuntime();
-    await runtime.ensureProcess();
-  } catch {
-    try {
-      refuseWorkspaceWrite();
-    } catch (error) {
-      return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 501 });
-    }
-  }
-
   try {
     const { path: segments } = await params;
     const searchParams = new URL(request.url).searchParams;
@@ -206,6 +194,10 @@ export async function POST(
 
     const conflictSet = new Set(inspection.conflicts);
     const nonReplaceableSet = new Set(inspection.nonReplaceable);
+    const runtime = peekAgentRuntime();
+    if (!runtime) {
+      return Response.json({ error: WORKSPACE_WRITE_ERROR }, { status: 501 });
+    }
     const uploaded: string[] = [];
     const skipped: string[] = [];
     const errors: Array<{ name: string; error: string }> = [];

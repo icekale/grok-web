@@ -367,6 +367,7 @@ export const enLocale: LocalePlugin = {
     "chat.homeSkill": "/skill:{skill}",
     "chat.jumpToBottom": "Jump to latest",
     "chat.attachImage": "Attach image",
+    "chat.imagesNotSupported": "Images are not supported",
     "chat.previewImage": "Preview image",
     "chat.filterModels": "Filter models…",
     "chat.noMatchingModels": "No matching models",

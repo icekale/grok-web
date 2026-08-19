@@ -1,5 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
+import { mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
@@ -30,6 +33,7 @@ type SessionState = {
   cwd?: string;
   modelId?: string;
   thinkingLevel?: string;
+  hasUserPrompt?: boolean;
 };
 
 export class AgentRuntime {
@@ -186,10 +190,13 @@ export class AgentRuntime {
       case "get_state":
         return this.getState(sessionId);
       case "prompt":
+        rejectUnsupportedImages(commandImages(command));
         return this.sendPrompt(sessionId, stringField(command.message), promptBehavior(command));
       case "steer":
+        rejectUnsupportedImages(commandImages(command));
         return this.sendPrompt(sessionId, stringField(command.message), "steer");
       case "follow_up":
+        rejectUnsupportedImages(commandImages(command));
         return this.sendPrompt(sessionId, stringField(command.message), "followUp");
       case "clear_queue":
         return this.clearQueue(sessionId);
@@ -235,6 +242,9 @@ export class AgentRuntime {
         return this.requireAcp().sessionRename(sessionId, name);
       }
       case "compact": {
+        if (!this.ensureSession(sessionId).hasUserPrompt && !(await diskHasUserMessages(sessionId))) {
+          throw new Error("Nothing to compact");
+        }
         await this.ensureProcess();
         const instructions = typeof command.customInstructions === "string" ? command.customInstructions : undefined;
         return this.requireAcp().compactConversation(sessionId, instructions);
@@ -311,6 +321,7 @@ export class AgentRuntime {
   ): Promise<unknown> {
     await this.ensureProcess();
     const session = this.ensureSession(sessionId);
+    session.hasUserPrompt = true;
     if (session.busy) {
       if (streamingBehavior === "steer") {
         return this.requireAcp().sessionInterject(sessionId, message);
@@ -528,4 +539,28 @@ function promptBehavior(command: AgentCommand): "steer" | "followUp" | undefined
 function kindField(command: AgentCommand): "steering" | "followUp" {
   const kind = "kind" in command ? command.kind : undefined;
   return kind === "steering" || kind === "followUp" ? kind : "followUp";
+}
+
+function commandImages(command: AgentCommand): unknown {
+  return "images" in command ? command.images : undefined;
+}
+
+function rejectUnsupportedImages(images: unknown): void {
+  if (Array.isArray(images) && images.length > 0) {
+    throw new Error("Images are not supported");
+  }
+}
+
+async function diskHasUserMessages(sessionId: string): Promise<boolean> {
+  const found = await findGrokSession(sessionId);
+  if (!found) return false;
+  if (found.messageCount > 0) return true;
+  try {
+    const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
+    return mapUpdatesJsonl(text).messages.some((message) => (
+      message.role === "user" && typeof message.content === "string" && message.content.trim().length > 0
+    ));
+  } catch {
+    return false;
+  }
 }

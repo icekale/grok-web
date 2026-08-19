@@ -35,7 +35,7 @@ test("TanStack files route adapts the splat to decoded path segments", () => {
   assert.match(adapterSource, /postFiles\(request/);
 });
 
-test("multipart upload preserves success, conflict, and size responses", async (t) => {
+test("multipart upload does not spawn grok; conflict and size still apply", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-tanstack-upload-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -45,10 +45,11 @@ test("multipart upload preserves success, conflict, and size responses", async (
 
   const context = { params: Promise.resolve({ path: segmentsFor(root) }) };
   const created = await POST(uploadRequest(root, "proof.txt", "tanstack"), context);
-  assert.equal(created.status, 200);
-  assert.deepEqual(await created.json(), { uploaded: ["proof.txt"], skipped: [], errors: [] });
-  assert.equal(fs.readFileSync(path.join(root, "proof.txt"), "utf8"), "tanstack");
+  assert.equal(created.status, 501);
+  assert.match((await created.json()).error, /read-only|ACP filesystem write/i);
+  assert.equal(fs.existsSync(path.join(root, "proof.txt")), false);
 
+  fs.writeFileSync(path.join(root, "proof.txt"), "existing");
   const conflict = await POST(uploadRequest(root, "proof.txt", "replacement"), context);
   assert.equal(conflict.status, 409);
   assert.deepEqual(await conflict.json(), {

@@ -367,6 +367,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.homeSkill": "/skill:{skill}",
     "chat.jumpToBottom": "回到底部",
     "chat.attachImage": "附加图片",
+    "chat.imagesNotSupported": "不支持图片附件",
     "chat.previewImage": "预览图片",
     "chat.filterModels": "筛选模型…",
     "chat.noMatchingModels": "没有匹配的模型",

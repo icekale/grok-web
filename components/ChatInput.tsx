@@ -110,6 +110,8 @@ interface Props {
   cwd?: string | null;
   /** Basename shown inside the composer on the empty new-session home. */
   workspaceHint?: string | null;
+  /** Grok ACP promptCapabilities.image is false. */
+  imagesEnabled?: boolean;
 }
 
 export interface ChatInputHandle {
@@ -688,6 +690,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   draftKey,
   cwd,
   workspaceHint,
+  imagesEnabled = false,
 }: Props, ref) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
@@ -927,11 +930,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       });
     },
     addImages(files: File[]) {
+      if (!imagesEnabled) return;
       processImageFiles(files);
     },
   }));
 
   const processImageFiles = useCallback(async (files: File[]) => {
+    if (!imagesEnabled) return;
     const remaining = Math.max(
       0,
       MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
@@ -968,7 +973,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     } finally {
       pendingImageCountRef.current -= imageFiles.length;
     }
-  }, []);
+  }, [imagesEnabled]);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -2273,16 +2278,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <button
             type="button"
             className="composer-icon-hit"
-            onClick={() => fileInputRef.current?.click()}
-            title={t("chat.attachImage")}
-            aria-label={t("chat.attachImage")}
+            onClick={() => {
+              if (!imagesEnabled) return;
+              fileInputRef.current?.click();
+            }}
+            disabled={!imagesEnabled}
+            title={imagesEnabled ? t("chat.attachImage") : t("chat.imagesNotSupported")}
+            aria-label={imagesEnabled ? t("chat.attachImage") : t("chat.imagesNotSupported")}
             style={{
               flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
               width: 28, height: 28, padding: 0,
               background: "none", border: "none",
               borderRadius: 999,
               color: attachedImages.length ? "var(--text)" : "var(--text-dim)",
-              cursor: "pointer",
+              cursor: imagesEnabled ? "pointer" : "not-allowed",
+              opacity: imagesEnabled ? 1 : 0.45,
               transition: "background 0.12s, color 0.12s",
             }}
             onMouseEnter={(e) => {

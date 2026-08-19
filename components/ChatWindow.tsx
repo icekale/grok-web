@@ -622,6 +622,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
       cwd={session?.cwd ?? newSessionCwd}
       workspaceHint={isEmptyNew ? homeCwdLabel : null}
+      imagesEnabled={false}
     />
   );
 

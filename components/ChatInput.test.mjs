@@ -13,6 +13,22 @@ const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMess
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
 
+test("disables image attach because Grok ACP has no image prompt capability", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {},
+        onAbort() {},
+        isStreaming: false,
+      }),
+    ),
+  );
+  assert.match(html, /disabled=""/);
+  assert.match(html, /Images are not supported|不支持图片附件|chat\.imagesNotSupported/);
+});
+
 test("renders the upstream model error", () => {
   const html = renderToStaticMarkup(
     React.createElement(
