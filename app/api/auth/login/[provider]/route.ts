@@ -1,10 +1,7 @@
-import type { AuthEvent, AuthPrompt } from "@/lib/pi-stubs/ai";
-import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
 import { randomBytes } from "node:crypto";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { invalidateModelsCache } from "@/lib/models-cache";
 
-
-// In-memory registry: loginToken -> resolve/reject for the manualCodeInput promise
 declare global {
   var __piLoginCallbacks: Map<string, { resolve: (v: string) => void; reject: (e: Error) => void }> | undefined;
 }
@@ -14,10 +11,36 @@ function getCallbackRegistry() {
   return globalThis.__piLoginCallbacks;
 }
 
-// POST /api/auth/login/[provider] — frontend sends redirect URL or auth code
+function deviceUserCode(authUrl: string): string | undefined {
+  try {
+    return new URL(authUrl).searchParams.get("user_code") ?? undefined;
+  } catch {
+    const match = /[?&]user_code=([^&]+)/.exec(authUrl);
+    return match ? decodeURIComponent(match[1]) : undefined;
+  }
+}
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ provider: string }> }
+  { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
   const { token, code } = (await req.json()) as { token?: string; code?: string };
@@ -31,146 +54,91 @@ export async function POST(
   if (!callbacks) {
     return Response.json({ error: "No pending login for token" }, { status: 404 });
   }
-  // Verify token belongs to this provider (token format: "<provider>-<ts>-<random>")
   if (!token.startsWith(`${provider}-`)) {
     return Response.json({ error: "Token does not match provider" }, { status: 400 });
   }
 
+  await getAgentRuntime().authSubmitCode(code);
   callbacks.resolve(code);
   registry.delete(token);
   return Response.json({ ok: true, provider });
 }
 
-// GET /api/auth/login/[provider] — SSE stream for OAuth flow
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ provider: string }> }
+  { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
-
   const encoder = new TextEncoder();
   const send = (controller: ReadableStreamDefaultController, data: unknown) => {
     controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
   };
 
-  // AbortController propagates client disconnect into ModelRuntime.login().
   const abort = new AbortController();
   req.signal.addEventListener("abort", () => abort.abort());
 
   const stream = new ReadableStream({
     async start(controller) {
-      const modelRuntime = await ModelRuntime.create();
-      if (!modelRuntime.getProvider(provider)?.auth.oauth) {
+      if (provider !== "grok.com") {
         send(controller, { type: "error", message: `Unknown provider: ${provider}` });
         controller.close();
         return;
       }
 
       const registry = getCallbackRegistry();
-      const activeTokens = new Set<string>();
-      let pendingManualRequest: { token: string; promise: Promise<string> } | undefined;
-
-      const createClientInputRequest = () => {
-        const token = `${provider}-${Date.now()}-${randomBytes(16).toString("hex")}`;
-        activeTokens.add(token);
-
-        const promise = new Promise<string>((resolve, reject) => {
-          registry.set(token, {
-            resolve: (value) => {
-              activeTokens.delete(token);
-              registry.delete(token);
-              resolve(value);
-            },
-            reject: (error) => {
-              activeTokens.delete(token);
-              registry.delete(token);
-              reject(error);
-            },
-          });
-        });
-
-        return { token, promise };
-      };
-
-      const getManualInputRequest = () => {
-        if (!pendingManualRequest) {
-          pendingManualRequest = createClientInputRequest();
-          pendingManualRequest.promise
-            .finally(() => {
-              pendingManualRequest = undefined;
-            })
-            .catch(() => {});
-        }
-        return pendingManualRequest;
-      };
-
-      // Cleanup: remove pending token and abort any waiting promise
+      const token = `${provider}-${Date.now()}-${randomBytes(16).toString("hex")}`;
       const cleanup = () => {
-        for (const token of activeTokens) {
-          registry.get(token)?.reject(new Error("Login cancelled"));
-          registry.delete(token);
-        }
-        activeTokens.clear();
+        registry.get(token)?.reject(new Error("Login cancelled"));
+        registry.delete(token);
       };
+      registry.set(token, {
+        resolve: () => {
+          registry.delete(token);
+        },
+        reject: () => {
+          registry.delete(token);
+        },
+      });
 
-      // Also cancel on client disconnect
-      abort.signal.addEventListener("abort", cleanup);
+      abort.signal.addEventListener("abort", () => {
+        cleanup();
+        void getAgentRuntime().authCancel().catch(() => {});
+      });
 
       try {
-        await modelRuntime.login(provider, "oauth", {
-          prompt: async (prompt: AuthPrompt) => {
-            const request = prompt.type === "manual_code"
-              ? getManualInputRequest()
-              : createClientInputRequest();
-            if (prompt.type === "select") {
-              send(controller, {
-                type: "select_request",
-                message: prompt.message,
-                options: prompt.options,
-                token: request.token,
-              });
-            } else {
-              send(controller, {
-                type: "prompt_request",
-                message: prompt.message,
-                placeholder: prompt.placeholder ?? null,
-                token: request.token,
-              });
-            }
-            return request.promise;
-          },
-          notify: (event: AuthEvent) => {
-            if (event.type === "auth_url") {
-              const request = getManualInputRequest();
-              send(controller, {
-                type: "auth",
-                url: event.url,
-                instructions: event.instructions ?? null,
-                token: request.token,
-              });
-            } else if (event.type === "device_code") {
-              send(controller, {
-                type: "device_code",
-                userCode: event.userCode,
-                verificationUri: event.verificationUri,
-                intervalSeconds: event.intervalSeconds ?? null,
-                expiresInSeconds: event.expiresInSeconds ?? null,
-              });
-            } else {
-              send(controller, { type: "progress", message: event.message });
-            }
-          },
-          signal: abort.signal,
+        const started = await getAgentRuntime().authGetUrl();
+        send(controller, {
+          type: "auth",
+          url: started.auth_url,
+          instructions: null,
+          token,
         });
+        if (started.mode === "device") {
+          send(controller, {
+            type: "device_code",
+            userCode: deviceUserCode(started.auth_url) ?? "",
+            verificationUri: started.auth_url,
+            intervalSeconds: 2,
+            expiresInSeconds: null,
+          });
+        }
 
-        invalidateModelsCache();
-        send(controller, { type: "success" });
+        while (!abort.signal.aborted) {
+          const status = await getAgentRuntime().authCheck();
+          if (status.authenticated === true) {
+            invalidateModelsCache();
+            send(controller, { type: "success" });
+            return;
+          }
+          await wait(2000, abort.signal);
+        }
+        send(controller, { type: "cancelled" });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg !== "Login cancelled") {
-          send(controller, { type: "error", message: msg });
-        } else {
+        if (abort.signal.aborted) {
           send(controller, { type: "cancelled" });
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          send(controller, { type: "error", message: msg });
         }
       } finally {
         cleanup();

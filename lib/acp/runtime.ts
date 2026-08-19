@@ -93,6 +93,36 @@ export class AgentRuntime {
     return this.requireAcp().gitStatus();
   }
 
+  async authCheck() {
+    await this.ensureProcess();
+    return this.requireAcp().authCheck();
+  }
+
+  async authGetUrl() {
+    await this.ensureProcess();
+    return this.requireAcp().authGetUrl();
+  }
+
+  async authSubmitCode(code: string) {
+    await this.ensureProcess();
+    return this.requireAcp().authSubmitCode(code);
+  }
+
+  async authCancel() {
+    await this.ensureProcess();
+    return this.requireAcp().authCancel();
+  }
+
+  async authLogout() {
+    await this.ensureProcess();
+    return this.requireAcp().authLogout();
+  }
+
+  async authenticate(methodId: string) {
+    await this.ensureProcess();
+    return this.requireAcp().authenticate(methodId);
+  }
+
   async worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
     await this.ensureProcess();
     return this.requireAcp().worktreeCreate(sessionId, sourcePath);
@@ -413,6 +443,10 @@ let singleton: AgentRuntime | undefined;
 export function getAgentRuntime(): AgentRuntime {
   singleton ??= new AgentRuntime();
   return singleton;
+}
+
+export function setAgentRuntime(runtime: AgentRuntime | undefined): void {
+  singleton = runtime;
 }
 
 export function resetAgentRuntime(): void {

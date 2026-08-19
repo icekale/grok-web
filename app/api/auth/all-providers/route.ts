@@ -1,12 +1,13 @@
-import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
-import { buildApiKeyProviderList } from "@/lib/provider-listing";
-import { collectProviderListingInputs } from "@/lib/provider-listing-runtime";
+import { hasGrokApiKey, readGrokAuth } from "@/lib/grok-settings/home-config.ts";
 
-
-// Providers that accept an API key, including dual-auth ones such as anthropic —
-// see lib/provider-listing.ts for why membership is capability-based (#309).
 export async function GET() {
-  const modelRuntime = await ModelRuntime.create();
-  const providers = buildApiKeyProviderList(await collectProviderListingInputs(modelRuntime));
-  return Response.json({ providers });
+  return Response.json({
+    providers: [{
+      id: "xai.api_key",
+      displayName: "xAI API Key",
+      configured: hasGrokApiKey() || readGrokAuth().loggedIn,
+      modelCount: 0,
+      supportsOAuth: true,
+    }],
+  });
 }

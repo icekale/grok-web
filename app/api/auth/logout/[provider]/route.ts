@@ -1,21 +1,17 @@
-import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { invalidateModelsCache } from "@/lib/models-cache";
-import { removeStoredCredentialIfType } from "@/lib/provider-credential-store";
 
+const SUPPORTED = new Set(["grok.com", "xai.api_key"]);
 
 export async function POST(
   _req: Request,
-  { params }: { params: Promise<{ provider: string }> }
+  { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
-  const modelRuntime = await ModelRuntime.create();
-  if (!modelRuntime.getProvider(provider)?.auth.oauth) {
+  if (!SUPPORTED.has(provider)) {
     return Response.json({ error: `Unknown provider: ${provider}` }, { status: 400 });
   }
-  const removal = await removeStoredCredentialIfType(provider, "oauth");
-  if (removal.status === "type_mismatch") {
-    return Response.json({ error: `${provider} is authenticated with an API key, not OAuth` }, { status: 409 });
-  }
+  await getAgentRuntime().authLogout();
   invalidateModelsCache();
   return Response.json({ ok: true });
 }

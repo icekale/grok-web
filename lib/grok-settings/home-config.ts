@@ -71,6 +71,29 @@ export function readGrokWebSettings(home = grokHome()): Record<string, unknown> 
     : {};
 }
 
+export function hasGrokApiKey(home = grokHome()): boolean {
+  const file = join(home, "config.toml");
+  if (!existsSync(file)) return false;
+  return /^api_key\s*=/m.test(readFileSync(file, "utf8"));
+}
+
+export function writeGrokApiKey(apiKey: string, home = grokHome()): void {
+  const file = join(home, "config.toml");
+  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+  const line = `api_key = ${JSON.stringify(apiKey)}\n`;
+  const next = /^api_key\s*=.*$/m.test(current)
+    ? current.replace(/^api_key\s*=.*$/m, line.trimEnd())
+    : `${current}${current.endsWith("\n") || current.length === 0 ? "" : "\n"}${line}`;
+  writeFileSync(file, next);
+}
+
+export function clearGrokApiKey(home = grokHome()): void {
+  const file = join(home, "config.toml");
+  if (!existsSync(file)) return;
+  const next = readFileSync(file, "utf8").replace(/^api_key\s*=.*\r?\n?/m, "");
+  writeFileSync(file, next);
+}
+
 export function readGrokAuth(home = grokHome()): { loggedIn: boolean; methods: string[] } {
   const file = join(home, "auth.json");
   if (!existsSync(file)) return { loggedIn: false, methods: [] };

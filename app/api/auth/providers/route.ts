@@ -1,19 +1,18 @@
-import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
-import { buildOAuthProviderList } from "@/lib/provider-listing";
-import { collectProviderListingInputs } from "@/lib/provider-listing-runtime";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { readGrokAuth } from "@/lib/grok-settings/home-config.ts";
 
 export async function GET() {
   const grok = {
     id: "grok.com",
     name: "Grok",
-    connected: readGrokAuth().loggedIn,
+    usesCallbackServer: false,
+    loggedIn: false,
+    supportsApiKey: true,
   };
   try {
-    const modelRuntime = await ModelRuntime.create();
-    const providers = buildOAuthProviderList(await collectProviderListingInputs(modelRuntime));
-    return Response.json({ providers: [...providers, grok] });
+    grok.loggedIn = (await getAgentRuntime().authCheck()).authenticated === true;
   } catch {
-    return Response.json({ providers: [grok] });
+    grok.loggedIn = readGrokAuth().loggedIn;
   }
+  return Response.json({ providers: [grok] });
 }
