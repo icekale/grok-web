@@ -182,6 +182,10 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     commitWidth(nextDefault, { forcePersist: true });
   }, [commitWidth, defaultWidth, getDefaultWidth]);
 
+  const setPanelWidth = useCallback((nextWidth: number, persist = true) => {
+    commitWidth(nextWidth, { persist, forcePersist: persist });
+  }, [commitWidth]);
+
   const reclampWidth = useCallback(() => {
     commitWidth(widthRef.current);
   }, [commitWidth, widthRef]);
@@ -263,6 +267,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     panelRef,
     reclampWidth,
     resetWidth,
+    setPanelWidth,
     separatorProps: {
       "aria-label": ariaLabel,
       "aria-orientation": "vertical" as const,

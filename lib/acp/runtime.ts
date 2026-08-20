@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
@@ -8,12 +9,23 @@ import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
-import { mapGrokModels } from "./models.ts";
+import { syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
+import { readModelsConfig } from "../models-config-store.ts";
+import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
-import { PRESET_FULL } from "../tool-presets.ts";
+import {
+  applyConfigOptionUpdate,
+  hasToolsConfig,
+  readAcpConfigOptions,
+  rememberToolsPreset,
+  selectedToolsPreset,
+  toolEntriesForPreset,
+  type AcpConfigOption,
+} from "./config-options.ts";
+import { getPresetFromTools, type ToolEntry } from "../tool-presets.ts";
 
 export type AgentCommand =
   | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
@@ -28,26 +40,49 @@ type SessionListener = (event: Record<string, unknown>) => void;
 
 type SessionState = {
   mapper: AcpTurnMapper;
-  listeners: Set<SessionListener>;
+  loaded: boolean;
   busy: boolean;
+  bashStarting: boolean;
+  bashTerminalIds: Set<string>;
   queue: SessionQueue;
   cwd?: string;
   modelId?: string;
   thinkingLevel?: string;
   hasUserPrompt?: boolean;
-  bashTerminalId?: string;
+  configOptions: AcpConfigOption[];
 };
+
+export class AgentCapabilityError extends Error {
+  readonly status = 501;
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentCapabilityError";
+  }
+}
+
+function canonicalCwd(cwd: string): string {
+  const resolved = resolve(cwd);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
 
 export class AgentRuntime {
   private readonly connectFn: () => Promise<AcpConnection>;
   private readonly resolveEntries: typeof resolveSessionEntries;
   private acp: AcpConnection | undefined;
+  private connectionGeneration = 0;
+  private startupToken = 0;
   private starting: Promise<void> | undefined;
   private unsubUpdate: (() => void) | undefined;
   private unsubPermission: (() => void) | undefined;
-  private lastPermissionSessionId: string | undefined;
+  private unsubClose: (() => void) | undefined;
   private child: ChildProcess | undefined;
+  private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
+  private readonly listeners = new Map<string, Set<SessionListener>>();
 
   constructor(options?: {
     connect?: () => Promise<AcpConnection>;
@@ -59,11 +94,11 @@ export class AgentRuntime {
 
   async ensureProcess(): Promise<void> {
     if (this.acp) return;
-    this.starting ??= this.startProcess();
+    const starting = this.starting ??= this.startProcess();
     try {
-      await this.starting;
+      await starting;
     } catch (error) {
-      this.starting = undefined;
+      if (this.starting === starting) this.starting = undefined;
       throw error;
     }
     if (!this.acp) throw new Error("ACP process is not available");
@@ -71,33 +106,61 @@ export class AgentRuntime {
 
   async createSession(cwd: string): Promise<string> {
     await this.ensureProcess();
-    const { sessionId } = await this.requireAcp().sessionNew(
+    const connection = this.captureConnection();
+    const created = await connection.acp.sessionNew(
       cwd,
       sessionNewMeta(readPermissionMode()),
     );
-    const session = this.ensureSession(sessionId);
+    this.assertCurrentConnection(connection, "session/new");
+    const session = this.ensureSession(created.sessionId);
+    session.loaded = true;
     session.cwd = cwd;
-    session.modelId = "grok-4.6";
-    session.thinkingLevel = "off";
-    return sessionId;
+    session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
+    session.thinkingLevel = selectedGrokEffort(created) ?? "high";
+    session.configOptions = readAcpConfigOptions(created);
+    return created.sessionId;
   }
 
   async loadSession(sessionId: string, cwd?: string): Promise<void> {
     await this.ensureProcess();
-    await this.requireAcp().sessionLoad(sessionId, cwd);
-    this.ensureSession(sessionId).cwd = cwd;
+    const connection = this.captureConnection();
+    const loaded = await connection.acp.sessionLoad(sessionId, cwd);
+    this.assertCurrentConnection(connection, "session/load");
+    const session = this.ensureSession(sessionId);
+    session.loaded = true;
+    session.cwd = cwd;
+    const modelId = selectedGrokModelId(loaded);
+    if (modelId) session.modelId = modelId;
+    const effort = selectedGrokEffort(loaded);
+    if (effort) session.thinkingLevel = effort;
+    const options = readAcpConfigOptions(loaded);
+    if (options.length > 0) session.configOptions = options;
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
     await this.ensureProcess();
     const directory = cwd || this.ensureSession(sessionId).cwd || process.cwd();
-    await this.requireAcp().sessionResume(sessionId, directory);
-    this.ensureSession(sessionId).cwd = directory;
+    const connection = this.captureConnection();
+    await connection.acp.sessionResume(sessionId, directory);
+    this.assertCurrentConnection(connection, "session/resume");
+    const session = this.ensureSession(sessionId);
+    session.loaded = true;
+    session.cwd = directory;
   }
 
   async listModels() {
     await this.ensureProcess();
     return mapGrokModels(await this.requireAcp().modelsList());
+  }
+
+  async recycleProcess(): Promise<void> {
+    const child = this.child;
+    this.sessions.clear();
+    this.listeners.clear();
+    this.dropConnection();
+    if (child && !child.killed) child.kill();
+    this.child = undefined;
+    await this.ensureProcess();
   }
 
   async fsWrite(path: string, content: string): Promise<void> {
@@ -177,7 +240,7 @@ export class AgentRuntime {
 
   async withSession(cwd: string, fn: (sessionId: string) => Promise<unknown>) {
     await this.ensureProcess();
-    const existing = [...this.sessions.keys()][0];
+    const existing = [...this.sessions].find(([, session]) => session.loaded)?.[0];
     const sessionId = existing ?? await this.createSession(cwd);
     return fn(sessionId);
   }
@@ -273,7 +336,7 @@ export class AgentRuntime {
         return last;
       }
       case "extension_ui_response":
-        return this.sendPermission(command);
+        return this.sendPermission(sessionId, command);
       case "set_session_name": {
         const name = stringField(command.name).trim();
         if (!name) throw new Error("Session name cannot be empty");
@@ -289,13 +352,9 @@ export class AgentRuntime {
         return this.requireAcp().compactConversation(sessionId, instructions);
       }
       case "get_tools":
-        return PRESET_FULL.map((name) => ({
-          name,
-          description: name,
-          active: true,
-        }));
+        return this.getTools(sessionId);
       case "set_tools":
-        throw new Error("Tool presets are not supported");
+        return this.setTools(sessionId, command);
       case "abort_compaction":
         return this.sendAbort(sessionId);
       case "get_last_assistant_text":
@@ -309,9 +368,11 @@ export class AgentRuntime {
       case "navigate_tree":
         return this.sendNavigateTree(sessionId, command);
       case "set_model": {
-        await this.ensureProcess();
         const modelId = stringField(command.modelId);
         if (!modelId) throw new Error("modelId is required");
+        const wrote = syncSettingsModelsToGrokConfig(readModelsConfig());
+        if (wrote.length > 0) await this.recycleProcess();
+        else await this.ensureProcess();
         const set = await this.requireAcp().sessionSetModel(sessionId, modelId);
         const session = this.ensureSession(sessionId);
         session.modelId = set.modelId;
@@ -361,41 +422,78 @@ export class AgentRuntime {
   }
 
   subscribe(sessionId: string, listener: SessionListener): () => void {
-    this.ensureSession(sessionId).listeners.add(listener);
+    let listeners = this.listeners.get(sessionId);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(sessionId, listeners);
+    }
+    listeners.add(listener);
     return () => {
-      this.sessions.get(sessionId)?.listeners.delete(listener);
+      const current = this.listeners.get(sessionId);
+      current?.delete(listener);
+      if (current?.size === 0) this.listeners.delete(sessionId);
     };
   }
 
   hasSession(sessionId: string): boolean {
-    return this.sessions.has(sessionId);
+    return this.sessions.get(sessionId)?.loaded === true;
   }
 
   isBusy(sessionId: string): boolean {
-    return this.sessions.get(sessionId)?.busy === true;
+    return this.isSessionBusy(this.sessions.get(sessionId));
   }
 
   listBusyIds(): string[] {
     const ids: string[] = [];
     for (const [sessionId, session] of this.sessions) {
-      if (session.busy) ids.push(sessionId);
+      if (this.isSessionBusy(session)) ids.push(sessionId);
     }
     return ids;
+  }
+
+  hasBusySessionForCwd(cwd: string): boolean {
+    const target = canonicalCwd(cwd);
+    for (const session of this.sessions.values()) {
+      if (this.isSessionBusy(session) && session.cwd && canonicalCwd(session.cwd) === target) return true;
+    }
+    return false;
+  }
+
+  async dropSessionsForCwd(cwd: string): Promise<number> {
+    const target = canonicalCwd(cwd);
+    const ids: string[] = [];
+    for (const [sessionId, session] of this.sessions) {
+      if (session.cwd && canonicalCwd(session.cwd) === target) ids.push(sessionId);
+    }
+    for (const sessionId of ids) {
+      const session = this.sessions.get(sessionId);
+      if (this.isSessionBusy(session)) {
+        try {
+          await this.sendAbort(sessionId);
+        } catch {
+          // Session is being dropped either way so trust can take effect.
+        }
+      }
+      this.sessions.delete(sessionId);
+    }
+    return ids.length;
   }
 
   private getState(sessionId: string): {
     isStreaming: boolean;
     isPromptRunning: boolean;
+    isBashRunning: boolean;
     model: { provider: "grok"; id: string };
     thinkingLevel: string;
     queuedMessages: QueueSnapshot;
   } {
     const session = this.sessions.get(sessionId);
-    const busy = this.isBusy(sessionId);
+    const promptBusy = session?.busy === true;
     return {
-      isStreaming: busy,
-      isPromptRunning: busy,
-      model: { provider: "grok", id: session?.modelId ?? "grok" },
+      isStreaming: promptBusy,
+      isPromptRunning: promptBusy,
+      isBashRunning: this.isSessionBashRunning(session),
+      model: { provider: "grok", id: session?.modelId ?? "grok-4.6" },
       thinkingLevel: session?.thinkingLevel ?? "off",
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
     };
@@ -409,6 +507,9 @@ export class AgentRuntime {
     await this.ensureProcess();
     const session = this.ensureSession(sessionId);
     session.hasUserPrompt = true;
+    if (this.isSessionBashRunning(session)) {
+      throw new Error("Cannot send a prompt while a shell command is running");
+    }
     if (session.busy) {
       if (streamingBehavior === "steer") {
         return this.requireAcp().sessionInterject(sessionId, message);
@@ -461,9 +562,9 @@ export class AgentRuntime {
     this.emit(sessionId, [{ type: "queue_update", ...this.ensureSession(sessionId).queue.snapshot() }]);
   }
 
-  private async sendPermission(command: AgentCommand): Promise<void> {
+  private async sendPermission(sessionId: string, command: AgentCommand): Promise<void> {
     await this.ensureProcess();
-    this.requireAcp().completePermission(stringField(command.id), {
+    this.requireAcp().completePermission(sessionId, stringField(command.id), {
       confirmed: command.confirmed === true,
       cancelled: command.cancelled === true,
     });
@@ -471,6 +572,7 @@ export class AgentRuntime {
 
   private async sendAbort(sessionId: string): Promise<unknown> {
     await this.ensureProcess();
+    await this.killBashTerminals(sessionId);
     this.requireAcp().sessionCancel(sessionId);
     return null;
   }
@@ -483,31 +585,38 @@ export class AgentRuntime {
     const script = stringField(command.command);
     if (!script) throw new Error("command is required");
     if (this.isBusy(sessionId)) throw new Error("Cannot run a shell command while the session is busy");
-    await this.ensureProcess();
     const session = this.ensureSession(sessionId);
-    const created = await this.requireAcp().terminalCreate(sessionId, script, {
-      cwd: session.cwd,
-      excludeFromContext: command.excludeFromContext === true,
-    });
-    session.bashTerminalId = created.terminalId;
+    session.bashStarting = true;
     try {
-      const waited = await this.requireAcp().terminalWaitForExit(sessionId, created.terminalId);
-      const out = await this.requireAcp().terminalOutput(sessionId, created.terminalId);
-      return {
-        output: typeof out.output === "string" ? out.output : "",
-        exitCode: waited.exitCode ?? out.exitStatus?.exitCode,
-        truncated: out.truncated === true,
-      };
+      await this.ensureProcess();
+      const created = await this.requireAcp().terminalCreate(sessionId, script, {
+        cwd: session.cwd,
+        excludeFromContext: command.excludeFromContext === true,
+      });
+      session.bashTerminalIds.add(created.terminalId);
+      session.bashStarting = false;
+      try {
+        const waited = await this.requireAcp().terminalWaitForExit(sessionId, created.terminalId);
+        const out = await this.requireAcp().terminalOutput(sessionId, created.terminalId);
+        return {
+          output: typeof out.output === "string" ? out.output : "",
+          exitCode: waited.exitCode ?? out.exitStatus?.exitCode,
+          truncated: out.truncated === true,
+        };
+      } catch (error) {
+        await this.killBashTerminals(sessionId);
+        throw error;
+      } finally {
+        session.bashTerminalIds.delete(created.terminalId);
+      }
     } finally {
-      session.bashTerminalId = undefined;
+      session.bashStarting = false;
     }
   }
 
   private async abortBash(sessionId: string): Promise<unknown> {
-    const terminalId = this.sessions.get(sessionId)?.bashTerminalId;
-    if (!terminalId) return null;
     await this.ensureProcess();
-    return this.requireAcp().terminalKill(sessionId, terminalId);
+    return this.killBashTerminals(sessionId);
   }
 
   private async listSlashCommands(sessionId: string) {
@@ -610,12 +719,16 @@ export class AgentRuntime {
     const session = this.ensureSession(sessionId);
     const cwd = session.cwd ?? (await findGrokSession(sessionId))?.cwd;
     if (!cwd) throw new Error("Cannot fork without a session cwd");
-    const forked = await this.requireAcp().sessionFork({
+    const connection = this.captureConnection();
+    const forked = await connection.acp.sessionFork({
       sourceSessionId: sessionId,
       sourceCwd: cwd,
       newCwd: cwd,
     });
-    this.ensureSession(forked.newSessionId).cwd = cwd;
+    this.assertCurrentConnection(connection, "session/fork");
+    const forkedSession = this.ensureSession(forked.newSessionId);
+    forkedSession.loaded = true;
+    forkedSession.cwd = cwd;
     invalidateSessionListCache();
     const entryId = typeof command.entryId === "string" ? command.entryId : "";
     if (entryId) {
@@ -640,25 +753,41 @@ export class AgentRuntime {
   }
 
   private async startProcess(): Promise<void> {
+    const startupToken = ++this.startupToken;
     const acp = await this.connectFn();
+    const child = this.connectionChildren.get(acp) ?? this.child;
     try {
       await acp.initialize();
     } catch (error) {
-      this.child?.kill();
-      this.child = undefined;
+      if (child && !child.killed) child.kill();
+      if (this.child === child) this.child = undefined;
       throw error;
+    }
+    if (this.startupToken !== startupToken) {
+      if (typeof acp.close === "function") acp.close();
+      if (child && !child.killed) child.kill();
+      if (this.child === child) this.child = undefined;
+      throw new Error("ACP startup superseded");
     }
     this.unsubUpdate?.();
     this.unsubPermission?.();
+    this.unsubClose?.();
+    this.acp = acp;
+    const generation = ++this.connectionGeneration;
+    if (typeof acp.onClose === "function") {
+      this.unsubClose = acp.onClose(() => {
+        if (this.acp === acp && this.connectionGeneration === generation) this.dropConnection();
+      });
+    }
     this.unsubUpdate = acp.onSessionUpdate((sessionId, update) => {
       const session = this.sessions.get(sessionId);
       if (!session) return;
+      session.configOptions = applyConfigOptionUpdate(session.configOptions, update);
       this.emit(sessionId, session.mapper.push(update));
     });
     this.unsubPermission = acp.onPermission((event) => {
       this.forwardPermission(event);
     });
-    this.acp = acp;
   }
 
   private async connectDefault(): Promise<AcpConnection> {
@@ -674,54 +803,125 @@ export class AgentRuntime {
       this.child = undefined;
       this.dropConnection();
     });
-    return new AcpConnection(new JsonRpcConn({ stdin: child.stdin, stdout: child.stdout }));
+    const acp = new AcpConnection(new JsonRpcConn({ stdin: child.stdin, stdout: child.stdout }));
+    this.connectionChildren.set(acp, child);
+    return acp;
   }
 
   private dropConnection(): void {
     this.unsubUpdate?.();
     this.unsubPermission?.();
+    this.unsubClose?.();
     this.unsubUpdate = undefined;
     this.unsubPermission = undefined;
-    this.lastPermissionSessionId = undefined;
+    this.unsubClose = undefined;
+    for (const session of this.sessions.values()) session.loaded = false;
     this.acp = undefined;
+    this.connectionGeneration += 1;
+    this.startupToken += 1;
     this.starting = undefined;
   }
 
   private forwardPermission(event: PermissionUiRequest & { sessionId?: string }): void {
-    if (typeof event.sessionId === "string" && event.sessionId) {
-      this.lastPermissionSessionId = event.sessionId;
-    }
-    const sessionId = typeof event.sessionId === "string" && event.sessionId
+    const sessionId = typeof event.sessionId === "string" && event.sessionId.trim() === event.sessionId
       ? event.sessionId
-      : this.lastPermissionSessionId;
-    if (sessionId) {
-      this.emit(sessionId, [event]);
-      return;
+      : "";
+    if (sessionId) this.emit(sessionId, [event]);
+  }
+
+  private isSessionBashRunning(session: SessionState | undefined): boolean {
+    return Boolean(session?.bashStarting) || (session?.bashTerminalIds.size ?? 0) > 0;
+  }
+
+  private isSessionBusy(session: SessionState | undefined): boolean {
+    return session?.busy === true || this.isSessionBashRunning(session);
+  }
+
+  private async killBashTerminals(sessionId: string): Promise<unknown> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const terminalIds = [...session.bashTerminalIds];
+    session.bashStarting = false;
+    if (terminalIds.length === 0) return null;
+    let last: unknown = null;
+    for (const terminalId of terminalIds) {
+      try {
+        last = await this.requireAcp().terminalKill(sessionId, terminalId);
+      } catch {
+        // A vanished terminal should not block abort or session drop.
+      }
+      session.bashTerminalIds.delete(terminalId);
     }
-    const targets = this.listBusyIds().length > 0 ? this.listBusyIds() : [...this.sessions.keys()];
-    for (const id of targets) this.emit(id, [{ ...event, sessionId: id }]);
+    return last;
   }
 
   private ensureSession(sessionId: string): SessionState {
     let session = this.sessions.get(sessionId);
     if (!session) {
-      session = { mapper: new AcpTurnMapper(), listeners: new Set(), busy: false, queue: new SessionQueue() };
+      session = {
+        mapper: new AcpTurnMapper(),
+        loaded: false,
+        busy: false,
+        bashStarting: false,
+        bashTerminalIds: new Set(),
+        queue: new SessionQueue(),
+        configOptions: [],
+      };
       this.sessions.set(sessionId, session);
     }
     return session;
   }
 
   private emit(sessionId: string, events: Array<Record<string, unknown>>): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || events.length === 0) return;
+    const listeners = this.listeners.get(sessionId);
+    if (!listeners || events.length === 0) return;
     for (const event of events) {
-      for (const listener of [...session.listeners]) listener(event);
+      for (const listener of [...listeners]) listener(event);
     }
+  }
+
+  private getTools(sessionId: string): ToolEntry[] {
+    const session = this.ensureSession(sessionId);
+    if (!hasToolsConfig(session.configOptions)) {
+      throw new AgentCapabilityError("Tool presets are not advertised");
+    }
+    return toolEntriesForPreset(selectedToolsPreset(session.configOptions) ?? "default");
+  }
+
+  private async setTools(sessionId: string, command: AgentCommand): Promise<ToolEntry[]> {
+    const session = this.ensureSession(sessionId);
+    if (!hasToolsConfig(session.configOptions)) {
+      throw new AgentCapabilityError("Tool presets are not advertised");
+    }
+    const names = Array.isArray(command.toolNames)
+      ? command.toolNames.filter((name): name is string => typeof name === "string")
+      : [];
+    const preset = getPresetFromTools(names.map((name) => ({ name, description: name, active: true })));
+    await this.ensureProcess();
+    const updated = await this.requireAcp().sessionSetConfigOption(sessionId, "tools", preset);
+    const options = readAcpConfigOptions(updated);
+    session.configOptions = options.length > 0
+      ? options
+      : rememberToolsPreset(session.configOptions, preset);
+    return this.getTools(sessionId);
   }
 
   private requireAcp(): AcpConnection {
     if (!this.acp) throw new Error("ACP process is not available");
     return this.acp;
+  }
+
+  private captureConnection(): { acp: AcpConnection; generation: number } {
+    return { acp: this.requireAcp(), generation: this.connectionGeneration };
+  }
+
+  private assertCurrentConnection(
+    connection: { acp: AcpConnection; generation: number },
+    operation: string,
+  ): void {
+    if (this.acp !== connection.acp || this.connectionGeneration !== connection.generation) {
+      throw new Error(`ACP connection changed during ${operation}`);
+    }
   }
 }
 

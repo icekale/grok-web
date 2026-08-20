@@ -21,11 +21,7 @@ import { normalize, parse, posix, sep, win32 } from "path";
 // case-insensitive, so raw string equality silently fails on both counts.
 // ============================================================================
 
-const WINDOWS_ABSOLUTE_RE = /^[a-zA-Z]:[\\/]/;
-
-export function isWindowsAbsolutePath(filePath: string): boolean {
-  return WINDOWS_ABSOLUTE_RE.test(filePath) || filePath.startsWith("\\\\") || filePath.startsWith("//");
-}
+export { isWindowsAbsolutePath } from "./file-paths.ts";
 
 /**
  * Convert a path to native separators. Chiefly for git output: git prints

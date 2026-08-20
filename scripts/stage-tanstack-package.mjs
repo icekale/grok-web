@@ -7,13 +7,21 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+
+const ts = createRequire(import.meta.url)("typescript");
 
 const INCLUDED_FILES = [
   "bin",
   "README.md",
   "README.zh-CN.md",
   "LICENSE",
+  "lib/bind-guard.ts",
+  "lib/web-auth.ts",
+  "lib/remote-access-config.ts",
+  "lib/atomic-file.ts",
+  "lib/grok-home.ts",
 ];
 
 function fail(message) {
@@ -60,7 +68,7 @@ const stagedPackage = {
   bin: rootPackage.bin,
   dependencies: rootPackage.dependencies,
   optionalDependencies: rootPackage.optionalDependencies ?? {},
-  files: ["bin", ".output", "README*.md", "LICENSE", "package.json"],
+  files: ["bin", ".output", "lib", "README*.md", "LICENSE", "package.json"],
 };
 
 mkdirSync(stageResolved, { recursive: true });
@@ -78,7 +86,22 @@ for (const name of INCLUDED_FILES) {
   if (!existsSync(source)) {
     fail(`included file is missing: ${source}`);
   }
-  cpSync(source, join(stageResolved, name), { recursive: true });
+  const dest = join(stageResolved, name);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(source, dest, { recursive: true });
+  if (name.endsWith(".ts")) {
+    const emitted = ts.transpileModule(readFileSync(source, "utf8"), {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: source,
+    }).outputText.replaceAll(
+      /((?:from|import)\s+["'])(\.\.?\/[^"']+)\.ts(["'])/g,
+      "$1$2.mjs$3",
+    );
+    writeFileSync(dest.replace(/\.ts$/, ".mjs"), emitted);
+  }
 }
 writeFileSync(
   join(stageResolved, "package.json"),

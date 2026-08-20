@@ -36,6 +36,8 @@ import {
   setDraft,
   type ChatDraftImage,
 } from "@/lib/draft-store";
+import { defaultGrokEffortLevel, visibleGrokEffortLevels } from "@/lib/grok-effort-levels";
+import { composerModelLabel } from "@/lib/grok-model-label";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
@@ -188,6 +190,16 @@ const THINKING_SHORT_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
   medium: "chat.thinkingShortMedium", high: "chat.thinkingShortHigh", xhigh: "chat.thinkingShortXhigh", max: "chat.thinkingShortMax",
 };
 
+function thinkingEffortLabel(level: string, t: (key: string) => string): string {
+  const key = THINKING_SHORT_KEYS[level as typeof THINKING_LEVELS[number]];
+  return key ? t(key) : level;
+}
+
+function thinkingEffortDescription(level: string, t: (key: string) => string): string {
+  const key = THINKING_LEVEL_DESC_KEYS[level as typeof THINKING_LEVELS[number]];
+  return key ? t(key) : "";
+}
+
 export function composerThinkingBadgeLevel(level?: string | null): string | null {
   if (!level || level === "auto") return null;
   return level;
@@ -336,19 +348,6 @@ function revokeImagePreview(image: AttachedImage): void {
     URL.revokeObjectURL(image.previewUrl);
   }
 }
-
-const roundComposerButton: React.CSSProperties = {
-  flexShrink: 0,
-  display: "flex", alignItems: "center", justifyContent: "center",
-  width: 28, height: 28,
-  padding: 0,
-  background: "var(--text)",
-  border: "none",
-  borderRadius: 999,
-  color: "var(--bg)",
-  cursor: "pointer",
-  transition: "background 0.15s, color 0.15s, opacity 0.15s",
-};
 
 export type QueueItemKind = "steering" | "followUp";
 
@@ -1684,12 +1683,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelOption[] = (() => {
     if (modelList && modelList.length > 0) {
-      return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name })).sort(compareModelOptions);
+      return modelList.map((m) => ({
+        provider: m.provider,
+        modelId: m.id,
+        name: composerModelLabel(m.id, m.name),
+      })).sort(compareModelOptions);
     }
     return Object.entries(modelNames ?? {}).map(([modelId, name]) => ({
       provider: model?.provider ?? "unknown",
       modelId,
-      name,
+      name: composerModelLabel(modelId, name),
     })).sort(compareModelOptions);
   })();
   const filteredModelOptions = filterModelOptions(modelOptions, modelFilter);
@@ -1704,7 +1707,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }
 
   const displayModelName = model
-    ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
+    ? composerModelLabel(
+      model.modelId,
+      modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name
+        ?? modelOptions.find((o) => o.modelId === model.modelId)?.name,
+    )
     : null;
   const currentName = displayModelName;
 
@@ -1718,11 +1725,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         saved: formatTokenCount(compactSavedTokens),
       })
     : null;
-  const visibleThinkingLevels = THINKING_LEVELS.filter((lvl) => {
-    if (!availableThinkingLevels) return true;
-    if (lvl === "auto") return true;
-    return availableThinkingLevels.includes(lvl);
-  });
+  const visibleThinkingLevels = visibleGrokEffortLevels(availableThinkingLevels);
+  const activeThinkingLevel = visibleThinkingLevels.includes(thinkingLevel ?? "")
+    ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels)
+    : defaultGrokEffortLevel(visibleThinkingLevels);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1780,8 +1786,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {retryInfo && (
           <div style={{
             marginBottom: 8, padding: "5px 10px",
-            background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)",
-            borderRadius: 6, fontSize: "var(--text-meta)", color: "rgba(180,130,0,0.9)",
+            background: "color-mix(in srgb, var(--warning) 12%, var(--bg))", border: "1px solid color-mix(in srgb, var(--warning) 35%, var(--border))",
+            borderRadius: 6, fontSize: "var(--text-meta)", color: "var(--warning)",
             display: "flex", alignItems: "center", gap: 6,
           }}>
             <RotateCw size={11} strokeWidth={2} style={{ flexShrink: 0 }} aria-hidden="true" />
@@ -2199,11 +2205,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               gap: isMobile ? 8 : 10,
               background: "var(--bg)",
               border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 80%, transparent)"}`,
-              borderRadius: isMobile ? 20 : 12,
+              borderRadius: 8,
               padding: isMobile ? "10px 12px 8px" : "12px 14px 9px",
-              boxShadow: isMobile
-                ? "0 2px 12px rgba(0,0,0,0.06)"
-                : "0 2px 8px rgba(0,0,0,0.05)",
+              boxShadow: "none",
               transition: "border-color 0.15s, background 0.15s",
             } as React.CSSProperties}
           >
@@ -2363,18 +2367,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       <button
                         key={lvl}
                         type="button"
+                        className={`composer-menu-item${isActive ? " is-active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           if (!isActive) onToolPresetChange(preset);
-                        }}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          width: "100%", padding: "7px 12px",
-                          background: isActive ? "var(--bg-selected)" : "none",
-                          border: "none",
-                          color: isActive ? "var(--text)" : "var(--text-muted)",
-                          cursor: "pointer", fontSize: "var(--text-ui)", textAlign: "left",
-                          fontWeight: isActive ? 600 : 400,
                         }}
                       >
                         {isActive
@@ -2394,14 +2390,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           if (isCompacting) onAbortCompaction?.();
                           else onCompact();
                         }}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          width: "100%", padding: "7px 12px",
-                          background: "none",
-                          border: "none",
-                          color: isCompacting ? "#ef4444" : "var(--text-muted)",
-                          cursor: "pointer", fontSize: "var(--text-ui)", textAlign: "left",
-                        }}
+                        className="composer-menu-item"
+                        style={{ color: isCompacting ? "var(--danger, #b44747)" : undefined }}
                       >
                         {isCompacting ? <Square size={10} fill="currentColor" aria-hidden="true" /> : <Minimize2 size={12} strokeWidth={2} aria-hidden="true" />}
                         <span>{isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}</span>
@@ -2517,27 +2507,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               </div>
                             )}
                             {group.options.map((opt) => {
-                              const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
+                              const exactActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
+                              const isActive = exactActive || (
+                                opt.modelId === model?.modelId
+                                && !modelOptions.some((other) => other.modelId === model?.modelId && other.provider === model?.provider)
+                              );
                               return (
                                 <button
                                   key={`${opt.provider}:${opt.modelId}`}
+                                  type="button"
+                                  className={`composer-menu-item${isActive ? " is-active" : ""}`}
                                   onClick={() => {
                                     setModelDropdownOpen(false);
                                     setModelFilter("");
                                     if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId);
                                   }}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 8,
-                                    width: "100%", padding: "7px 12px",
-                                    background: isActive ? "var(--bg-selected)" : "none",
-                                    border: "none",
-                                    color: isActive ? "var(--text)" : "var(--text-muted)",
-                                    cursor: "pointer", fontSize: "var(--text-ui)", textAlign: "left",
-                                    fontWeight: isActive ? 600 : 400,
-                                    whiteSpace: "nowrap",
-                                  }}
-                                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
                                 >
                                   {isActive
                                     ? <Check size={10} strokeWidth={2} aria-hidden="true" style={{ color: "var(--accent)", flexShrink: 0 }} />
@@ -2577,41 +2561,33 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     setMoreMenuOpen(false);
                     setThinkingMenuOpen((open) => !open);
                   }}
-                  title={t("chat.changeReasoning", { level: t(THINKING_SHORT_KEYS[(thinkingLevel ?? "auto") as typeof THINKING_LEVELS[number]]) })}
+                  title={t("chat.changeReasoning", { level: thinkingEffortLabel(activeThinkingLevel, t) })}
                   aria-label={t("chat.changeReasoningLabel")}
                   aria-expanded={thinkingMenuOpen}
                 >
                   <Brain size={13} strokeWidth={2} aria-hidden="true" />
-                  <span className="composer-thinking-label" data-thinking-badge={thinkingLevel ?? "auto"}>{t(THINKING_SHORT_KEYS[(thinkingLevel ?? "auto") as typeof THINKING_LEVELS[number]])}</span>
+                  <span className="composer-thinking-label" data-thinking-badge={activeThinkingLevel}>{thinkingEffortLabel(activeThinkingLevel, t)}</span>
                   <ChevronDown className="composer-thinking-chevron" size={12} strokeWidth={2} aria-hidden="true" style={{ opacity: 0.7 }} />
                 </button>
                 {thinkingMenuOpen && (
                   <div className="composer-menu" style={{ right: 0, minWidth: 180 }}>
                     {visibleThinkingLevels.map((lvl) => {
-                      const isActive = (thinkingLevel ?? "auto") === lvl;
+                      const isActive = activeThinkingLevel === lvl;
                       return (
                         <button
                           key={lvl}
                           type="button"
+                          className={`composer-menu-item${isActive ? " is-active" : ""}`}
                           onClick={() => {
                             setThinkingMenuOpen(false);
                             if (!isActive) onThinkingLevelChange(lvl);
-                          }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
-                            color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: "var(--text-ui)", textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
                           }}
                         >
                           {isActive
                             ? <Check size={10} strokeWidth={2} aria-hidden="true" style={{ color: "var(--accent)", flexShrink: 0 }} />
                             : <span style={{ width: 10, flexShrink: 0 }} />}
-                          <span>{t(THINKING_SHORT_KEYS[lvl])}</span>
-                          <span style={{ marginLeft: "auto", fontSize: "var(--text-meta)", color: "var(--text-dim)" }}>{t(THINKING_LEVEL_DESC_KEYS[lvl])}</span>
+                          <span>{thinkingEffortLabel(lvl, t)}</span>
+                          <span className="composer-menu-item-meta">{thinkingEffortDescription(lvl, t)}</span>
                         </button>
                       );
                     })}
@@ -2621,16 +2597,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             )}
           {isStreaming ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {/* Running + draft: click 插话 to steer now. Enter still queues. */}
               {(value.trim() || attachedImages.length) && onSteer ? (
                 <button
                   className="composer-icon-hit"
                   onClick={() => sendQueued(true)}
                   title={t(isMobile ? "chat.interjectTitleMobile" : "chat.interjectTitle")}
                   aria-label={t("chat.interject")}
-                  style={roundComposerButton}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    height: 28, padding: "0 10px",
+                    background: "var(--text)", border: "none", borderRadius: 8,
+                    color: "var(--bg)", cursor: "pointer",
+                    fontSize: "var(--text-meta)", fontWeight: 600,
+                  }}
                 >
                   <ArrowUp size={14} strokeWidth={2.2} aria-hidden="true" />
+                  {t("chat.interject")}
                 </button>
               ) : null}
               <button
@@ -2645,15 +2627,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 title={aborting ? t("chat.stopping") : t("chat.stopAgent")}
                 aria-label={aborting ? t("chat.stopping") : t("chat.stop")}
                 style={{
-                  ...roundComposerButton,
+                  display: "flex", alignItems: "center", gap: 6,
+                  height: 28, padding: "0 10px",
                   background: "transparent",
                   border: "1px solid var(--border)",
+                  borderRadius: 8,
                   color: "var(--text)",
                   cursor: aborting ? "wait" : "pointer",
                   opacity: aborting ? 0.55 : 1,
+                  fontSize: "var(--text-meta)", fontWeight: 600,
                 }}
               >
                 <Square size={10} fill="currentColor" aria-hidden="true" />
+                {aborting ? t("chat.stopping") : t("chat.stop")}
               </button>
             </div>
           ) : (
@@ -2663,20 +2649,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               disabled={!value.trim() && !attachedImages.length}
               style={{
                 flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 28, height: 28,
-                padding: 0,
+                display: "flex", alignItems: "center", gap: 6,
+                height: 28, padding: "0 10px",
                 background: (value.trim() || attachedImages.length) ? "var(--text)" : "var(--bg-panel)",
                 border: "none",
-                borderRadius: 999,
+                borderRadius: 8,
                 color: (value.trim() || attachedImages.length) ? "var(--bg)" : "var(--text-dim)",
                 cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                fontSize: "var(--text-meta)", fontWeight: 600,
                 transition: "background 0.15s, color 0.15s",
               }}
               title={t("chat.send")}
               aria-label={t("chat.send")}
             >
               <ArrowUp size={14} strokeWidth={2.2} aria-hidden="true" />
+              {t("chat.send")}
             </button>
           )}
           </div>

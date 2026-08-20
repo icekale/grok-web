@@ -31,14 +31,14 @@ import { SessionBreadcrumb, SubagentComposer, SubagentTree, DesktopSubagentCard,
 import type { SubagentTreeNode } from "@/lib/api-types";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
+import { WorkspaceBrowser } from "./WorkspaceBrowser";
 import { TabBar, type Tab } from "./TabBar";
-import { openFileTab, saveFileViewerState } from "./file-tab-state";
+import { nextActiveFileTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
 const SettingsPage = lazy(() => import("./SettingsPage").then((module) => ({
   default: module.SettingsPage,
 })));
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
-import { TaskHeader } from "./TaskHeader";
 import { DesktopConversationContext } from "./DesktopConversationContext";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
@@ -65,6 +65,7 @@ import {
   RIGHT_PANEL_FALLBACK_WIDTH,
   RIGHT_PANEL_MAX_WIDTH,
   RIGHT_PANEL_MIN_WIDTH,
+  RIGHT_PANEL_RAIL_WIDTH,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -109,6 +110,7 @@ export function AppShell() {
     if (soundEnabledRef.current) playDoneSound();
   }, [playDoneSound, soundEnabledRef]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  const sessionSelectGenerationRef = useRef(0);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const handleRunningSessionIdsChange = useCallback((ids: Set<string>) => {
     setRunningSessionIds((previous) => {
@@ -128,6 +130,11 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"general" | "models">("general");
+  const openSettings = useCallback((section: "general" | "models" = "general") => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  }, []);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -135,17 +142,22 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const rightPanelUserClosedRef = useRef(false);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
+  const [desktopToolbarMoreOpen, setDesktopToolbarMoreOpen] = useState(false);
   const [mobileToolbarOverflow, setMobileToolbarOverflow] = useState(true);
   const mobileToolbarOverflowRef = useRef(true);
   mobileToolbarOverflowRef.current = mobileToolbarOverflow;
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
+  const fileOpenRef = useRef(false);
+  const rightPanelAutoExpandedRef = useRef(false);
+  const desktopToolbarMoreRef = useRef<HTMLDivElement>(null);
   const getResponsiveRightPanelWidth = useCallback(
     () => typeof window === "undefined"
       ? RIGHT_PANEL_FALLBACK_WIDTH
-      : getDefaultRightPanelWidth(window.innerWidth),
+      : getDefaultRightPanelWidth(window.innerWidth, { fileOpen: fileOpenRef.current }),
     [],
   );
   const getResponsiveSidebarMaxWidth = useCallback(
@@ -300,7 +312,11 @@ export function AppShell() {
         if (!settingsConsumed) setSettingsOpen(false);
         closed = "settings";
       }
-      else if (overlays.rightPanelOpen) { setRightPanelOpen(false); closed = "right"; }
+      else if (overlays.rightPanelOpen) {
+        rightPanelUserClosedRef.current = true;
+        setRightPanelOpen(false);
+        closed = "right";
+      }
       else if (overlays.activeTopPanel !== null) { setActiveTopPanel(null); closed = "panel"; }
       else if (overlays.mobileToolbarMoreOpen) { setMobileToolbarMoreOpen(false); closed = "more"; }
       else if (overlays.sidebarOpen) { setSidebarOpen(false); closed = "sidebar"; }
@@ -427,8 +443,33 @@ export function AppShell() {
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
-    setRightPanelOpen((open) => !open);
+    setRightPanelOpen((open) => {
+      const next = !open;
+      rightPanelUserClosedRef.current = !next;
+      return next;
+    });
   }, [isMobile]);
+
+  useEffect(() => {
+    if (!desktopToolbarMoreOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const menu = desktopToolbarMoreRef.current;
+      if (menu && event.composedPath().includes(menu)) return;
+      setDesktopToolbarMoreOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDesktopToolbarMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [desktopToolbarMoreOpen]);
 
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
@@ -533,6 +574,8 @@ export function AppShell() {
 
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+
+
   const activeProjectRootRef = useRef<string | null>(null);
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
@@ -702,6 +745,7 @@ export function AppShell() {
   }, [activeCwd, invalidateWorkspaceRestore, newSessionCwd, navigate, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
+    sessionSelectGenerationRef.current += 1;
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     // Re-clicking the already-open session must not remount the chat and
@@ -758,12 +802,15 @@ export function AppShell() {
     childSelected,
   });
   const [rootSessionInfo, setRootSessionInfo] = useState<SessionInfo | null>(null);
+  const rootSessionRequestRef = useRef(0);
   useEffect(() => {
     setRootSessionInfo(null);
     if (!selectedRootId) return;
+    const generation = ++rootSessionRequestRef.current;
     void fetch("/api/sessions", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() as Promise<{ sessions: SessionInfo[] }> : null))
       .then((data) => {
+        if (generation !== rootSessionRequestRef.current) return;
         const root = data?.sessions.find((session) => session.id === selectedRootId);
         if (root) setRootSessionInfo(root);
       })
@@ -779,14 +826,18 @@ export function AppShell() {
 
   const handleSubagentSelect = useCallback((node: SubagentTreeNode) => {
     if (!node.sessionId) return;
+    const generation = ++sessionSelectGenerationRef.current;
     void resolveSessionById(node.sessionId).then((session) => {
+      if (generation !== sessionSelectGenerationRef.current) return;
       if (session) handleSelectSession(session);
     });
     closeTopPanel();
   }, [handleSelectSession, resolveSessionById, closeTopPanel]);
 
   const handleBreadcrumbSelect = useCallback((sessionId: string) => {
+    const generation = ++sessionSelectGenerationRef.current;
     void resolveSessionById(sessionId).then((session) => {
+      if (generation !== sessionSelectGenerationRef.current) return;
       if (session) handleSelectSession(session);
     });
     closeTopPanel();
@@ -821,13 +872,16 @@ export function AppShell() {
     }
     if (recoveredRef.current === selectedSession.id) return;
     recoveredRef.current = selectedSession.id;
+    const generation = ++sessionSelectGenerationRef.current;
     void (async () => {
       const response = await fetch("/api/sessions", { cache: "no-store" });
       if (!response.ok) return;
+      if (generation !== sessionSelectGenerationRef.current) return;
       const sessions = (await response.json() as { sessions: SessionInfo[] }).sessions;
       const root = sessions.find((session) => session.id === selectedRootId) ?? null;
       let cursor = sessions.find((session) => session.id === selectedSession?.parentSessionId) ?? null;
       while (cursor) {
+        if (generation !== sessionSelectGenerationRef.current) return;
         if (findSubagentNode(subagents.data?.nodes ?? [], cursor.id)) {
           handleSelectSession(cursor);
           return;
@@ -835,6 +889,7 @@ export function AppShell() {
         if (cursor.id === selectedRootId) break;
         cursor = sessions.find((session) => session.id === cursor?.parentSessionId) ?? null;
       }
+      if (generation !== sessionSelectGenerationRef.current) return;
       if (root) handleSelectSession(root);
     })();
   }, [childSelected, selectedSession, selectedRootId, subagents.data, handleSelectSession]);
@@ -1067,6 +1122,7 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
+    rightPanelUserClosedRef.current = false;
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
@@ -1078,16 +1134,10 @@ export function AppShell() {
 
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0) setRightPanelOpen(false);
-      return next;
+      setActiveFileTabId((cur) => nextActiveFileTabId(prev, tabId, cur));
+      return prev.filter((tab) => tab.id !== tabId);
     });
-    setActiveFileTabId((cur) => {
-      if (cur !== tabId) return cur;
-      const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
-    });
-  }, [fileTabs]);
+  }, []);
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
@@ -1123,8 +1173,9 @@ export function AppShell() {
     })
       .then(async (response) => {
         const data = await response.json() as ProjectTrustStatus & { error?: string };
-        if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+        if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
         setProjectTrust(data);
+        setProjectTrustError(data.error ?? null);
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1157,6 +1208,21 @@ export function AppShell() {
   }, [projectTrustBusy, projectTrustCwd]);
 
   const activeFileTab = fileTabs.find((tab) => tab.id === activeFileTabId) ?? null;
+  const fileOpen = Boolean(activeFileTab?.filePath);
+  fileOpenRef.current = fileOpen;
+
+  const setRightPanelWidth = rightPanelResizer.setPanelWidth;
+  useEffect(() => {
+    if (!isWideDesktop || !rightPanelOpen) return;
+    const current = rightPanelWidthRef.current;
+    if (fileOpen && current <= RIGHT_PANEL_RAIL_WIDTH + 40) {
+      rightPanelAutoExpandedRef.current = true;
+      setRightPanelWidth(getDefaultRightPanelWidth(window.innerWidth, { fileOpen: true }), false);
+    } else if (!fileOpen && rightPanelAutoExpandedRef.current) {
+      rightPanelAutoExpandedRef.current = false;
+      setRightPanelWidth(RIGHT_PANEL_RAIL_WIDTH, false);
+    }
+  }, [fileOpen, isWideDesktop, rightPanelOpen, setRightPanelWidth]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - Grok Web` : "Grok Web";
   const taskTitle = selectedSession?.name
@@ -1195,7 +1261,7 @@ export function AppShell() {
         onToggleSidebar={handleSidebarToggle}
       />
       <div className="codex-sidebar-footer">
-        <button className="codex-sidebar-footer-item" onClick={() => setSettingsOpen(true)} title={translate("common.settings")} aria-label={translate("common.settings")}>
+        <button className="codex-sidebar-footer-item" onClick={() => openSettings("general")} title={translate("common.settings")} aria-label={translate("common.settings")}>
           <Settings size={14} aria-hidden="true" />
           <span className="codex-sidebar-footer-item-label">{translate("common.settings")}</span>
         </button>
@@ -1209,7 +1275,7 @@ export function AppShell() {
       <button
         type="button"
         onClick={() => {
-          setProjectTrustError(null);
+          setProjectTrustError(projectTrust.error ?? null);
           setProjectTrustDialogOpen(true);
         }}
         title={translate("trust.resourcesNotLoaded")}
@@ -1487,7 +1553,7 @@ export function AppShell() {
     if (contextUsage?.contextWindow) {
       const percent = contextUsage.percent;
       if (percent !== null && percent > 90) contextColor = "#ef4444";
-      else if (percent !== null && percent > 70) contextColor = "rgba(234,179,8,0.95)";
+      else if (percent !== null && percent > 70) contextColor = "var(--warning)";
       desktopContextText = percent !== null
         ? `${percent.toFixed(0)}% / ${formatCompact(contextUsage.contextWindow)}`
         : `? / ${formatCompact(contextUsage.contextWindow)}`;
@@ -1635,14 +1701,14 @@ export function AppShell() {
           transform: translateY(0);
           filter: blur(0);
           background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
+          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
         }
         100% {
           opacity: 1;
           transform: translateY(0);
           filter: blur(0);
           background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
+          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
         }
       }
       @keyframes session-info-light-wash {
@@ -1728,7 +1794,7 @@ export function AppShell() {
           position: "fixed",
           inset: 0,
           zIndex: 199,
-          background: "rgba(0,0,0,0.4)",
+          background: "rgba(15, 23, 42, 0.32)",
           opacity: sidebarOpen ? 1 : 0,
           pointerEvents: sidebarOpen ? "auto" : "none",
           transition: "opacity 0.25s ease",
@@ -1739,6 +1805,8 @@ export function AppShell() {
       <div
         ref={sidebarResizer.panelRef}
         id="session-sidebar"
+        inert={!isMobile && !sidebarOpen}
+        aria-hidden={!isMobile && !sidebarOpen}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         onPointerDown={handleDrawerPointerDown}
         onPointerMove={handleDrawerPointerMove}
@@ -1780,7 +1848,6 @@ export function AppShell() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        {!isWideDesktop && (
         <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? TOP_BAR_ICON_BUTTON_SIZE_MOBILE : 36}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           <button
             onClick={handleSidebarToggle}
@@ -1801,23 +1868,27 @@ export function AppShell() {
               <Menu size={18} strokeWidth={2} aria-hidden="true" />
             )}
           </button>
-          {!isMobile && selectedSession && (
+          {!isMobile && (
             <div
-              title={selectedSession.name || selectedSession.firstMessage || translate("i18n.newSession")}
+              title={taskTitle}
               style={{
                 marginLeft: 12,
-                flexShrink: 1,
+                flex: 1,
                 minWidth: 0,
-                maxWidth: "32vw",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "var(--text-muted)",
-                fontSize: "var(--text-meta)",
-                fontFamily: "var(--font-mono)",
+                color: "var(--text)",
+                fontSize: "var(--text-ui)",
+                fontWeight: 650,
               }}
             >
-              {selectedSession.name || selectedSession.firstMessage || translate("i18n.newSession")}
+              {taskTitle}
+              {selectedSession && (
+                <span style={{ color: "var(--text-dim)", fontSize: "var(--text-meta)", fontWeight: 400 }}>
+                  {` · ${taskRunning ? translate("task.running") : translate("task.ready")}`}
+                </span>
+              )}
             </div>
           )}
           {isMobile && (
@@ -1907,10 +1978,60 @@ export function AppShell() {
               )}
             </div>
           )}
-          {!isMobile && !isWideDesktop && (
+          {!isMobile && (
             <>
               {renderProjectTrustWarning(false)}
-              {renderChatToolbarActions(false)}
+              <div ref={desktopToolbarMoreRef} style={{ position: "relative", display: "flex", alignItems: "stretch", height: "100%" }}>
+                <button
+                  type="button"
+                  onClick={() => setDesktopToolbarMoreOpen((open) => !open)}
+                  title={translate("chat.sessionTools")}
+                  aria-label={translate("chat.sessionTools")}
+                  aria-expanded={desktopToolbarMoreOpen}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+                    background: desktopToolbarMoreOpen ? "var(--bg-selected)" : "none",
+                    border: "none", borderRight: "1px solid var(--border)",
+                    color: desktopToolbarMoreOpen ? "var(--text)" : "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Ellipsis size={16} strokeWidth={2} aria-hidden="true" />
+                </button>
+                {desktopToolbarMoreOpen && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: "absolute", top: "100%", left: 0, zIndex: 40,
+                      minWidth: 180, padding: 4,
+                      background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+                    }}
+                  >
+                    {[
+                      { id: "history", label: translate("history.full"), run: () => handleViewFullHistory() },
+                      { id: "name", label: translate("title.generate"), run: () => { void handleAutoName(); } },
+                      { id: "branches", label: translate("i18n.branches"), run: () => toggleTopPanel("branches") },
+                      { id: "system", label: translate("system.prompt"), run: () => toggleTopPanel("system") },
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { item.run(); setDesktopToolbarMoreOpen(false); }}
+                        style={{
+                          display: "block", width: "100%", padding: "7px 10px",
+                          border: 0, borderRadius: 5, background: "none",
+                          color: "var(--text)", cursor: "pointer", textAlign: "left",
+                          fontSize: "var(--text-ui)",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {renderSessionStatsButton(false)}
             </>
           )}
@@ -1930,26 +2051,7 @@ export function AppShell() {
             />
           )}
         </div>
-        )}
-        {isWideDesktop && (
-          <>
-            <TaskHeader
-              title={taskTitle}
-              running={taskRunning}
-              sidebarOpen={sidebarOpen}
-              modified={selectedSession?.modified ?? null}
-              onToggleSidebar={() => setSidebarOpen((open) => !open)}
-              onViewHistory={handleViewFullHistory}
-              historyDisabled={!selectedSession}
-              onAutoName={() => void handleAutoName()}
-              autoNameDisabled={!selectedSession || selectedSession.transient || !((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0) || autoNameStatus.kind === "naming"}
-              onOpenBranches={() => toggleTopPanel("branches", true)}
-              onOpenSystem={() => toggleTopPanel("system", true)}
-              onToggleFiles={handleRightPanelToggle}
-              filePanelOpen={rightPanelOpen}
-            />
-            {renderProjectTrustWarning(false)}
-            {childSelected ? null : (
+        {!isMobile && !childSelected && (
             <BranchNavigator
               tree={branchTree}
               activeLeafId={branchActiveLeafId}
@@ -1962,8 +2064,6 @@ export function AppShell() {
               hasSession={showChat}
               hideInlineButton
             />
-            )}
-          </>
         )}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
@@ -2036,7 +2136,7 @@ export function AppShell() {
                 <div className="session-info-popover" style={{
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
-                  boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
+                  boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
                   padding: "12px 48px 12px 16px",
                 }}>
                   <button
@@ -2349,7 +2449,24 @@ export function AppShell() {
                    <div style={{ fontSize: "var(--text-title)", fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("workspace.getStarted")}</div>
                   <div style={{ fontSize: "var(--text-meta)", color: "var(--text-muted)", lineHeight: "var(--leading-prose)" }}>
                      <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>{translate("workspace.selectProject")}<br />
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.addModels")}
+                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.addModels")}{" "}
+                    <button
+                      type="button"
+                      onClick={() => openSettings("models")}
+                      style={{
+                        pointerEvents: "auto",
+                        margin: 0,
+                        padding: 0,
+                        border: 0,
+                        background: "none",
+                        color: "var(--accent)",
+                        cursor: "pointer",
+                        font: "inherit",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      {translate("workspace.openModels")}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2361,7 +2478,10 @@ export function AppShell() {
       <div
         aria-hidden="true"
         className={`right-panel-overlay-backdrop${rightPanelOpen ? " is-open" : ""}`}
-        onClick={() => setRightPanelOpen(false)}
+        onClick={() => {
+          rightPanelUserClosedRef.current = true;
+          setRightPanelOpen(false);
+        }}
       />
       {rightPanelOpen && (
         <div
@@ -2377,6 +2497,8 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
+        inert={!isMobile && !rightPanelOpen}
+        aria-hidden={!isMobile && !rightPanelOpen}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
@@ -2406,7 +2528,10 @@ export function AppShell() {
           </div>
           <button
             type="button"
-            onClick={() => setRightPanelOpen(false)}
+            onClick={() => {
+              rightPanelUserClosedRef.current = true;
+              setRightPanelOpen(false);
+            }}
             aria-controls="file-panel"
             aria-expanded={rightPanelOpen}
             title={translate("files.hidePanel")}
@@ -2420,7 +2545,7 @@ export function AppShell() {
             onMouseEnter={(event) => { event.currentTarget.style.color = "var(--accent)"; }}
             onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text)"; }}
           >
-            <PanelRight size={16} strokeWidth={2} aria-hidden="true" />
+            <X size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
 
@@ -2450,9 +2575,14 @@ export function AppShell() {
               )}
             />
           ) : (
-            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: "var(--text-meta)" }}>
-               {translate("files.noneOpen")}
-            </div>
+            <WorkspaceBrowser
+              cwd={activeCwd}
+              refreshKey={explorerRefreshKey}
+              onOpenFile={(filePath, fileName, options) => handleOpenFile(filePath, fileName, {
+                sourceSessionId: selectedSession?.id ?? null,
+                modeHint: options?.modeHint,
+              })}
+            />
           )}
         </div>
       </div>
@@ -2460,6 +2590,7 @@ export function AppShell() {
     {settingsOpen && (
       <Suspense fallback={null}>
         <SettingsPage
+        initialSection={settingsSection}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}
         themePreference={preference}

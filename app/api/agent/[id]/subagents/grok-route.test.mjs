@@ -138,6 +138,48 @@ describe("POST /api/agent/[id]/subagents (Grok)", () => {
     assert.match(String(body.error), /not supported/i);
   });
 
+  it("rejects blank steering messages on the exported POST handler", async () => {
+    stubRuntime();
+    for (const message of [undefined, "", "   "]) {
+      const response = await POST(postRequest({
+        action: "steer",
+        childSessionId: "child-1",
+        ...(message === undefined ? {} : { message }),
+      }), params());
+      assert.equal(response.status, 400);
+      const body = await response.json();
+      assert.match(String(body.error), /non-empty message/i);
+    }
+  });
+
+  it("cancels the real subagentId when it differs from childSessionId", async () => {
+    const otherId = "root-2";
+    const otherDir = join(home, "sessions", encodeURIComponent("/tmp/p"), otherId);
+    mkdirSync(join(otherDir, "subagents", "run-abc"), { recursive: true });
+    writeFileSync(join(otherDir, "summary.json"), JSON.stringify({
+      info: { id: otherId, cwd: "/tmp/p" },
+      session_summary: "Other",
+      created_at: "2026-08-19T00:00:00.000Z",
+      updated_at: "2026-08-19T00:00:00.000Z",
+      generated_title: "Other",
+    }));
+    writeFileSync(join(otherDir, "subagents", "run-abc", "meta.json"), JSON.stringify({
+      subagent_id: "run-abc",
+      parent_session_id: otherId,
+      child_session_id: "sess-xyz",
+      subagent_type: "explore",
+      description: "look around",
+      status: "running",
+    }));
+    const { cancelled } = stubRuntime();
+    const response = await POST(postRequest({
+      action: "interrupt",
+      childSessionId: "sess-xyz",
+    }), { params: Promise.resolve({ id: otherId }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(cancelled, ["run-abc"]);
+  });
+
   it("steers through the root session prompt", async () => {
     const { sent, cancelled } = stubRuntime();
     const response = await POST(postRequest({

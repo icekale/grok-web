@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
-import { writePrivateFileAtomicSync } from "./atomic-file";
-import { invalidateModelsCache } from "./models-cache";
-import { normalizeProviderBaseUrl } from "./model-discovery";
+import { writePrivateFileAtomicSync } from "./atomic-file.ts";
+import { grokHome } from "./grok-home.ts";
+import { syncSettingsModelsToGrokConfig } from "./grok-model-table.ts";
+import { invalidateModelsCache } from "./models-cache.ts";
+import { normalizeProviderBaseUrl } from "./model-discovery.ts";
 
 const MODEL_COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
 
@@ -62,27 +63,45 @@ function sanitizeModelsConfig(data: Record<string, unknown>): Record<string, unk
 }
 
 export function getModelsConfigPath(): string {
-  return join(getAgentDir(), "models.json");
+  return join(grokHome(), "models.json");
+}
+
+export class ModelsConfigError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "ModelsConfigError";
+    this.status = status;
+  }
 }
 
 export function readModelsConfig(
   modelsPath = getModelsConfigPath(),
 ): Record<string, unknown> {
   if (!existsSync(modelsPath)) return { providers: {} };
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(modelsPath, "utf8")) as Record<string, unknown>;
+    parsed = JSON.parse(readFileSync(modelsPath, "utf8"));
   } catch {
-    return { providers: {} };
+    throw new ModelsConfigError("Models config is not valid JSON", 500);
   }
+  if (!isRecord(parsed)) {
+    throw new ModelsConfigError("Models config root must be an object", 500);
+  }
+  return parsed;
 }
 
 export function writeModelsConfig(
   data: Record<string, unknown>,
   modelsPath = getModelsConfigPath(),
 ): void {
+  if (!isRecord(data)) {
+    throw new ModelsConfigError("Models config root must be an object");
+  }
   const dir = dirname(modelsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(data));
   writePrivateFileAtomicSync(modelsPath, JSON.stringify(normalized, null, 2));
+  if (modelsPath === getModelsConfigPath()) syncSettingsModelsToGrokConfig(normalized);
   invalidateModelsCache();
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -193,4 +194,33 @@ describe("/api/skills ACP adapter", () => {
     const after = await (await getSkills()).json();
     assert.equal(after.skills.find((skill) => skill.name === "demo")?.disableModelInvocation, true);
   });
+});
+
+test("PATCH writes SKILL.md frontmatter when ACP is offline", async () => {
+  const filePath = join(home, "skills", "demo", "SKILL.md");
+  writeFileSync(filePath, "---\nname: demo\n---\n# demo skill\n");
+  globalThis.__piAdditionalAllowedRoots ??= new Set();
+  globalThis.__piAdditionalAllowedRoots.add(home);
+  globalThis.__piAllowedRootsCache = undefined;
+  setAgentRuntime({ listSkills: async () => { throw new Error("offline"); } });
+  try {
+    const { PATCH } = await acpJiti.import("./route.ts");
+    const res = await PATCH(new Request("http://127.0.0.1/api/skills", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath, disableModelInvocation: true, cwd }),
+    }));
+    const body = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(body));
+    assert.equal(body.error, undefined);
+    assert.match(readFileSync(filePath, "utf8"), /disable-model-invocation:\s*true/);
+  } finally {
+    resetAgentRuntime();
+  }
+});
+
+test("PATCH looks up ACP skills from cwd, agent dir, and the skill folder", async () => {
+  const source = await readFile(new URL("./route.ts", import.meta.url), "utf8");
+  assert.match(source, /getAgentDir\(\)/);
+  assert.match(source, /path\.dirname\(filePath\)/);
 });

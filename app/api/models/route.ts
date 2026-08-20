@@ -1,27 +1,16 @@
 import { stat } from "fs/promises";
 import { resolve } from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime";
+import { collectSettingsComposerModels, mergeComposerModels } from "@/lib/composer-models";
+import { settingsPickerIdResolver, syncSettingsModelsToGrokConfig } from "@/lib/grok-model-table";
+import { readModelsConfig } from "@/lib/models-config-store";
 import {
+  invalidateModelsCache,
   loadModelsWithCache,
   withSafeModelLoadFailure,
   type ModelsData,
 } from "@/lib/models-cache";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-
-async function loadModels(): Promise<ModelsData> {
-  try {
-    return await getAgentRuntime().listModels();
-  } catch {
-    return withSafeModelLoadFailure({
-      models: {},
-      modelList: [],
-      defaultModel: null,
-      thinkingLevels: {},
-      thinkingLevelMaps: {},
-      thinkingLevelPins: {},
-    });
-  }
-}
 
 const EMPTY_MODELS: ModelsData = {
   models: {},
@@ -31,6 +20,29 @@ const EMPTY_MODELS: ModelsData = {
   thinkingLevelMaps: {},
   thinkingLevelPins: {},
 };
+
+async function loadModels(): Promise<ModelsData> {
+  const settings = readModelsConfig();
+  try {
+    const wrote = syncSettingsModelsToGrokConfig(settings);
+    if (wrote.length > 0) await getAgentRuntime().recycleProcess();
+    const pickerId = settingsPickerIdResolver();
+    let listed = await getAgentRuntime().listModels();
+    const needed = collectSettingsComposerModels(settings)
+      .filter((row) => row.baseUrl)
+      .map((row) => pickerId(row));
+    const have = new Set(listed.modelList.map((model) => model.id));
+    if (needed.some((id) => !have.has(id))) {
+      await getAgentRuntime().recycleProcess();
+      listed = await getAgentRuntime().listModels();
+    }
+    return mergeComposerModels(listed, settings, pickerId);
+  } catch {
+    return withSafeModelLoadFailure(mergeComposerModels(EMPTY_MODELS, settings, settingsPickerIdResolver()));
+  }
+}
+
+invalidateModelsCache();
 
 export async function GET(req: Request) {
   const requestedCwd = new URL(req.url).searchParams.get("cwd") || process.cwd();

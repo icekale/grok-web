@@ -57,8 +57,8 @@ test("settings guards every exit path behind one discard confirmation", () => {
   assert.match(settings, /if \(modelsController\?\.dirty \|\| visionController\?\.dirty \|\| remoteController\?\.dirty\)/);
   assert.match(settings, /setPendingExit\(\(\) => action\)/);
   assert.match(settings, /setDiscardDialogOpen\(true\)/);
-  assert.match(settings, /onClick=\{\(\) => requestCloseOrNavigate\(close\)\}/);
-  assert.match(settings, /onMouseDown=\{\(event\) => \{ if \(event\.target === event\.currentTarget\) requestCloseOrNavigate\(close\); \}\}/);
+  assert.match(settings, /onClose=\{\(\) => requestCloseOrNavigate\(close\)\}/);
+  assert.match(settings, /size="page"/);
   assert.match(settings, /<DialogShell[\s\S]*?size="confirm"/);
   assert.match(settings, /t\("models\.unsavedChanges"\)/);
   assert.match(settings, /t\("models\.keepEditing"\)/);
@@ -66,8 +66,8 @@ test("settings guards every exit path behind one discard confirmation", () => {
 });
 
 test("Escape consumes Models layers before closing Settings", () => {
-  assert.match(settings, /if \(activeController\?\.handleBack\(\)\) return;/);
-  assert.match(settings, /if \(discardDialogOpen\) return;/);
+  assert.match(settings, /onEscape=\{\(\) => Boolean\(activeController\?\.handleBack\(\)\)\}/);
+  assert.match(settings, /size="page"/);
 });
 
 test("Settings focuses the close button only on mount, not when the models draft becomes dirty", () => {
@@ -115,7 +115,8 @@ test("settings lists archived projects and restores them through the project reg
 });
 
 test("settings owns general preferences", () => {
-  assert.match(settings, /useState<SettingsSection>\("general"\)/);
+  assert.match(settings, /initialSection = "general"/);
+  assert.match(settings, /useState<SettingsSection>\(initialSection\)/);
   assert.match(settings, /onThemeChange\(id\)/);
   assert.match(settings, /onLocaleChange\(event\.target\.value as Locale\)/);
   assert.match(settings, /role="switch" aria-checked=\{soundEnabled\}/);

@@ -129,7 +129,7 @@ export function writeGrokWebSettings(settings: Record<string, unknown>, home = g
   const dir = join(home, "grok-web");
   mkdirSync(dir, { recursive: true });
   const file = join(dir, "settings.json");
-  writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+  writePrivateFileAtomicSync(file, `${JSON.stringify(settings, null, 2)}\n`);
   return file;
 }
 
@@ -194,11 +194,29 @@ export function writeGrokApiKey(apiKey: string, home = grokHome()): void {
   writePrivateFileAtomicSync(file, `${nextPreamble}${rest}`);
 }
 
+export function clearGrokAuth(home = grokHome()): void {
+  const file = join(home, "auth.json");
+  if (!existsSync(file)) return;
+  writePrivateFileAtomicSync(file, "{}\n");
+}
+
 export function clearGrokApiKey(home = grokHome()): void {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return;
-  const { preamble, rest } = splitTopLevelToml(readFileSync(file, "utf8"));
-  writePrivateFileAtomicSync(file, `${preamble.replace(/^api_key\s*=.*\r?\n?/m, "")}${rest}`);
+  const lines = readFileSync(file, "utf8").split(/\r?\n/);
+  let section: string | undefined;
+  const kept: string[] = [];
+  for (const raw of lines) {
+    const next = tomlSectionName(raw);
+    if (next !== undefined) {
+      section = next;
+      kept.push(raw);
+      continue;
+    }
+    if (isGrokApiKeySection(section) && /^api_key\s*=/.test(raw.trim())) continue;
+    kept.push(raw);
+  }
+  writePrivateFileAtomicSync(file, kept.join("\n"));
 }
 
 export function readGrokAuth(home = grokHome()): { loggedIn: boolean; methods: string[] } {

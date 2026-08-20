@@ -1,6 +1,15 @@
 import { EventEmitter } from "node:events";
 import type { Readable, Writable } from "node:stream";
-import { createInterface } from "node:readline";
+import { createInterface, type Interface } from "node:readline";
+
+export class JsonRpcConnectionClosedError extends Error {
+  readonly code = "ACP_JSONRPC_CLOSED";
+
+  constructor(cause?: unknown) {
+    super("ACP JSON-RPC connection closed", { cause });
+    this.name = "JsonRpcConnectionClosedError";
+  }
+}
 
 export class JsonRpcConn {
   private nextId = 1;
@@ -9,36 +18,126 @@ export class JsonRpcConn {
     reject: (error: Error) => void;
   }>();
   private readonly notes = new EventEmitter();
+  private readonly lifecycle = new EventEmitter();
+  private readonly stdin: Writable;
+  private readonly stdout: Readable;
+  private readonly reader: Interface;
+  private closedError: JsonRpcConnectionClosedError | undefined;
 
   constructor(io: { stdin: Writable; stdout: Readable }) {
-    createInterface({ input: io.stdout }).on("line", (line) => this.onLine(line));
     this.stdin = io.stdin;
+    this.stdout = io.stdout;
+    this.reader = createInterface({ input: io.stdout });
+    this.reader.on("line", this.handleLine);
+    this.reader.on("error", this.handleError);
+    this.stdin.on("error", this.handleError);
+    this.stdin.on("close", this.handleClose);
+    this.stdout.on("error", this.handleError);
+    this.stdout.on("end", this.handleClose);
+    this.stdout.on("close", this.handleClose);
   }
 
-  private readonly stdin: Writable;
-
   request(method: string, params?: unknown): Promise<unknown> {
+    if (this.closedError) return Promise.reject(this.closedError);
     const id = this.nextId++;
-    const promise = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-    this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    return promise;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      try {
+        this.write({ jsonrpc: "2.0", id, method, params });
+      } catch {
+        // write() closes the connection and rejects every pending request.
+      }
+    });
   }
 
   notify(method: string, params?: unknown): void {
-    this.stdin.write(JSON.stringify({ jsonrpc: "2.0", method, params }) + "\n");
+    this.write({ jsonrpc: "2.0", method, params });
   }
 
   respond(id: number, result?: unknown, error?: { code: number; message: string }): void {
     if (error) {
-      this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, error }) + "\n");
+      this.write({ jsonrpc: "2.0", id, error });
       return;
     }
-    this.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
+    this.write({ jsonrpc: "2.0", id, result });
   }
 
   onNotification(handler: (method: string, params: unknown, id?: number) => void): () => void {
     this.notes.on("n", handler);
     return () => this.notes.off("n", handler);
+  }
+
+  onClose(handler: (error: JsonRpcConnectionClosedError) => void): () => void {
+    if (this.closedError) {
+      handler(this.closedError);
+      return () => {};
+    }
+    this.lifecycle.on("close", handler);
+    return () => this.lifecycle.off("close", handler);
+  }
+
+  close(): void {
+    this.closeWithError();
+  }
+
+  private readonly handleLine = (line: string): void => {
+    this.onLine(line);
+  };
+
+  private readonly handleError = (error: Error): void => {
+    this.closeWithError(error);
+  };
+
+  private readonly handleClose = (): void => {
+    this.closeWithError();
+  };
+
+  private readonly terminalErrorSink = (): void => {};
+
+  private write(message: Record<string, unknown>): void {
+    if (this.closedError) throw this.closedError;
+    try {
+      this.stdin.write(`${JSON.stringify(message)}\n`, (error) => {
+        if (error) this.closeWithError(error);
+      });
+    } catch (error) {
+      this.closeWithError(error);
+      throw this.closedError;
+    }
+  }
+
+  private closeWithError(cause?: unknown): void {
+    if (this.closedError) return;
+    const error = new JsonRpcConnectionClosedError(cause);
+    this.closedError = error;
+    this.reader.off("line", this.handleLine);
+    this.reader.off("error", this.handleError);
+    this.reader.on("error", this.terminalErrorSink);
+    this.reader.close();
+    queueMicrotask(() => this.reader.off("error", this.terminalErrorSink));
+    this.stdin.off("error", this.handleError);
+    this.stdin.off("close", this.handleClose);
+    this.stdout.off("error", this.handleError);
+    this.stdout.off("end", this.handleClose);
+    this.stdout.off("close", this.handleClose);
+    this.quiesce(this.stdin);
+    this.quiesce(this.stdout);
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+    this.notes.removeAllListeners();
+    this.lifecycle.emit("close", error);
+    this.lifecycle.removeAllListeners();
+  }
+
+  private quiesce(stream: Readable | Writable): void {
+    if (stream.closed) return;
+    const cleanup = () => {
+      stream.off("error", this.terminalErrorSink);
+      stream.off("close", cleanup);
+    };
+    stream.on("error", this.terminalErrorSink);
+    stream.once("close", cleanup);
+    stream.destroy();
   }
 
   private onLine(line: string): void {

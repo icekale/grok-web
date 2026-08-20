@@ -365,3 +365,12 @@ test("collapsed deferred tool result omits its body and keeps the header", () =>
   // Collapsed by default: no loading text, no result body.
   assert.doesNotMatch(html, /Loading tool result/);
 });
+
+test("memo comparator rerenders when writtenFiles or token speed flags change", () => {
+  assert.match(source, /prev\.writtenFiles === next\.writtenFiles/);
+  assert.match(source, /prev\.tokenSpeedEnabled === next\.tokenSpeedEnabled/);
+});
+
+test("deferred thinking remounts when the session entry changes", () => {
+  assert.match(source, /ThinkingBlock key=\{`\$\{sessionId \?\? ""\}:\$\{entryId \?\? ""\}:\$\{blockIndex\}`\}/);
+});

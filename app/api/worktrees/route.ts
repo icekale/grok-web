@@ -1,11 +1,11 @@
 import { existsSync } from "fs";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { findCurrentWorktreePath, listWorktrees, resolveProject } from "@/lib/worktree";
+import { canonicalizePath } from "@/lib/git-http";
+import { findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
 import {
   createWorkspaceWorktree,
   refuseWorktreeWrite,
-  removeWorkspaceWorktree,
 } from "@/lib/grok-fs/workspace.ts";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
@@ -104,19 +104,20 @@ export async function DELETE(req: Request) {
     if (!body.path || typeof body.path !== "string") {
       return Response.json({ error: "path is required" }, { status: 400 });
     }
-    const denied = await checkCwdAllowed(body.cwd);
-    if (denied) return denied;
-
-    let runtime: ReturnType<typeof getAgentRuntime>;
-    try {
-      runtime = getAgentRuntime();
-      await runtime.ensureProcess();
-    } catch {
-      refuseWorktreeWrite();
+    const allowedRoots = await getAllowedFileRoots();
+    for (const candidate of [body.cwd, body.path]) {
+      if (!isFilePathAllowed(candidate, allowedRoots) || !isExistingFilePathAllowed(candidate, allowedRoots)) {
+        return Response.json({ error: "Access denied" }, { status: 403 });
+      }
     }
-    await removeWorkspaceWorktree(body.path, {
-      worktreeRemove: (worktreePath) => runtime.worktreeRemove(worktreePath),
-    });
+    const cwd = canonicalizePath(body.cwd);
+    const target = canonicalizePath(body.path);
+    for (const canonical of [cwd, target]) {
+      if (!isExistingFilePathAllowed(canonical, allowedRoots)) {
+        return Response.json({ error: "Access denied" }, { status: 403 });
+      }
+    }
+    await removeWorktree(cwd, target, body.force === true);
     return Response.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

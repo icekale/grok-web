@@ -79,16 +79,35 @@ export function matchApiRoutePattern(pattern: string, pathname: string): boolean
   return patternSegments.length === pathSegments.length;
 }
 
+export function apiRouteSpecificity(pattern: string): number {
+  let score = 0;
+  for (const segment of pattern.split("/").filter(Boolean)) {
+    if (segment === "$") score += 1;
+    else if (segment.startsWith("$")) score += 10;
+    else score += 100;
+  }
+  return score * 1000 + pattern.length;
+}
+
+export function findApiRoute(pathname: string): [string, readonly string[]] | undefined {
+  let best: [string, readonly string[], number] | undefined;
+  for (const [pattern, methods] of Object.entries(API_ROUTE_METHODS)) {
+    if (!matchApiRoutePattern(pattern, pathname)) continue;
+    const score = apiRouteSpecificity(pattern);
+    if (!best || score > best[2]) best = [pattern, methods, score];
+  }
+  return best ? [best[0], best[1]] : undefined;
+}
+
 /** 405 rejection for /api/* requests whose method is not allowed by the adapter. */
 export function getApiMethodRejection(request: Request): Response | undefined {
   const pathname = new URL(request.url).pathname;
-  for (const [pattern, methods] of Object.entries(API_ROUTE_METHODS)) {
-    if (!matchApiRoutePattern(pattern, pathname)) continue;
-    if (methods.includes(request.method)) return undefined;
-    return new Response(null, {
-      status: 405,
-      headers: { Allow: [...methods].join(", ") },
-    });
-  }
-  return undefined;
+  const match = findApiRoute(pathname);
+  if (!match) return undefined;
+  const [, methods] = match;
+  if (methods.includes(request.method)) return undefined;
+  return new Response(null, {
+    status: 405,
+    headers: { Allow: [...methods].join(", ") },
+  });
 }

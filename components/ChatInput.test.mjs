@@ -20,6 +20,21 @@ test("lists feedback and recap as builtin slash commands", async () => {
   assert.match(source, /action === "openFeedback"/);
 });
 
+test("composer reasoning helpers stay in browser-safe code", async () => {
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /from "@\/lib\/grok-effort-levels"/);
+  assert.match(source, /from "@\/lib\/grok-model-label"/);
+  assert.doesNotMatch(source, /from "@\/lib\/composer-models"/);
+  assert.doesNotMatch(source, /from ["']node:path["']/);
+  assert.doesNotMatch(source, /from ["']path["']/);
+});
+
+test("model chip matches Settings models by id when the provider label differs", async () => {
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /modelOptions\.find\(\(o\) => o\.modelId === model\.modelId && o\.provider === model\.provider\)/);
+  assert.match(source, /modelOptions\.find\(\(o\) => o\.modelId === model\.modelId\)\?\.name/);
+});
+
 test("disables image attach because Grok ACP has no image prompt capability", () => {
   const html = renderToStaticMarkup(
     React.createElement(
@@ -33,7 +48,7 @@ test("disables image attach because Grok ACP has no image prompt capability", ()
     ),
   );
   assert.match(html, /disabled=""/);
-  assert.match(html, /Images are not supported|不支持图片附件|chat\.imagesNotSupported/);
+  assert.match(html, /Grok cannot attach images|不能附加图片|chat\.imagesNotSupported/);
 });
 
 test("renders the upstream model error", () => {
@@ -445,6 +460,9 @@ test("keeps compaction actions coarse-pointer sized and still under reduced moti
 test("keeps composer chip labels from wrapping", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\.composer-chip \{\s*display: flex;[^}]*white-space: nowrap/);
+  assert.match(css, /\.composer-chip \{\s*display: flex;[^}]*height: 32px;[^}]*border-radius: 8px;/);
+  assert.match(css, /\.composer-menu-item \{/);
+  assert.match(css, /\.chat-user-bubble \{[^}]*background: var\(--user-bg\)/);
 });
 
 test("queue dock labels steering vs follow-up and only steers follow-ups", async () => {

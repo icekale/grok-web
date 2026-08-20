@@ -2,7 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
-import { mapUpdatesJsonl } from "./history-map.ts";
+import { mapUpdatesJsonl, toolResultText } from "./history-map.ts";
 import { findGrokSession } from "./session-index.ts";
 import { isReservedSubagentSessionName } from "./session-relations.ts";
 import { listAllSessions } from "./session-reader.ts";
@@ -215,13 +215,8 @@ export async function getToolResult(_req: Request, id: string, entryId: string):
     if (toolCallId !== entryId) continue;
     if (kind === "tool_call" || kind === "tool_call_update") found = true;
     if (kind === "tool_call_update") {
-      const content = (update as { content?: unknown }).content;
-      const chunk = typeof content === "string"
-        ? content
-        : content && typeof content === "object" && !Array.isArray(content) && typeof (content as { text?: unknown }).text === "string"
-          ? (content as { text: string }).text
-          : "";
-      resultText += chunk;
+      resultText += toolResultText((update as { content?: unknown; rawOutput?: unknown }).content
+        ?? (update as { rawOutput?: unknown }).rawOutput);
     }
   }
   if (!found) return Response.json({ error: "Tool result not found" }, { status: 404 });

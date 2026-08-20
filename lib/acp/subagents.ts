@@ -35,11 +35,14 @@ export function findGrokChild(
   if (childSessionId === rootId) return null;
   const related = attachSessionRelations(sessions);
   const child = related.find((session) => session.id === childSessionId);
-  if (child && (child.rootSessionId === rootId || child.parentSessionId === rootId)) return child;
   const meta = metas?.find((item) => (
     item.childSessionId === childSessionId || item.subagentId === childSessionId
   ));
+  if (child && (child.rootSessionId === rootId || child.parentSessionId === rootId)) {
+    return meta?.subagentId ? { ...child, subagentRunId: meta.subagentId } : child;
+  }
   if (!meta) return null;
+  if (meta.parentSessionId && meta.parentSessionId !== rootId) return null;
   return {
     id: meta.childSessionId || meta.subagentId,
     path: "",
@@ -50,6 +53,7 @@ export function findGrokChild(
     messageCount: 0,
     firstMessage: meta.task,
     parentSessionId: meta.parentSessionId || rootId,
+    subagentRunId: meta.subagentId,
   };
 }
 
@@ -164,18 +168,24 @@ export async function controlGrokSubagent(
   childSessionId: string,
   action: "steer" | "interrupt" | "resume",
   message?: string,
+  options: { subagentId?: string } = {},
 ): Promise<{ action: string; childSessionId: string; rootSessionId: string }> {
+  if (action === "steer" || action === "resume") {
+    if (typeof message !== "string" || message.trim().length === 0) {
+      throw new Error(`${action} requires a non-empty message`);
+    }
+  }
   if (action === "steer") {
     await runtime.send(rootId, {
       type: "prompt",
-      message: message ?? "",
+      message: message.trim(),
       streamingBehavior: "steer",
     });
   } else if (action === "interrupt") {
     if (!runtime.cancelSubagent) {
       throw new Error("Subagent cancel is not available");
     }
-    await runtime.cancelSubagent(childSessionId);
+    await runtime.cancelSubagent(options.subagentId || childSessionId);
   } else {
     if (!runtime.resumeSession) {
       throw new Error("Subagent resume is not supported");
@@ -183,7 +193,7 @@ export async function controlGrokSubagent(
     await runtime.resumeSession(childSessionId);
     await runtime.send(childSessionId, {
       type: "prompt",
-      message: message ?? "",
+      message: message.trim(),
     });
   }
   return { action, childSessionId, rootSessionId: rootId };

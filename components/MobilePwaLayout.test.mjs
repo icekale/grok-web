@@ -57,8 +57,8 @@ test("prevents iOS focus zoom from widening the layout", () => {
 
 test("uses a restrained DSCode desktop composer without changing mobile sizing", () => {
   assert.match(chatInputSource, /className=\{`composer-shell\$\{/);
-  assert.match(chatInputSource, /borderRadius: isMobile \? 20 : 12/);
-  assert.match(chatInputSource, /boxShadow: isMobile[\s\S]*?0 2px 12px rgba\(0,0,0,0\.06\)[\s\S]*?: "0 2px 8px rgba\(0,0,0,0\.05\)"/);
+  assert.match(chatInputSource, /borderRadius: 8/);
+  assert.match(chatInputSource, /boxShadow: "none"/);
   assert.match(chatInputSource, /maxWidth: isMobile \? undefined : 780/);
   assert.match(chatInputSource, /width: 28, height: 28/);
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -16,15 +16,10 @@ import {
 } from "./resource-settings/plugins-navigation";
 
 type PluginScope = PluginPackageInfo["scope"];
-type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
+type PluginAction = "remove" | "update" | "disable" | "enable";
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
-}
-
-function normalizePluginSourceInput(value: string): string {
-  const match = value.trim().match(/^\$?\s*pi\s+install\s+(\S+)\s*$/);
-  return match?.[1] ?? value;
 }
 
 function packageKey(pkg: Pick<PluginPackageInfo, "source" | "scope">): string {
@@ -47,24 +42,6 @@ function versionSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t
   if (pkg.version) parts.push(t("i18n.installedVersion", { version: pkg.version }));
   if (pkg.configuredVersion) parts.push(t("i18n.configuredVersion", { version: pkg.configuredVersion }));
   return parts.length ? parts.join(" · ") : t("i18n.unknown");
-}
-
-function installLocation(scope: PluginScope, cwd: string): string {
-  return scope === "project"
-    ? `${shortenPath(cwd)}/.pi/agent/{npm,git}`
-    : "~/.pi/agent/{npm,git}";
-}
-
-function findInstalledPackage(
-  packages: PluginPackageInfo[],
-  source: string,
-  scope: PluginScope,
-): PluginPackageInfo | undefined {
-  const trimmed = source.trim();
-  const withoutNpmPrefix = trimmed.startsWith("npm:") ? trimmed.slice(4) : trimmed;
-  return packages.find((pkg) => pkg.scope === scope && pkg.source === trimmed)
-    ?? packages.find((pkg) => pkg.scope === scope && pkg.source === `npm:${withoutNpmPrefix}`)
-    ?? packages.find((pkg) => pkg.scope === scope && pkg.source.endsWith(trimmed));
 }
 
 function statusColor(status: PluginPackageInfo["status"]): string {
@@ -244,226 +221,6 @@ function Toggle({
   );
 }
 
-function SegmentedScope({
-  value,
-  projectResourcesLoaded,
-  onChange,
-}: {
-  value: PluginScope;
-  projectResourcesLoaded: boolean;
-  onChange: (scope: PluginScope) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        border: "1px solid var(--border)",
-        borderRadius: 7,
-        overflow: "hidden",
-        height: 30,
-      }}
-    >
-      {(["global", "project"] as PluginScope[]).map((scope) => {
-        const active = value === scope;
-        const disabled = scope === "project" && !projectResourcesLoaded;
-        return (
-          <button
-            key={scope}
-            onClick={() => {
-              if (!disabled) onChange(scope);
-            }}
-            disabled={disabled}
-            title={disabled ? t("trust.projectScopeUnavailable") : undefined}
-            style={{
-              width: 76,
-              border: "none",
-              borderRight: scope === "global" ? "1px solid var(--border)" : "none",
-              background: active ? "var(--bg-selected)" : "none",
-              color: active ? "var(--text)" : "var(--text-muted)",
-              cursor: disabled ? "not-allowed" : "pointer",
-              opacity: disabled ? 0.45 : 1,
-              fontSize: "var(--text-ui)",
-            }}
-          >
-            {scope}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function AddPluginPanel({
-  cwd,
-  source,
-  scope,
-  projectResourcesLoaded,
-  busy,
-  actionError,
-  onSourceChange,
-  onScopeChange,
-  onInstall,
-}: {
-  cwd: string;
-  source: string;
-  scope: PluginScope;
-  projectResourcesLoaded: boolean;
-  busy: boolean;
-  actionError: string | null;
-  onSourceChange: (value: string) => void;
-  onScopeChange: (scope: PluginScope) => void;
-  onInstall: () => void;
-}) {
-  const { t } = useI18n();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const examples = ["npm:@scope/pi-plugin", "git:https://github.com/user/repo", "/absolute/path/to/plugin"];
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 660, minHeight: "100%" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontSize: "var(--text-title)", fontWeight: 700, color: "var(--text)" }}>
-            {t("i18n.addPlugin")}
-          </div>
-          <a
-            href="https://pi.dev/packages"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              color: "var(--accent)",
-              fontSize: "var(--text-ui)",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 800 800" aria-hidden="true" focusable="false" style={{ flexShrink: 0 }}>
-              <path
-                fill="#000"
-                fillRule="evenodd"
-                d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
-              />
-              <path fill="#000" d="M517.36 400H634.72V634.72H517.36Z" />
-            </svg>
-            pi.dev/packages
-          </a>
-        </div>
-        <div style={{ fontSize: "var(--text-meta)", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
-          {installLocation(scope, cwd)}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <label htmlFor="plugin-source" style={{ fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-muted)" }}>
-          Source
-        </label>
-        <input
-          id="plugin-source"
-          ref={inputRef}
-          value={source}
-          onChange={(e) => onSourceChange(e.target.value)}
-          onPaste={(e) => {
-            const pasted = e.clipboardData.getData("text");
-            const normalized = normalizePluginSourceInput(pasted);
-            if (normalized === pasted) return;
-            e.preventDefault();
-            onSourceChange(normalized);
-          }}
-          onBlur={(e) => onSourceChange(normalizePluginSourceInput(e.currentTarget.value))}
-          placeholder="npm:@scope/package"
-          style={{
-            width: "100%",
-            height: 36,
-            padding: "0 11px",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            background: "var(--bg-panel)",
-            color: "var(--text)",
-            fontFamily: "var(--font-mono)",
-            fontSize: "var(--text-ui)",
-            outline: "none",
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && source.trim() && !busy) onInstall();
-          }}
-        />
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <SegmentedScope
-          value={scope}
-          projectResourcesLoaded={projectResourcesLoaded}
-          onChange={onScopeChange}
-        />
-        <button
-          type="button"
-          onClick={onInstall}
-          disabled={busy || !source.trim()}
-          style={{
-            ...buttonStyle(busy || !source.trim()),
-            background: "var(--accent)",
-            color: "white",
-            borderColor: "var(--accent)",
-          }}
-        >
-          {busy ? t("i18n.installing") : t("i18n.install")}
-        </button>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <div style={{ fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-muted)" }}>
-          Examples
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {examples.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => onSourceChange(example)}
-              style={{
-                width: "100%",
-                minHeight: 30,
-                textAlign: "left",
-                padding: "6px 9px",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                background: "var(--bg-panel)",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                fontFamily: "var(--font-mono)",
-                fontSize: "var(--text-meta)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = "var(--text-muted)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--bg-panel)";
-                e.currentTarget.style.color = "var(--text-dim)";
-              }}
-            >
-              {example}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {actionError && (
-        <div style={{ fontSize: "var(--text-meta)", color: "#ef4444", whiteSpace: "pre-wrap" }}>
-          {actionError}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function PackageDetail({
   pkg,
   cwd,
@@ -640,9 +397,6 @@ export function PluginsConfig({
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
-  const [addMode, setAddMode] = useState(false);
-  const [installSource, setInstallSource] = useState("");
-  const [installScope, setInstallScope] = useState<PluginScope>("global");
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -670,7 +424,6 @@ export function PluginsConfig({
         if (repaired) return repaired;
         if (current) {
           setMobileView("list");
-          setAddMode(next.packages.length === 0);
           return null;
         }
         return next.packages[0] ? pluginIdentity(next.packages[0]) : null;
@@ -695,7 +448,7 @@ export function PluginsConfig({
       const res = await fetch("/api/plugins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, source: pkg.source, scope: pkg.scope, cwd }),
+        body: JSON.stringify({ action, source: pkg.source, cwd }),
       });
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
@@ -704,13 +457,11 @@ export function PluginsConfig({
         const nextId = next.packages[0] ? pluginIdentity(next.packages[0]) : null;
         setSelected(nextId);
         if (!nextId) {
-          setAddMode(true);
           setMobileView(isMobile ? "list" : mobileView);
         }
         setActionMessage("Package removed.");
       } else {
         const messages: Record<Exclude<PluginAction, "remove">, string> = {
-          install: "Package installed.",
           update: "Package updated.",
           disable: "Package disabled.",
           enable: "Package enabled.",
@@ -727,39 +478,6 @@ export function PluginsConfig({
       setBusyKey(null);
     }
   }, [cwd, isMobile, mobileView, onReloaded, sessionId]);
-
-  const installPlugin = useCallback(async () => {
-    const source = normalizePluginSourceInput(installSource).trim();
-    if (!source) return;
-    setInstallSource(source);
-    const key = `${installScope}\0${source}`;
-    setBusyKey(`install:${key}`);
-    setActionError(null);
-    setActionMessage(null);
-    try {
-      const res = await fetch("/api/plugins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "install", source, scope: installScope, cwd }),
-      });
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
-      setData(next);
-      const installed = findInstalledPackage(next.packages, source, installScope);
-      setSelected(installed ? packageKey(installed) : key);
-      setAddMode(false);
-      setInstallSource("");
-      setActionMessage("Package installed.");
-      if (sessionId) {
-        await sendAgentCommand(sessionId, { type: "reload" });
-        onReloaded?.();
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyKey(null);
-    }
-  }, [cwd, installScope, installSource, onReloaded, sessionId]);
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -778,17 +496,13 @@ export function PluginsConfig({
     }
   }, [loadPlugins, onReloaded, sessionId]);
 
-  const addBusy = busyKey?.startsWith("install:") ?? false;
   const filtered = useMemo(() => filterPluginsNavigation(packages, query), [packages, query]);
-  const headerLabel = addMode
-    ? { title: t("i18n.addPlugin") }
-    : pluginsSelectionLabel(selected, packages);
+  const headerLabel = pluginsSelectionLabel(selected, packages);
 
   const handleBack = useCallback(() => {
-    if (addMode) { setAddMode(false); return true; }
     if (isMobile && mobileView === "detail") { setMobileView("list"); return true; }
     return false;
-  }, [addMode, isMobile, mobileView]);
+  }, [isMobile, mobileView]);
 
   const controller = useMemo<SettingsSectionController>(() => ({
     handleBack,
@@ -799,8 +513,7 @@ export function PluginsConfig({
     onControllerChange?.(controller);
   }, [controller, onControllerChange]);
 
-  const openDetail = (id: string | null, add = false) => {
-    setAddMode(add);
+  const openDetail = (id: string | null) => {
     if (id) setSelected(id);
     setActionError(null);
     setActionMessage(null);
@@ -812,7 +525,7 @@ export function PluginsConfig({
       <div className="resource-settings-header">
         {isMobile && mobileView === "detail" ? (
           <>
-            <button type="button" className="resource-settings-back" onClick={() => { if (addMode) setAddMode(false); setMobileView("list"); }} aria-label={t("i18n.back")}>
+            <button type="button" className="resource-settings-back" onClick={() => { setMobileView("list"); }} aria-label={t("i18n.back")}>
               <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
             </button>
             <div className="resource-settings-header-title">
@@ -845,27 +558,13 @@ export function PluginsConfig({
           global={filtered.global}
           loading={loading}
           error={error ?? undefined}
-          addSelected={addMode}
           busy={Boolean(busyKey)}
           onQueryChange={setQuery}
           onSelect={(id) => openDetail(id)}
-          onAdd={() => openDetail(null, true)}
           onRetry={() => void loadPlugins()}
         />
         <div className="resource-settings-detail">
-          {addMode ? (
-            <AddPluginPanel
-              cwd={cwd}
-              source={installSource}
-              scope={installScope}
-              projectResourcesLoaded={projectResourcesLoaded}
-              busy={addBusy}
-              actionError={actionError}
-              onSourceChange={setInstallSource}
-              onScopeChange={setInstallScope}
-              onInstall={installPlugin}
-            />
-          ) : loading ? null : selectedPackage ? (
+          {loading ? null : selectedPackage ? (
             <PackageDetail
               key={packageKey(selectedPackage)}
               pkg={selectedPackage}

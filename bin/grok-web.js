@@ -24,13 +24,25 @@ const pkgDir = path.join(__dirname, "..");
 
 const { port, hostname, openBrowser } = parseLaunchOptions();
 
+function importLib(name) {
+  const compiled = path.join(pkgDir, "lib", `${name}.mjs`);
+  const source = path.join(pkgDir, "lib", `${name}.ts`);
+  return import(pathToFileURL(fs.existsSync(compiled) ? compiled : source).href);
+}
+
 async function main() {
-  const { assertBindAllowed, isLoopbackHost } = await import(
-    pathToFileURL(path.join(pkgDir, "lib", "bind-guard.ts")).href
-  );
+  const { assertBindAllowed, isLoopbackHost } = await importLib("bind-guard");
+
+  let password = process.env.GROK_WEB_PASSWORD;
+  try {
+    const { isWebPasswordEnabled } = await importLib("web-auth");
+    password = process.env.GROK_WEB_PASSWORD || isWebPasswordEnabled();
+  } catch {
+    // Incomplete installs (and the CLI fixture) only see the env password.
+  }
 
   try {
-    assertBindAllowed(hostname, process.env.GROK_WEB_PASSWORD);
+    assertBindAllowed(hostname, password);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

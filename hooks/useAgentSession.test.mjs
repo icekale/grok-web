@@ -112,13 +112,27 @@ test("branch navigation awaits the server and reverts the leaf on failure", () =
   );
 
   assert.match(navigateSource, /await sendAgentCommand\(sid, \{ type: "navigate_tree", targetId: entryId \}\)/);
+  assert.match(navigateSource, /navGenerationRef/);
+  assert.match(navigateSource, /generation !== navGenerationRef\.current/);
+  assert.match(navigateSource, /setMessages\(previousMessages\)/);
+  assert.match(navigateSource, /setEntryIds\(previousEntryIds\)/);
   assert.match(navigateSource, /catch \(error\) \{[\s\S]*?return;?[\s\S]*?\}/);
   assert.ok(
     navigateSource.indexOf("setActiveLeafId(entryId)") > navigateSource.indexOf("navigate_tree"),
     "leaf must switch only after the server accepted the navigation",
   );
+  assert.ok(
+    navigateSource.indexOf("setActiveLeafId(entryId)") > navigateSource.indexOf("loadContext"),
+    "leaf must switch only after context load succeeds",
+  );
   assert.match(leafSource, /await sendAgentCommand\(sid, \{ type: "navigate_tree", targetId: leafId \}\)/);
-  assert.match(leafSource, /setActiveLeafId\(/);
+  assert.match(leafSource, /navGenerationRef/);
+  assert.match(leafSource, /generation !== navGenerationRef\.current/);
+  assert.match(leafSource, /setMessages\(previousMessages\)/);
+  assert.ok(
+    leafSource.indexOf("setActiveLeafId(leafId)") > leafSource.indexOf("navigate_tree"),
+    "leaf change must not publish before the server accepted navigation",
+  );
 });
 
 test("a rejected submission preserves a different run reported by the server", () => {
@@ -168,7 +182,11 @@ test("fresh sessions restore the preferred tool preset without overriding existi
     /useLayoutEffect\(\(\) => \{\s*if \(!isNew \|\| sessionIdRef\.current\) return;\s*setToolPresetState\(getPreferredToolPreset\(\)\)/,
   );
   assert.match(changeSource, /setPreferredToolPreset\(preset\)/);
-  assert.match(changeSource, /sendAgentCommand\(sid, \{ type: "set_tools", toolNames \}\)/);
+  assert.match(changeSource, /sendAgentCommand[\s\S]*?\{ type: "set_tools", toolNames \}/);
+  assert.match(changeSource, /toolPresetGenerationRef/);
+  assert.match(changeSource, /getPresetFromTools\(tools\)/);
+  assert.match(changeSource, /setToolPresetState\(previous\)/);
+  assert.match(changeSource, /addNotice\(\{[\s\S]*type: "error"/);
   assert.doesNotMatch(loadToolsSource, /setPreferredToolPreset/);
 });
 
@@ -418,7 +436,7 @@ test("keeps live following cancellable when the user scrolls away from the tail"
   );
   const scrollToBottomSource = source.slice(
     source.indexOf("const scrollToBottom"),
-    source.indexOf("const currentModel"),
+    source.indexOf("const currentModel ="),
   );
 
   assert.match(source, /const liveFollowFrameRef = useRef<number \| null>\(null\)/);

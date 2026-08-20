@@ -130,14 +130,14 @@ export function annotateSkillsWithInstallInfo(
   const globalEntries = readSkillLock(globalLockPath);
   const projectEntries = readSkillLock(projectLockPath);
   const globalSkillsRoot = join(agentDir, "skills");
-  const projectSkillsRoot = join(cwd, ".pi", "skills");
+  const projectSkillsRoots = [join(cwd, ".pi", "skills"), join(cwd, ".agents", "skills")];
 
   return skills.map((skill) => {
     if (!existsSync(skill.filePath)) return skill;
 
     const install = isWithin(skill.filePath, globalSkillsRoot)
       ? getInstallInfo(globalEntries, skill.name, "global")
-      : isWithin(skill.filePath, projectSkillsRoot)
+      : projectSkillsRoots.some((root) => isWithin(skill.filePath, root))
         ? getInstallInfo(projectEntries, skill.name, "project")
         : undefined;
 

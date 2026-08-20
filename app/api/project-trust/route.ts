@@ -1,5 +1,6 @@
-import { stat } from "fs/promises";
+import { realpath, stat } from "fs/promises";
 import { resolve } from "path";
+import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { invalidateModelsCache } from "@/lib/models-cache";
@@ -14,8 +15,9 @@ async function validateCwd(value: unknown): Promise<
     return { response: Response.json({ error: "cwd required" }, { status: 400 }) };
   }
 
-  const cwd = resolve(value);
+  let cwd: string;
   try {
+    cwd = await realpath(resolve(value));
     if (!(await stat(cwd)).isDirectory()) {
       return { response: Response.json({ error: "cwd must be a directory" }, { status: 400 }) };
     }
@@ -47,12 +49,13 @@ export async function POST(req: Request) {
     if (!current.requiresTrust) {
       return Response.json({ error: "This project has no resources that require trust" }, { status: 409 });
     }
-    if (hasBusyRpcSessionForCwd(result.cwd)) {
+    if (getAgentRuntime().hasBusySessionForCwd(result.cwd) || hasBusyRpcSessionForCwd(result.cwd)) {
       return Response.json({ error: "Wait for the active session to finish before trusting this project" }, { status: 409 });
     }
 
     const status = trustProject(result.cwd, agentDir);
     invalidateModelsCache();
+    await getAgentRuntime().dropSessionsForCwd(result.cwd);
     await destroyRpcSessionsForCwd(result.cwd);
     return Response.json(status);
   } catch (error) {

@@ -7,7 +7,7 @@ const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8
 
 test("keeps access on the left and reasoning beside the model", () => {
   assert.match(source, /TOOL_PRESET_LABEL_KEYS/);
-  assert.match(source, /data-thinking-badge=\{thinkingLevel/);
+  assert.match(source, /data-thinking-badge=\{activeThinkingLevel\}/);
   assert.match(source, /<Brain /);
   assert.match(source, /<Shield /);
   assert.match(source, /composer-chip/);
@@ -51,6 +51,7 @@ test("lets the mobile access chip shrink before it can overlap the streaming con
   assert.match(source, /className="composer-model-selector" style=\{\{ flex: isMobile \? "1 1 auto" : "0 0 auto", minWidth: 0, display: isMobile && isStreaming \? "none" : "flex"/);
   assert.match(source, /className="composer-access-chevron"/);
   assert.match(source, /className="composer-chip composer-thinking-chip"/);
+  assert.match(source, /composer-menu-item/);
   assert.match(source, /className="composer-thinking-label"/);
   assert.match(source, /className="composer-thinking-chevron"/);
   assert.match(css, /\.composer-shell\.is-streaming \.composer-access-chevron \{\s*display: none;/);

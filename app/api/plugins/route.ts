@@ -12,7 +12,7 @@ import type {
   PluginsResponse,
 } from "@/lib/api-types";
 
-type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
+type PluginAction = "remove" | "update" | "disable" | "enable";
 
 type McpServer = {
   name: string;
@@ -49,14 +49,6 @@ function toPluginsResponse(
     diagnostics,
     projectResourcesLoaded: getProjectTrustStatus(cwd, getAgentDir()).trusted,
   };
-}
-
-function mcpNameFromSource(source: string): string {
-  const pathPart = source.startsWith("http://") || source.startsWith("https://")
-    ? source.split("?")[0]
-    : source;
-  const segment = pathPart.split("/").filter(Boolean).pop() ?? "";
-  return segment || "server";
 }
 
 async function readPlugins(cwd: string): Promise<PluginsResponse> {
@@ -110,6 +102,9 @@ export async function POST(req: Request) {
     };
     if (!body.cwd) return Response.json({ error: "cwd required" }, { status: 400 });
     if (!body.action) return Response.json({ error: "action required" }, { status: 400 });
+    if (body.action === "install" || body.scope !== undefined) {
+      return Response.json({ error: "Plugin install and scope are not supported" }, { status: 400 });
+    }
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(body.cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
@@ -127,13 +122,6 @@ export async function POST(req: Request) {
     } else if (body.action === "remove") {
       if (!source) return Response.json({ error: "source required" }, { status: 400 });
       await runtime.deleteMcp(body.cwd, source);
-    } else if (body.action === "install") {
-      if (!source) return Response.json({ error: "source required" }, { status: 400 });
-      const name = mcpNameFromSource(source);
-      const transport = source.startsWith("http://") || source.startsWith("https://")
-        ? { url: source }
-        : { command: source };
-      await runtime.upsertMcp(body.cwd, name, transport);
     } else {
       return Response.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
     }

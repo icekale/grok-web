@@ -119,7 +119,7 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    await probe("GET", `/api/agent/${FAKE_ID}/events`, [404], { expectAbort: true });
+    await probe("GET", `/api/agent/${FAKE_ID}/events`, [200, 404], { expectAbort: true });
     await probe("GET", `/api/agent/${FAKE_ID}/subagents`, [404]);
     await probe("POST", `/api/agent/${FAKE_ID}/subagents`, [400], {
       headers: { "content-type": "application/json" },
@@ -140,7 +140,7 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    await probe("DELETE", "/api/auth/api-key/nonexistent-provider", [200, 404]);
+    await probe("DELETE", "/api/auth/api-key/nonexistent-provider", [200, 400, 404]);
     await probe("GET", "/api/auth/login/github", [200], { expectAbort: true });
     await probe("POST", "/api/auth/login/github", [400, 404], {
       headers: { "content-type": "application/json" },

@@ -35,14 +35,33 @@ test("keeps covered statistics and file controls out of interaction and focus", 
   assert.match(source, /aria-hidden=\{covered \? true : undefined\}/);
 });
 
-test("uses TaskHeader only on wide desktop and preserves narrower toolbars", () => {
+test("uses one plate session bar on desktop and preserves the mobile toolbar", () => {
   assert.match(source, /const isWideDesktop = useIsWideDesktop\(\)/);
-  assert.match(source, /isWideDesktop && \([\s\S]*?<TaskHeader/);
-  assert.match(source, /!isMobile && !isWideDesktop[\s\S]*?renderChatToolbarActions\(false\)/);
+  assert.doesNotMatch(source, /<TaskHeader/);
+  assert.match(source, /!isMobile && \([\s\S]*?chat\.sessionTools/);
+  assert.match(source, /desktopToolbarMoreOpen/);
+  assert.match(source, /task\.ready/);
+  assert.match(source, /task\.running/);
   assert.match(source, /isMobile && \([\s\S]*?data-mobile-toolbar="true"/);
   assert.match(source, /data-mobile-toolbar-actions="true"/);
-  assert.match(source, /isWideDesktop[\s\S]*?renderProjectTrustWarning\(false\)/);
+  assert.match(source, /!isMobile && !childSelected && \([\s\S]*?<BranchNavigator/);
   assert.match(source, /<BranchNavigator[\s\S]*?hideInlineButton/);
+  assert.match(source, /desktopToolbarMoreRef/);
+  assert.match(source, /setDesktopToolbarMoreOpen\(false\)/);
+});
+
+test("defaults the file inspector to a rail and grows when a file is open", () => {
+  assert.match(source, /RIGHT_PANEL_RAIL_WIDTH/);
+  assert.match(source, /getDefaultRightPanelWidth\(window\.innerWidth, \{ fileOpen: fileOpenRef\.current \}\)/);
+  assert.match(source, /rightPanelResizer\.setPanelWidth/);
+  assert.match(source, /setRightPanelWidth\(getDefaultRightPanelWidth\(window\.innerWidth, \{ fileOpen: true \}\), false\)/);
+});
+
+test("keeps the file inspector closed until the operator opens it", () => {
+  assert.match(source, /const \[rightPanelOpen, setRightPanelOpen\] = useState\(false\)/);
+  assert.doesNotMatch(source, /if \(!isWideDesktop \|\| !activeCwd\) return;/);
+  assert.match(source, /rightPanelUserClosedRef\.current = !next/);
+  assert.match(source, /<X size=\{16\} strokeWidth=\{2\} aria-hidden="true" \/>/);
 });
 
 test("closes the mobile action layer on outside click, Escape, and session changes", () => {
@@ -83,6 +102,14 @@ test("shows an icon-only session stats button on mobile so numbers don't crowd t
   assert.doesNotMatch(source, /\.mobile-session-stats/);
   assert.doesNotMatch(source, /@container \(max-width: 158px\)/);
   assert.doesNotMatch(source, /mobileContextText/);
+});
+
+test("Get Started opens Settings on the Models section", () => {
+  assert.match(source, /workspace\.addModels/);
+  assert.match(source, /workspace\.openModels/);
+  assert.match(source, /openSettings\("models"\)/);
+  assert.match(source, /initialSection=\{settingsSection\}/);
+  assert.doesNotMatch(source, /Models button at the bottom/);
 });
 
 test("places trust warnings below the mobile toolbar and the file toggle in toolbar flow", () => {

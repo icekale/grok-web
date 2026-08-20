@@ -59,9 +59,11 @@ test("project sorting supports drag and keyboard-accessible menu actions", () =>
   assert.match(sidebar, /event\.key !== "Enter" && event\.key !== " "/);
 });
 
-test("session delete skips the confirmation dialog and reports errors inline", () => {
-  assert.doesNotMatch(sidebar, /deleteConfirmationOpen/);
-  assert.match(sidebar, /setDeleteError\(null\); void remove\(\)/);
+test("session delete confirms in DialogShell and still reports errors inline", () => {
+  assert.match(sidebar, /setDeleteError\(null\); setPendingDelete\(true\)/);
+  assert.match(sidebar, /sidebar\.confirmDeleteSession/);
+  assert.match(sidebar, /if \(await remove\(\)\) setPendingDelete\(false\)/);
+  assert.doesNotMatch(sidebar, /remove\(\)\.then\(\(\) => setPendingDelete\(false\)\)/);
   assert.match(sidebar, /className="codex-row-error"/);
   assert.match(sidebar, /role="alert"/);
   assert.match(styles, /\.codex-row-error \{[^}]*color: var\(--danger\)|#ef4444|rgba\(239,68,68/);
@@ -151,6 +153,8 @@ test("recent session rows preserve activity, selection, and session management",
   assert.match(sidebar, /dispatchSessionRowContextMenu/);
   assert.match(sidebar, /sidebar\.archiveSession/);
   assert.match(sidebar, /method: "DELETE"/);
+  assert.match(sidebar, /const \[recentOpen, setRecentOpen\] = useState\(false\)/);
+  assert.match(sidebar, /data-open=\{recentOpen\}/);
   assert.match(sidebar, /setRecentOpen\(\(open\) => !open\)/);
   assert.match(sidebar, /aria-expanded=\{recentOpen\}/);
 });
@@ -165,6 +169,8 @@ test("sidebar buttons inherit family only so Recent matches Projects type", () =
 test("sidebar recomposition preserves worktree switching and creation", () => {
   assert.match(sidebar, /className="codex-worktree-block"/);
   assert.match(sidebar, /\/api\/worktrees/);
+  assert.match(sidebar, /worktreeRequestRef/);
+  assert.match(sidebar, /generation !== worktreeRequestRef\.current/);
   assert.match(sidebar, /createWorktree/);
   assert.match(sidebar, /removeWorktree/);
   assert.match(sidebar, /sidebar\.forceRemoveCheckout/);

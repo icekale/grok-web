@@ -1,8 +1,6 @@
-import path from "node:path";
-import { getAgentRuntime } from "@/lib/acp/runtime";
 import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import { getGitFileDiff } from "@/lib/git-changes";
-import { mapAcpGitFileDiff } from "@/lib/git-status";
+import { canonicalizePath, resolveAuthorizedGitFilePath } from "@/lib/git-http";
 
 export async function GET(request: Request) {
   try {
@@ -26,18 +24,15 @@ export async function GET(request: Request) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
 
-    try {
-      const runtime = getAgentRuntime();
-      await runtime.ensureProcess();
-      const relativePath = path.relative(cwd, filePath).split(path.sep).join("/");
-      if (relativePath && !relativePath.startsWith("..")) {
-        const mapped = mapAcpGitFileDiff(await runtime.gitDiffs([relativePath], true), relativePath);
-        if (mapped) return Response.json(mapped);
-      }
-    } catch {
-      // ACP unavailable or git/diffs unsupported; use local git.
+    const canonicalCwd = canonicalizePath(cwd);
+    if (!isExistingFilePathAllowed(canonicalCwd, allowedRoots)) {
+      return Response.json({ error: "Access denied" }, { status: 403 });
     }
-    return Response.json(await getGitFileDiff(cwd, filePath));
+    const resolved = resolveAuthorizedGitFilePath(canonicalCwd, filePath, allowedRoots);
+    if ("error" in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    return Response.json(await getGitFileDiff(canonicalCwd, resolved.filePath));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

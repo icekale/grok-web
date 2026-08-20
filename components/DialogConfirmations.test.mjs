@@ -36,10 +36,10 @@ test("async destructive worktree removal stays visible and disabled while pendin
   assert.match(sidebar, /removeWorktree\(path, true\)/);
 });
 
-test("session deletion is an immediate async row action with inline error", () => {
-  assert.match(sidebar, /const \[deleting, setDeleting\] = useState\(false\)/);
-  assert.match(sidebar, /const \[deleteError, setDeleteError\] = useState<string \| null>\(null\)/);
-  assert.match(sidebar, /ref=\{menuButtonRef\}/);
+test("session deletion confirms before deleting", () => {
+  assert.match(sidebar, /const \[pendingDelete, setPendingDelete\] = useState\(false\)/);
+  assert.match(sidebar, /sidebar\.confirmDeleteSession/);
+  assert.match(sidebar, /<DialogShell[\s\S]*?size="confirm"/);
   assert.match(sidebar, /role="alert" className="codex-row-error"/);
 });
 

@@ -1,6 +1,6 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { ArrowDown, Bug, ChevronRight, Compass, ExternalLink, GitPullRequest, Sparkles, X } from "lucide-react";
+import { ArrowDown, ChevronRight, ExternalLink, X } from "lucide-react";
 import { Fragment, cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
@@ -88,13 +88,6 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 const DESKTOP_TRANSCRIPT_WIDTH = 760;
-
-const HOME_STARTERS = [
-  { key: "chat.homeExplore" as const, prompt: "chat.homeExplorePrompt" as const, skill: "brainstorming", icon: Compass, color: "#38bdf8" },
-  { key: "chat.homeBuild" as const, prompt: "chat.homeBuildPrompt" as const, skill: "ponytail", icon: Sparkles, color: "#a78bfa" },
-  { key: "chat.homeReview" as const, prompt: "chat.homeReviewPrompt" as const, skill: "requesting-code-review", icon: GitPullRequest, color: "#34d399" },
-  { key: "chat.homeFix" as const, prompt: "chat.homeFixPrompt" as const, skill: "systematic-debugging", icon: Bug, color: "#fb923c" },
-];
 
 function cwdBasename(cwd: string | null | undefined): string | null {
   if (!cwd) return null;
@@ -725,12 +718,16 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
         <div className="new-session-home flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
             <div className="w-full max-w-[720px] text-center">
-              <div style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 40, height: 40, marginBottom: 16,
-                borderRadius: 12, background: "var(--bg-panel)", color: "var(--text-dim)",
-                fontSize: "1.25em", fontWeight: 700, fontFamily: "var(--font-mono)",
-              }}>π</div>
+              <div
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 20, height: 20, marginBottom: 16,
+                  background: "var(--text)",
+                  WebkitMask: "url(\"/icons/logo.svg\") center / contain no-repeat",
+                  mask: "url(\"/icons/logo.svg\") center / contain no-repeat",
+                }}
+              />
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
                 <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
               </div>
@@ -740,35 +737,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               }}>
                 {homeCwdLabel ? t("chat.homeTitle", { cwd: homeCwdLabel }) : t("chat.homeTitleGeneric")}
               </h1>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
-                gap: 10,
-                marginTop: 20,
-                textAlign: "left",
-              }}>
-                {HOME_STARTERS.map(({ key, prompt, skill, icon: Icon, color }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      chatInputRef?.current?.insertIfEmpty(`/skill:${skill} ${t(prompt)}`);
-                    }}
-                    style={{
-                      display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10,
-                      minHeight: 92, padding: "12px 14px",
-                      background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 14,
-                      color: "var(--text)", cursor: "pointer", fontSize: "var(--text-ui)", lineHeight: "var(--leading-ui)", textAlign: "left",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg)"; }}
-                  >
-                    <Icon size={16} strokeWidth={1.8} color={color} aria-hidden="true" />
-                    <span>{t(key)}</span>
-                    <span style={{ color: "var(--text-dim)", fontSize: "var(--text-meta)" }}>{t("chat.homeSkill", { skill })}</span>
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
           <div className="relative mx-auto w-full max-w-[960px]">

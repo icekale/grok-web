@@ -16,7 +16,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
-import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
+import { getPresetFromTools, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -278,6 +278,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [loading, setLoading] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
+  const navGenerationRef = useRef(0);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [entryIds, setEntryIds] = useState<string[]>([]);
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
@@ -293,7 +294,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("auto");
+  const toolPresetRef = useRef<ToolPreset>(toolPreset);
+  const toolPresetGenerationRef = useRef(0);
+  toolPresetRef.current = toolPreset;
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("high");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -360,6 +364,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const lastPromptGenerationRef = useRef(0);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   const modelSwitchPendingRef = useRef(false);
+  const currentModelOverrideSessionRef = useRef<string | null>(null);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
 
@@ -505,7 +510,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setActiveLeafId(d.leafId);
       setMessages(persistedMessages);
       setEntryIds(d.context.entryIds ?? []);
-      setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
+      setCurrentModelOverride((current) => {
+        if (!current) return null;
+        if (modelSwitchPendingRef.current) return current;
+        if (currentModelOverrideSessionRef.current !== sid) return null;
+        const persisted = d.context.model;
+        if (persisted && persisted.modelId === current.modelId) return null;
+        return current;
+      });
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
@@ -548,7 +560,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textDeltaBatcher]);
 
-  const loadContext = useCallback(async (sid: string, leafId: string | null) => {
+  const loadContext = useCallback(async (sid: string, leafId: string | null, generation?: number) => {
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1", deferToolResults: "1" });
       if (leafId) params.set("leafId", leafId);
@@ -556,10 +568,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      if (generation !== undefined && generation !== navGenerationRef.current) return false;
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
+      return true;
     } catch (e) {
       console.error("Failed to load context:", e);
+      return false;
     }
   }, []);
 
@@ -1526,32 +1541,59 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (bashRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
+    const generation = ++navGenerationRef.current;
+    const previousLeafId = activeLeafId;
+    const previousMessages = messages;
+    const previousEntryIds = entryIds;
     try {
       await sendAgentCommand(sid, { type: "navigate_tree", targetId: entryId });
+      const loaded = await loadContext(sid, entryId, generation);
+      if (generation !== navGenerationRef.current) return;
+      if (!loaded) {
+        setActiveLeafId(previousLeafId);
+        setMessages(previousMessages);
+        setEntryIds(previousEntryIds);
+        return;
+      }
+      setActiveLeafId(entryId);
     } catch (error) {
+      if (generation !== navGenerationRef.current) return;
       console.error("Branch switch failed:", error);
-      return;
+      setActiveLeafId(previousLeafId);
+      setMessages(previousMessages);
+      setEntryIds(previousEntryIds);
     }
-    setActiveLeafId(entryId);
-    await loadContext(sid, entryId);
-  }, [loadContext]);
+  }, [activeLeafId, entryIds, loadContext, messages]);
 
   const handleLeafChange = useCallback(async (leafId: string | null) => {
     if (bashRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
+    const generation = ++navGenerationRef.current;
     const previousLeafId = activeLeafId;
-    setActiveLeafId(leafId);
-    await loadContext(sid, leafId);
-    if (leafId) {
-      try {
+    const previousMessages = messages;
+    const previousEntryIds = entryIds;
+    try {
+      if (leafId) {
         await sendAgentCommand(sid, { type: "navigate_tree", targetId: leafId });
-      } catch (error) {
-        console.error("Branch switch failed:", error);
-        setActiveLeafId(previousLeafId);
       }
+      const loaded = await loadContext(sid, leafId, generation);
+      if (generation !== navGenerationRef.current) return;
+      if (!loaded) {
+        setActiveLeafId(previousLeafId);
+        setMessages(previousMessages);
+        setEntryIds(previousEntryIds);
+        return;
+      }
+      setActiveLeafId(leafId);
+    } catch (error) {
+      if (generation !== navGenerationRef.current) return;
+      console.error("Branch switch failed:", error);
+      setActiveLeafId(previousLeafId);
+      setMessages(previousMessages);
+      setEntryIds(previousEntryIds);
     }
-  }, [activeLeafId, loadContext]);
+  }, [activeLeafId, entryIds, loadContext, messages]);
 
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
     if (isNew) {
@@ -1573,6 +1615,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const target = { provider, modelId };
     const previousOverride = currentModelOverride;
     modelSwitchPendingRef.current = true;
+    currentModelOverrideSessionRef.current = sid;
     setCurrentModelOverride(target);
     setModelSwitching(true);
     try {
@@ -1639,7 +1682,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Like pi, apply it to the model a new session starts with.
       const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.id}`];
       if (thinkingLevelOverrideRef.current === null) {
-        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "auto");
+        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "high");
       }
     }
   }, [isNew, newSessionCwd, session?.cwd]);
@@ -1892,17 +1935,26 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [isNew]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
+    const previous = toolPresetRef.current;
+    const generation = ++toolPresetGenerationRef.current;
     const toolNames = getToolNamesForPreset(preset);
     setPreferredToolPreset(preset);
     setToolPresetState(preset);
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
     if (!sid) return;
     try {
-      await sendAgentCommand(sid, { type: "set_tools", toolNames });
+      const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "set_tools", toolNames });
+      if (generation !== toolPresetGenerationRef.current) return;
+      if (Array.isArray(tools)) setToolPresetState(getPresetFromTools(tools));
     } catch (e) {
-      console.error("Failed to set tools:", e);
+      if (generation !== toolPresetGenerationRef.current) return;
+      setToolPresetState(previous);
+      addNotice({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to set tools",
+      });
     }
-  }, [setToolPresetState]);
+  }, [addNotice, setToolPresetState]);
 
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;

@@ -13,6 +13,7 @@ import { isEditToolName } from "@/lib/tool-names";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import { epochMillis } from "@/lib/epoch-ms";
 import { billedOutputTokens, computeStreamingTps, estimateStreamingTokens, type TokenEstimateCacheEntry } from "@/lib/token-speed";
 import type {
   AgentMessage,
@@ -185,7 +186,7 @@ interface Props {
 
 function formatTime(ts?: number): string | null {
   if (!ts) return null;
-  const d = new Date(ts);
+  const d = new Date(epochMillis(ts));
   const now = new Date();
   const isToday = d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
@@ -267,6 +268,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
     && prev.defaultDetailsExpanded === next.defaultDetailsExpanded
+    && prev.writtenFiles === next.writtenFiles
     && prev.tokenSpeedEnabled === next.tokenSpeedEnabled;
 });
 
@@ -803,7 +805,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} defaultExpanded={defaultDetailsExpanded} />;
+    return <ThinkingBlock key={`${sessionId ?? ""}:${entryId ?? ""}:${blockIndex}`} block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} defaultExpanded={defaultDetailsExpanded} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;

@@ -1,3 +1,13 @@
+import { epochMillis } from "./epoch-ms.ts";
+
+export type HistoryToolResult = {
+  role: "toolResult";
+  toolCallId: string;
+  toolName?: string;
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+};
+
 export type HistoryMessage =
   | { role: "user"; content: string; timestamp?: number }
   | {
@@ -16,7 +26,8 @@ export type HistoryMessage =
       model: string;
       provider: "grok";
       timestamp?: number;
-    };
+    }
+  | HistoryToolResult;
 
 type AssistantMessage = Extract<HistoryMessage, { role: "assistant" }>;
 type AssistantPart = AssistantMessage["content"][number];
@@ -28,6 +39,7 @@ export function mapUpdatesJsonl(text: string): {
 } {
   const messages: HistoryMessage[] = [];
   const entryIds: string[] = [];
+  const toolOutputs = new Map<string, { text: string; toolName?: string; isError?: boolean }>();
   let fallbackId = 0;
   let lastModelId: string | undefined;
   let current: HistoryMessage | null = null;
@@ -67,7 +79,7 @@ export function mapUpdatesJsonl(text: string): {
     if (modelId) lastModelId = modelId;
     const timestamp =
       typeof record.timestamp === "number" && Number.isFinite(record.timestamp)
-        ? record.timestamp
+        ? epochMillis(record.timestamp)
         : undefined;
     const kind = update.sessionUpdate;
 
@@ -88,7 +100,7 @@ export function mapUpdatesJsonl(text: string): {
         const assistant: AssistantMessage = {
           role: "assistant",
           content: [],
-          model: lastModelId ?? "grok",
+          model: lastModelId ?? "grok-4.6",
           provider: "grok",
         };
         if (timestamp !== undefined) assistant.timestamp = timestamp;
@@ -103,13 +115,16 @@ export function mapUpdatesJsonl(text: string): {
       } else if (kind === "agent_message_chunk") {
         appendText(assistant.content, contentText(update.content));
       } else {
+        const toolCallId = stringField(update.toolCallId) || stringField(update.id);
+        const toolName =
+          stringField(update.title) || stringField(update.kind) || stringField(update.toolName);
         assistant.content.push({
           type: "toolCall",
-          toolCallId: stringField(update.toolCallId) || stringField(update.id),
-          toolName:
-            stringField(update.title) || stringField(update.kind) || stringField(update.toolName),
+          toolCallId,
+          toolName,
           input: asRecord(update.input ?? update.rawInput),
         });
+        rememberToolOutput(toolOutputs, toolCallId, toolName, update);
       }
       continue;
     }
@@ -118,14 +133,56 @@ export function mapUpdatesJsonl(text: string): {
       const id = stringField(update.toolCallId) || stringField(update.id);
       if (!id) continue;
       const tool = findToolCall(current, messages, id);
-      if (!tool) continue;
-      Object.assign(tool.input, asRecord(update.input ?? update.rawInput));
-      if (typeof update.status === "string") tool.status = update.status;
+      if (tool) {
+        Object.assign(tool.input, asRecord(update.input ?? update.rawInput));
+        if (typeof update.status === "string") tool.status = update.status;
+      }
+      rememberToolOutput(toolOutputs, id, tool?.toolName, update);
     }
   }
 
   flush();
+  for (const [toolCallId, output] of toolOutputs) {
+    if (!output.text) continue;
+    const result: HistoryToolResult = {
+      role: "toolResult",
+      toolCallId,
+      content: [{ type: "text", text: output.text }],
+    };
+    if (output.toolName) result.toolName = output.toolName;
+    if (output.isError) result.isError = true;
+    const owner = indexOfToolOwner(messages, toolCallId);
+    const insertAt = owner < 0 ? messages.length : insertAfterOwner(messages, owner);
+    messages.splice(insertAt, 0, result);
+    entryIds.splice(insertAt, 0, toolCallId);
+  }
   return { messages, entryIds };
+}
+
+export function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map(toolResultText).join("");
+  if (!isRecord(content)) return "";
+  if (typeof content.text === "string") return content.text;
+  if ("content" in content) return toolResultText(content.content);
+  return "";
+}
+
+function rememberToolOutput(
+  outputs: Map<string, { text: string; toolName?: string; isError?: boolean }>,
+  toolCallId: string,
+  toolName: string | undefined,
+  update: Record<string, unknown>,
+): void {
+  if (!toolCallId) return;
+  const chunk = toolResultText(update.content ?? update.rawOutput);
+  const failed = update.status === "failed" || update.status === "error";
+  if (!chunk && !failed && !toolName) return;
+  const current = outputs.get(toolCallId) ?? { text: "" };
+  if (toolName && !current.toolName) current.toolName = toolName;
+  if (chunk) current.text += chunk;
+  if (failed) current.isError = true;
+  outputs.set(toolCallId, current);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,6 +215,19 @@ function appendThinking(parts: AssistantPart[], thinking: string): void {
   const last = parts[parts.length - 1];
   if (last?.type === "thinking") last.thinking += thinking;
   else parts.push({ type: "thinking", thinking });
+}
+
+function indexOfToolOwner(messages: HistoryMessage[], id: string): number {
+  for (let i = 0; i < messages.length; i++) {
+    if (toolInMessage(messages[i], id)) return i;
+  }
+  return -1;
+}
+
+function insertAfterOwner(messages: HistoryMessage[], owner: number): number {
+  let index = owner + 1;
+  while (index < messages.length && messages[index]?.role === "toolResult") index += 1;
+  return index;
 }
 
 function findToolCall(

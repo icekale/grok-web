@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { openFileTab, saveFileViewerState } from "./file-tab-state.ts";
+import { nextActiveFileTabId, openFileTab, saveFileViewerState } from "./file-tab-state.ts";
 
 const tabA = {
   id: "file:/repo/a.ts",
@@ -95,4 +95,10 @@ test("a remounted viewer ignores the previous revision's late cleanup", () => {
   const stale = saveFileViewerState(reopened, tabA.id, 0, tabA.viewerState);
   assert.strictEqual(stale, reopened);
   assert.equal(stale[0].viewerState.displayMode, "diff");
+});
+
+test("closing the active tab selects the last remaining tab", () => {
+  assert.equal(nextActiveFileTabId([tabA, tabB], tabA.id, tabA.id), tabB.id);
+  assert.equal(nextActiveFileTabId([tabA, tabB], tabB.id, tabA.id), tabA.id);
+  assert.equal(nextActiveFileTabId([tabA], tabA.id, tabA.id), null);
 });

@@ -57,10 +57,10 @@ interface FileData {
   size: number;
 }
 
-const DISPLAY_MODE_LABELS: Record<DisplayMode, string> = {
-  source: "Source",
-  preview: "Preview",
-  diff: "Diff",
+const DISPLAY_MODE_LABEL_KEYS: Record<DisplayMode, "files.viewSource" | "files.viewPreview" | "files.viewDiff"> = {
+  source: "files.viewSource",
+  preview: "files.viewPreview",
+  diff: "files.viewDiff",
 };
 
 const FILE_CODE_STYLE: CSSProperties = {
@@ -523,16 +523,16 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
         {formatSizeStr && <span>{formatSizeStr}</span>}
         <span
           title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
+          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "var(--accent)" : "var(--text-dim)" }}
         >
           <span
             style={{
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: watching ? "#4ade80" : "var(--border)",
+              background: watching ? "var(--accent)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: "none",
             }}
           />
           {watching ? "live" : "static"}
@@ -692,16 +692,16 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
         {size != null && <span>{formatSize(size)}</span>}
         <span
           title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
+          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "var(--accent)" : "var(--text-dim)" }}
         >
           <span
             style={{
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: watching ? "#4ade80" : "var(--border)",
+              background: watching ? "var(--accent)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: "none",
             }}
           />
           {watching ? "live" : "static"}
@@ -877,16 +877,16 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
         <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />
         <span
           title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)", flexShrink: 0 }}
+          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}
         >
           <span
             style={{
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: watching ? "#4ade80" : "var(--border)",
+              background: watching ? "var(--accent)" : "var(--border)",
               display: "inline-block",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              boxShadow: "none",
             }}
           />
           {watching ? "live" : "static"}
@@ -981,6 +981,7 @@ function TextFileViewer({
   const [gitBusy, setGitBusy] = useState(false);
   const [gitError, setGitError] = useState<string | null>(null);
   const [commitOpen, setCommitOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [localGitKey, setLocalGitKey] = useState(0);
   const esRef = useRef<EventSource | null>(null);
@@ -1164,6 +1165,7 @@ function TextFileViewer({
         setCommitOpen(false);
         setCommitMessage("");
       }
+      if (action === "discard") setDiscardOpen(false);
       setLocalGitKey((key) => key + 1);
     } catch (error) {
       setGitError(error instanceof Error ? error.message : String(error));
@@ -1177,13 +1179,12 @@ function TextFileViewer({
   }, [fetchGitDiff, filePath, gitRefreshKey, localGitKey]);
 
   useEffect(() => {
-    // HTML gets the same rendered-first treatment as markdown: a generated page
-    // is usually more useful viewed than read as source. Both have a preview
-    // mode already; the source tab stays one click away. A restored choice or
-    // explicit mode hint always wins over this default.
+    // Markdown opens rendered-first. HTML stays source-first so a generated
+    // page is not executed until the user chooses Preview. A restored choice
+    // or explicit mode hint always wins over this default.
     if (
       defaultPreviewEligibleRef.current
-      && (data?.language === "markdown" || data?.language === "html")
+      && data?.language === "markdown"
     ) {
       defaultPreviewEligibleRef.current = false;
       updateDisplayMode("preview");
@@ -1192,6 +1193,7 @@ function TextFileViewer({
 
   const hasGitDiff = gitDiff?.supported === true && typeof gitDiff.patch === "string";
   const isDeletedDiff = hasGitDiff && gitDiff.status === "deleted";
+  const deletesUntrackedFile = gitDiff?.status === "untracked";
 
   useEffect(() => {
     if (gitDiffResolved && !hasGitDiff && displayMode === "diff") updateDisplayMode("source");
@@ -1349,19 +1351,29 @@ function TextFileViewer({
             title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
             aria-label={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
             className="file-viewer-live-indicator"
-            style={{
-              background: watching ? "#4ade80" : "var(--border)",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
-            }}
-          />
+            style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "var(--accent)" : "var(--text-dim)" }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: watching ? "var(--accent)" : "var(--border)",
+                display: "inline-block",
+                boxShadow: "none",
+              }}
+            />
+            {watching ? t("i18n.liveSync") : t("i18n.notWatching")}
+          </span>
         )}
 
         <div className="file-viewer-controls">
           {hasGitDiff && cwd && (
-            <div className="file-viewer-mode-switch" aria-label={t("files.gitActions")}>
-              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => void runGitWrite("stage")}>{t("files.stage")}</button>
-              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => void runGitWrite("discard")}>{t("files.discard")}</button>
-              <button type="button" className="file-viewer-mode-button" disabled={gitBusy} onClick={() => { setGitError(null); setCommitOpen(true); }}>{t("files.commit")}</button>
+            <div className="file-viewer-git-actions" aria-label={t("files.gitActions")}>
+              <button type="button" className="file-viewer-git-button" disabled={gitBusy} onClick={() => void runGitWrite("stage")}>{t("files.stage")}</button>
+              <button type="button" className="file-viewer-git-button" disabled={gitBusy} onClick={() => { setGitError(null); setDiscardOpen(true); }}>{t("files.discard")}</button>
+              <button type="button" className="file-viewer-git-button" disabled={gitBusy} onClick={() => { setGitError(null); setCommitOpen(true); }}>{t("files.commit")}</button>
             </div>
           )}
           {displayModes.length > 1 && (
@@ -1381,7 +1393,7 @@ function TextFileViewer({
                       color: active ? "var(--text)" : "var(--text-muted)",
                     }}
                   >
-                    {DISPLAY_MODE_LABELS[mode]}
+                    {t(DISPLAY_MODE_LABEL_KEYS[mode])}
                   </button>
                 );
               })}
@@ -1454,7 +1466,7 @@ function TextFileViewer({
         ) : isHtml && effectiveDisplayMode === "preview" ? (
           <iframe
             srcDoc={content}
-            sandbox="allow-scripts"
+            sandbox=""
             style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
              title={t("i18n.htmlPreview")}
           />
@@ -1495,7 +1507,16 @@ function TextFileViewer({
                     ? resolveLocalFileHref(href, markdownDirectory, cwd ?? markdownDirectory)
                     : null;
                   if (!linkedFile || !onOpenFile) {
-                    return <a href={href} {...props}>{children}</a>;
+                    const external = typeof href === "string" && /^https?:\/\//i.test(href);
+                    return (
+                      <a
+                        href={href}
+                        {...props}
+                        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      >
+                        {children}
+                      </a>
+                    );
                   }
 
                   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -1558,8 +1579,31 @@ function TextFileViewer({
           </SyntaxHighlighter>
         )}
       </div>
-      {gitError && !commitOpen && (
+      {gitError && !commitOpen && !discardOpen && (
         <div role="alert" className="codex-dialog-error" style={{ padding: "8px 12px" }}>{gitError}</div>
+      )}
+      {discardOpen && (
+        <DialogShell
+          size="confirm"
+          title={t(deletesUntrackedFile ? "files.confirmDeleteUntracked" : "files.confirmDiscard")}
+          onClose={() => { if (!gitBusy) setDiscardOpen(false); }}
+          dismissible={!gitBusy}
+          backdropDismissible={false}
+          footer={(
+            <>
+              <button type="button" className="codex-dialog-button" onClick={() => setDiscardOpen(false)} disabled={gitBusy}>{t("i18n.cancel")}</button>
+              <button type="button" className="codex-dialog-button" data-variant="danger" disabled={gitBusy} onClick={() => { void runGitWrite("discard"); }}>
+                {t(deletesUntrackedFile ? "files.deleteUntrackedFile" : "files.discardFile")}
+              </button>
+            </>
+          )}
+        >
+          <p className="codex-dialog-copy">
+            {t(deletesUntrackedFile ? "files.confirmDeleteUntrackedCopy" : "files.confirmDiscardCopy")}
+          </p>
+          <code className="codex-dialog-inset">{getRelativeFilePath(filePath, cwd)}</code>
+          {gitError && <div role="alert" className="codex-dialog-error">{gitError}</div>}
+        </DialogShell>
       )}
       {commitOpen && (
         <DialogShell
@@ -1573,6 +1617,7 @@ function TextFileViewer({
             </>
           )}
         >
+          <p className="codex-dialog-copy">{t("files.commitCopy")}</p>
           <textarea
             className="codex-dialog-editor"
             value={commitMessage}

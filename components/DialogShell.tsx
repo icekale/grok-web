@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
 import { X } from "lucide-react";
 
-export type DialogSize = "confirm" | "request" | "editor" | "tool" | "terminal";
+export type DialogSize = "confirm" | "request" | "editor" | "tool" | "terminal" | "page";
 
 export function DialogShell({
   size,
@@ -11,10 +11,13 @@ export function DialogShell({
   ariaLabel,
   subtitle,
   onClose,
+  onEscape,
   dismissible = true,
   backdropDismissible = dismissible,
   returnFocusRef,
+  closeButtonRef,
   showClose = false,
+  headerActions,
   bodyClassName,
   footer,
   children,
@@ -24,10 +27,13 @@ export function DialogShell({
   ariaLabel?: string;
   subtitle?: ReactNode;
   onClose(): void;
+  onEscape?(): boolean;
   dismissible?: boolean;
   backdropDismissible?: boolean;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  closeButtonRef?: RefObject<HTMLButtonElement | null>;
   showClose?: boolean;
+  headerActions?: ReactNode;
   bodyClassName?: string;
   footer?: ReactNode;
   children: ReactNode;
@@ -57,7 +63,9 @@ export function DialogShell({
 
   const handleCancel = (event: React.SyntheticEvent<HTMLDialogElement>) => {
     event.preventDefault();
-    if (dismissible) onClose();
+    if (!dismissible) return;
+    if (onEscape?.()) return;
+    onClose();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
@@ -100,14 +108,23 @@ export function DialogShell({
         if (backdropDismissible && event.target === event.currentTarget) onClose();
       }}
     >
-      {(title || subtitle || showClose) && (
+      {(title || subtitle || showClose || headerActions) && (
         <header className="codex-dialog-header">
           <div className="codex-dialog-heading">
             {title && <h2 id={titleId}>{title}</h2>}
             {subtitle && <div className="codex-dialog-subtitle">{subtitle}</div>}
           </div>
+          {headerActions && <div className="codex-dialog-header-actions">{headerActions}</div>}
           {showClose && (
-            <button type="button" className="codex-dialog-close" onClick={onClose} disabled={!dismissible} aria-label={ariaLabel ?? "Close"} title={ariaLabel ?? "Close"}>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              className="codex-dialog-close"
+              onClick={onClose}
+              disabled={!dismissible}
+              aria-label={ariaLabel ?? "Close"}
+              title={ariaLabel ?? "Close"}
+            >
               <X size={14} strokeWidth={2} aria-hidden="true" />
             </button>
           )}

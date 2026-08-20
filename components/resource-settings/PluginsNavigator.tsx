@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import type { PluginNavItem } from "./resource-settings-types";
 import { pluginIdentity } from "./plugins-navigation";
@@ -12,11 +12,9 @@ export interface PluginsNavigatorProps {
   global: PluginNavItem[];
   loading: boolean;
   error?: string;
-  addSelected: boolean;
   busy?: boolean;
   onQueryChange(query: string): void;
   onSelect(id: string): void;
-  onAdd(): void;
   onRetry(): void;
 }
 
@@ -27,11 +25,9 @@ export function PluginsNavigator({
   global,
   loading,
   error,
-  addSelected,
   busy,
   onQueryChange,
   onSelect,
-  onAdd,
   onRetry,
 }: PluginsNavigatorProps) {
   const { t } = useI18n();
@@ -49,7 +45,7 @@ export function PluginsNavigator({
               key={id}
               type="button"
               className="resource-settings-row"
-              data-selected={!addSelected && selection === id ? "true" : undefined}
+              data-selected={selection === id ? "true" : undefined}
               disabled={busy}
               onClick={() => onSelect(id)}
             >
@@ -99,12 +95,6 @@ export function PluginsNavigator({
         )}
       </div>
 
-      <div className="resource-settings-navigator-footer">
-        <button type="button" className="resource-settings-add" data-selected={addSelected ? "true" : undefined} disabled={busy} onClick={onAdd}>
-          <Plus size={12} strokeWidth={2} aria-hidden="true" />
-          <span>{t("i18n.addPlugin")}</span>
-        </button>
-      </div>
     </div>
   );
 }

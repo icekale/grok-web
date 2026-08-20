@@ -23,3 +23,7 @@ test("plugins navigator stays controlled", () => {
   assert.doesNotMatch(source, /fetch\(/);
   assert.doesNotMatch(source, /useState/);
 });
+
+test("plugins navigator has no install entry", () => {
+  assert.doesNotMatch(source, /addPlugin|onAdd|resource-settings-add/);
+});

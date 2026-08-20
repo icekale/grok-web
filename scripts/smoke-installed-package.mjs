@@ -6,6 +6,7 @@ import { request as httpRequest } from "node:http";
 import { dirname, isAbsolute, join, parse } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createJiti } from "jiti";
 import { smokeAllRoutes } from "./tanstack-route-smoke.mjs";
 
 const tarballPath = process.argv[2] || "";
@@ -15,10 +16,7 @@ assert.ok(existsSync(tarballPath), `tarball missing: ${tarballPath}`);
 
 const port = Number(process.env.GROK_WEB_TANSTACK_SMOKE_PORT || 30147);
 const origin = `http://127.0.0.1:${port}`;
-const projectDir = mkdtempSync(join(tmpdir(), "pi-web-installed-"));
-const installedBin = process.platform === "win32"
-  ? join(projectDir, "node_modules", ".bin", "pi-web.cmd")
-  : join(projectDir, "node_modules", ".bin", "pi-web");
+const projectDir = mkdtempSync(join(tmpdir(), "grok-web-installed-"));
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -43,11 +41,31 @@ const npmInstall = await run(npmExecutable, ["init", "-y"], { stdio: "inherit" }
 assert.equal(npmInstall.code, 0, "npm init failed");
 const install = await run(npmExecutable, ["install", "--ignore-scripts", tarballPath], { stdio: "inherit" });
 assert.equal(install.code, 0, `npm install failed: ${install.stderr}`);
+
+const consumerPkg = JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8"));
+const packageName = Object.keys(consumerPkg.dependencies ?? {})[0];
+assert.ok(packageName, "installed tarball did not add a dependency");
+const installedPackageRoot = packageName.startsWith("@")
+  ? join(projectDir, "node_modules", ...packageName.split("/"))
+  : join(projectDir, "node_modules", packageName);
+const stagedPkg = JSON.parse(readFileSync(join(installedPackageRoot, "package.json"), "utf8"));
+assert.equal(stagedPkg.name, packageName);
+const binName = typeof stagedPkg.bin === "string"
+  ? packageName.replace(/^@[^/]+\//, "")
+  : Object.keys(stagedPkg.bin ?? {})[0];
+assert.ok(binName, "staged package.json is missing bin");
+const installedBin = process.platform === "win32"
+  ? join(projectDir, "node_modules", ".bin", `${binName}.cmd`)
+  : join(projectDir, "node_modules", ".bin", binName);
 assert.ok(existsSync(installedBin), `installed bin missing: ${installedBin}`);
+assert.ok(existsSync(join(installedPackageRoot, "lib", "bind-guard.ts")));
+assert.ok(existsSync(join(installedPackageRoot, "lib", "web-auth.ts")));
+assert.ok(existsSync(join(installedPackageRoot, "lib", "bind-guard.mjs")));
+assert.ok(existsSync(join(installedPackageRoot, "lib", "web-auth.mjs")));
 
 // The publication tarball must not carry the traced dependency copy.
 assert.ok(
-  !existsSync(join(projectDir, "node_modules", "@agegr", "pi-web", ".output", "server", "node_modules")),
+  !existsSync(join(installedPackageRoot, ".output", "server", "node_modules")),
   "tarball must not ship the traced server/node_modules copy",
 );
 for (const name of ["undici"]) {
@@ -66,7 +84,7 @@ const serverArgs = process.platform === "win32"
 
 const password = process.env.GROK_WEB_PASSWORD;
 const authHeaders = password
-  ? { authorization: `Basic ${Buffer.from(`pi:${password}`).toString("base64")}` }
+  ? { authorization: `Basic ${Buffer.from(`grok:${password}`).toString("base64")}` }
   : {};
 const server = spawn(serverCommand, serverArgs, {
   cwd: projectDir,
@@ -98,9 +116,7 @@ async function waitFor(url, init) {
   throw new Error(`server did not become ready: ${url}\n${serverLogs}`);
 }
 
-const installedPackageRoot = join(projectDir, "node_modules", "@agegr", "pi-web");
 const installedRequire = createRequire(join(installedPackageRoot, "package.json"));
-const stagedPkg = installedRequire("./package.json");
 const resolveFromInstalled = (name) => import.meta.resolve(name, pathToFileURL(join(installedPackageRoot, "package.json")).href);
 
 function packageJsonFor(resolveFrom, name) {
@@ -144,6 +160,21 @@ const lucidePkg = packageJsonFor(resolveFromInstalled("lucide-react"), "lucide-r
 assert.ok(lucidePkg.version, "lucide-react failed to resolve from the installed package");
 assert.ok(stagedPkg.dependencies["lucide-react"], "lucide-react must be a staged production dependency");
 versions["lucide-react"] = lucidePkg.version;
+
+const authPassword = password || "smoke-password-12";
+const { GROK_WEB_AUTH_USERNAME, isValidBasicAuthorization } = await createJiti(import.meta.url).import(
+  join(installedPackageRoot, "lib", "web-auth.ts"),
+);
+assert.equal(GROK_WEB_AUTH_USERNAME, "grok");
+assert.equal(await isValidBasicAuthorization(null, authPassword), false);
+assert.equal(
+  await isValidBasicAuthorization(`Basic ${Buffer.from(`pi:${authPassword}`).toString("base64")}`, authPassword),
+  false,
+);
+assert.equal(
+  await isValidBasicAuthorization(`Basic ${Buffer.from(`grok:${authPassword}`).toString("base64")}`, authPassword),
+  true,
+);
 
 /** Send an HTTP request with an explicit Host header via node:http (fetch/undici sanitizes Host). */
 function rawRequest(host, pathname) {

@@ -4,17 +4,16 @@ import { getAgentRuntime } from "@/lib/acp/runtime";
 // session ids. Pushes a snapshot immediately, then again every second.
 export async function GET(req: Request) {
   const runtime = getAgentRuntime();
+  let cleanup = () => {};
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      const encode = (data: unknown) => {
-        const text = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(text));
-      };
-
+      let cancelled = false;
       const emit = () => {
+        if (cancelled) return;
         try {
-          encode({ type: "running", runningSessionIds: runtime.listBusyIds() });
+          const text = `data: ${JSON.stringify({ type: "running", runningSessionIds: runtime.listBusyIds() })}\n\n`;
+          controller.enqueue(encoder.encode(text));
         } catch {
           // controller already closed
         }
@@ -25,6 +24,7 @@ export async function GET(req: Request) {
       const poll = setInterval(emit, 1000);
 
       const heartbeat = setInterval(() => {
+        if (cancelled) return;
         try {
           controller.enqueue(encoder.encode(":\n\n"));
         } catch {
@@ -32,13 +32,18 @@ export async function GET(req: Request) {
         }
       }, 30_000);
 
-      const cleanup = () => {
+      cleanup = () => {
+        if (cancelled) return;
+        cancelled = true;
         clearInterval(poll);
         clearInterval(heartbeat);
         try { controller.close(); } catch { /* already closed */ }
       };
 
-      req.signal?.addEventListener("abort", cleanup);
+      req.signal?.addEventListener("abort", cleanup, { once: true });
+    },
+    cancel() {
+      cleanup();
     },
   });
 

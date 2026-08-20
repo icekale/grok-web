@@ -22,12 +22,12 @@ import { isApiRequestAllowed } from "@/lib/request-security";
 import {
   inspectUploadTargets,
   parseUploadConflictStrategy,
+  replaceUploadFileAtomic,
+  UploadConflictError,
   validateUploadFileNames,
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { samePath } from "@/lib/paths";
-import { peekAgentRuntime } from "@/lib/acp/runtime.ts";
-import { WORKSPACE_WRITE_ERROR, writeWorkspaceFile } from "@/lib/grok-fs/workspace.ts";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -82,7 +82,7 @@ function parseFileRequestType(value: string): FileRequestType | null {
 }
 
 async function getUploadDirectory(segments: string[]): Promise<
-  { directory: string } | { response: Response }
+  { directory: string; canonicalDirectory: string; allowedRoots: Set<string> } | { response: Response }
 > {
   const directory = filePathFromSegments(segments);
   const allowedRoots = await getAllowedFileRoots();
@@ -115,7 +115,7 @@ async function getUploadDirectory(segments: string[]): Promise<
     return { response: Response.json({ error: "Access denied" }, { status: 403 }) };
   }
 
-  return { directory: realDirectory };
+  return { directory, canonicalDirectory: realDirectory, allowedRoots };
 }
 
 function parseUploadFileNames(value: unknown): string[] | null {
@@ -136,7 +136,7 @@ export async function POST(
     const searchParams = new URL(request.url).searchParams;
     const uploadDirectory = await getUploadDirectory(segments);
     if ("response" in uploadDirectory) return uploadDirectory.response;
-    const { directory } = uploadDirectory;
+    const { directory, canonicalDirectory, allowedRoots } = uploadDirectory;
     const type = searchParams.get("type") ?? "upload";
 
     if (type === "upload-check") {
@@ -149,7 +149,7 @@ export async function POST(
       if (validationError) {
         return Response.json({ error: validationError }, { status: 400 });
       }
-      return Response.json(inspectUploadTargets(directory, fileNames));
+      return Response.json(inspectUploadTargets(canonicalDirectory, fileNames));
     }
 
     if (type !== "upload") {
@@ -183,36 +183,24 @@ export async function POST(
       return Response.json({ error: validationError }, { status: 400 });
     }
 
-    const inspection = inspectUploadTargets(directory, fileNames);
-    if (strategy === "error" && inspection.conflicts.length > 0) {
-      return Response.json({
-        error: "One or more files already exist",
-        conflicts: inspection.conflicts,
-        nonReplaceable: inspection.nonReplaceable,
-      }, { status: 409 });
+    if (strategy === "error") {
+      const inspection = inspectUploadTargets(canonicalDirectory, fileNames);
+      if (inspection.conflicts.length > 0) {
+        return Response.json({
+          error: "One or more files already exist",
+          conflicts: inspection.conflicts,
+          nonReplaceable: inspection.nonReplaceable,
+        }, { status: 409 });
+      }
     }
 
-    const conflictSet = new Set(inspection.conflicts);
-    const nonReplaceableSet = new Set(inspection.nonReplaceable);
-    const runtime = peekAgentRuntime();
-    if (!runtime) {
-      return Response.json({ error: WORKSPACE_WRITE_ERROR }, { status: 501 });
-    }
     const uploaded: string[] = [];
     const skipped: string[] = [];
     const errors: Array<{ name: string; error: string }> = [];
+    const conflicts: string[] = [];
+    const nonReplaceable: string[] = [];
 
     for (const file of files) {
-      const destination = path.join(directory, file.name);
-      if (conflictSet.has(file.name) && strategy === "skip") {
-        skipped.push(file.name);
-        continue;
-      }
-      if (conflictSet.has(file.name) && nonReplaceableSet.has(file.name)) {
-        errors.push({ name: file.name, error: "Cannot replace a directory or symbolic link" });
-        continue;
-      }
-
       let bytes: Buffer;
       try {
         bytes = Buffer.from(await file.arrayBuffer());
@@ -221,25 +209,27 @@ export async function POST(
         continue;
       }
 
-      if (conflictSet.has(file.name)) {
-        try {
-          fs.unlinkSync(destination);
-        } catch (error) {
-          errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
-          continue;
-        }
-      }
-
       try {
-        await writeWorkspaceFile(directory, file.name, bytes.toString("utf8"), {
-          write: (abs, content) => runtime.fsWrite(abs, content),
-        });
-        uploaded.push(file.name);
+        const result = await replaceUploadFileAtomic(directory, file.name, bytes, allowedRoots, strategy);
+        (result === "skipped" ? skipped : uploaded).push(file.name);
       } catch (error) {
-        errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+        if (error instanceof UploadConflictError) {
+          conflicts.push(file.name);
+          if (error.nonReplaceable) nonReplaceable.push(file.name);
+        } else {
+          errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+        }
       }
     }
 
+    if (conflicts.length > 0 && uploaded.length === 0 && skipped.length === 0 && errors.length === 0) {
+      return Response.json({
+        error: "One or more files already exist",
+        conflicts,
+        nonReplaceable,
+      }, { status: 409 });
+    }
+    errors.push(...conflicts.map((name) => ({ name, error: "File already exists" })));
     return Response.json(
       { uploaded, skipped, errors },
       { status: errors.length > 0 ? 207 : 200 },

@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { assertSafeDiscoveryTarget } from "./model-discovery";
+import { assertSafeDiscoveryTarget, safeDiscoveryFetch } from "./model-discovery";
+import type { DiscoveryLookup } from "./model-discovery";
 import type { VisionToolkitSnapshot } from "./vision-toolkit-config";
 import { readStoredVisionApiKey } from "./vision-toolkit-config";
 
@@ -20,6 +21,7 @@ export type VisionHealthOptions = {
   testConnection: boolean;
   snapshot: VisionToolkitSnapshot;
   fetchImpl?: typeof fetch;
+  lookup?: DiscoveryLookup;
   lookPath?: (command: string) => string | undefined;
   runCommand?: (command: string, args: string[]) => VisionHealthCommandResult;
   fileExists?: (path: string) => boolean;
@@ -198,7 +200,8 @@ function classifyHttp(status: number, endpoint: string): HealthCheck {
 async function checkService(
   snapshot: VisionToolkitSnapshot,
   secret: string | undefined,
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch | undefined,
+  lookup: DiscoveryLookup | undefined,
 ): Promise<{ check: HealthCheck; tested: boolean }> {
   if (!secret) {
     return {
@@ -218,7 +221,7 @@ async function checkService(
   }
 
   try {
-    assertSafeDiscoveryTarget(new URL(endpoint), { apiKey: secret });
+    assertSafeDiscoveryTarget(new URL(endpoint));
   } catch (error) {
     return {
       check: {
@@ -230,7 +233,7 @@ async function checkService(
   }
 
   try {
-    const response = await fetchImpl(endpoint, {
+    const response = await safeDiscoveryFetch(endpoint, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${secret}`,
@@ -238,6 +241,9 @@ async function checkService(
         "User-Agent": "pi-web-vision-toolkit",
       },
       signal: AbortSignal.timeout(CONNECTION_TIMEOUT_MS),
+    }, {
+      fetchImpl,
+      lookup,
     });
     return { check: classifyHttp(response.status, endpoint), tested: true };
   } catch (error) {
@@ -264,7 +270,6 @@ export async function runVisionToolkitHealth(opts: VisionHealthOptions): Promise
   const runCommand = opts.runCommand ?? defaultRunCommand;
   const fileExists = opts.fileExists ?? existsSync;
   const readStoredApiKey = opts.readStoredApiKey ?? readStoredVisionApiKey;
-  const fetchImpl = opts.fetchImpl ?? fetch;
   const snapshot = opts.snapshot;
 
   const python = checkPython(lookPath, runCommand);
@@ -290,7 +295,7 @@ export async function runVisionToolkitHealth(opts: VisionHealthOptions): Promise
 
   let connectionTested = false;
   if (opts.testConnection) {
-    const service = await checkService(snapshot, readStoredApiKey(), fetchImpl);
+    const service = await checkService(snapshot, readStoredApiKey(), opts.fetchImpl, opts.lookup);
     checks.service = service.check;
     connectionTested = service.tested;
   }

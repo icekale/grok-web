@@ -10,8 +10,9 @@ test("PluginsConfig is Settings-only master-detail and keeps POST payloads", () 
   assert.doesNotMatch(source, /embedded = false/);
   assert.match(source, /<PluginsNavigator/);
   assert.match(source, /fetch\(`\/api\/plugins\?cwd=\$\{encodeURIComponent\(cwd\)\}`\)/);
-  assert.match(source, /JSON\.stringify\(\{ action, source: pkg\.source, scope: pkg\.scope, cwd \}\)/);
-  assert.match(source, /JSON\.stringify\(\{ action: "install", source, scope: installScope, cwd \}\)/);
+  assert.match(source, /JSON\.stringify\(\{ action, source: pkg\.source, cwd \}\)/);
+  assert.doesNotMatch(source, /action: "install"/);
+  assert.doesNotMatch(source, /AddPluginPanel/);
   assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
 });
 
@@ -19,7 +20,7 @@ test("PluginsConfig repairs selection by scope\\0source and returns to list when
   assert.match(source, /resolvePluginsSelection\(current, next\.packages\)/);
   assert.match(source, /pluginIdentity/);
   assert.match(source, /if \(current\) \{\s*setMobileView\("list"\)/);
-  assert.match(source, /if \(addMode\) \{ setAddMode\(false\); return true; \}/);
+  assert.doesNotMatch(source, /setAddMode/);
 });
 
 test("PluginsConfig reloads the session after a successful runtime-affecting action", () => {

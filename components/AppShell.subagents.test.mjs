@@ -44,10 +44,12 @@ test("breadcrumb builds the root-to-selected chain from the tree", () => {
 test("selecting a subagent or breadcrumb closes the top panel on desktop and mobile", async () => {
   const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
   // handleSubagentSelect closes the panel unconditionally, not only on mobile.
-  assert.match(source, /const handleSubagentSelect = useCallback\(\(node: SubagentTreeNode\) => \{\s*if \(!node\.sessionId\) return;\s*void resolveSessionById\(node\.sessionId\)\.then\(\(session\) => \{\s*if \(session\) handleSelectSession\(session\);/);
+  assert.match(source, /const handleSubagentSelect = useCallback\(\(node: SubagentTreeNode\) => \{\s*if \(!node\.sessionId\) return;/);
+  assert.match(source, /generation !== sessionSelectGenerationRef\.current/);
+  assert.match(source, /if \(session\) handleSelectSession\(session\)/);
   assert.doesNotMatch(source, /if \(isMobile\) setActiveTopPanel\(null\)/);
   // handleBreadcrumbSelect also closes the panel after selecting a session.
-  assert.match(source, /const handleBreadcrumbSelect = useCallback\(\(sessionId: string\) => \{\s*void resolveSessionById\(sessionId\)\.then\(\(session\) => \{\s*if \(session\) handleSelectSession\(session\);/);
+  assert.match(source, /const handleBreadcrumbSelect = useCallback\(\(sessionId: string\) => \{/);
   assert.match(source, /closeTopPanel\(\);\s*\}, \[handleSelectSession, resolveSessionById, closeTopPanel\]\)/);
 });
 

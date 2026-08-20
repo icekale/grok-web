@@ -20,6 +20,7 @@ test("supports separate Escape and safe backdrop dismissal", async () => {
   const value = await source();
   assert.match(value, /backdropDismissible = dismissible/);
   assert.match(value, /onCancel=\{handleCancel\}/);
+  assert.match(value, /onEscape\?\.\(\)/);
   assert.match(value, /backdropDismissible && event\.target === event\.currentTarget/);
   assert.match(value, /returnFocusRef\?\.current/);
 });
@@ -54,6 +55,7 @@ test("defines fixed desktop and mobile dialog dimensions", () => {
   assert.match(styles, /\.codex-dialog\[data-size="editor"\][\s\S]*?width:\s*min\(680px, calc\(100vw - 32px\)\)/);
   assert.match(styles, /\.codex-dialog\[data-size="tool"\][\s\S]*?width:\s*min\(820px, calc\(100vw - 32px\)\)/);
   assert.match(styles, /\.codex-dialog\[data-size="terminal"\][\s\S]*?width:\s*min\(920px, calc\(100vw - 32px\)\)/);
+  assert.match(styles, /\.codex-dialog\[data-size="page"\][\s\S]*?width:\s*min\(1080px, calc\(100vw - 32px\)\)/);
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.codex-dialog\[data-size="confirm"\][\s\S]*?margin:\s*auto 0 0/);
   assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.codex-dialog\[data-size="tool"\][\s\S]*?height:\s*var\(--app-viewport-height, 100dvh\)/);
   assert.match(styles, /\.codex-dialog::backdrop[\s\S]*?backdrop-filter:\s*blur\(6px\)/);

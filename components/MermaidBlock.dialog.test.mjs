@@ -14,7 +14,7 @@ test("full-screen viewers share Codex viewer and close chrome", () => {
 });
 
 test("ordinary viewers use consistent backdrop while image preview keeps media contrast", () => {
-  assert.match(styles, /\.codex-viewer::backdrop\s*\{\s*background:\s*rgba\(0, 0, 0, \.4\);/);
+  assert.match(styles, /\.codex-viewer::backdrop\s*\{\s*background:\s*rgba\(15, 23, 42, \.32\);/);
   assert.match(styles, /\.image-preview-dialog::backdrop\s*\{\s*background:\s*rgba\(0, 0, 0, 0\.72\);/);
 });
 

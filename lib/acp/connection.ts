@@ -7,6 +7,7 @@ import {
 
 type PendingPermission = {
   request: unknown;
+  requestId: string;
   startedAt: number;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -34,16 +35,30 @@ export class AcpConnection {
         return;
       }
       if (method !== "session/request_permission" || typeof id !== "number") return;
-      const key = String(id);
+      const sessionId = validSessionId(params);
+      if (!sessionId) {
+        const startedAt = this.now();
+        this.rpc.respond(id, resolvePermission({ cancelled: true }, params, {
+          startedAt,
+          now: startedAt,
+          timeoutMs: this.permissionTimeoutMs,
+        }));
+        return;
+      }
+      const requestId = String(id);
+      const key = permissionKey(sessionId, requestId);
       const existing = this.pendingPermissions.get(key);
       if (existing) clearTimeout(existing.timer);
       const startedAt = this.now();
       const timer = setTimeout(() => this.expirePermission(key), this.permissionTimeoutMs);
-      this.pendingPermissions.set(key, { request: params, startedAt, timer });
+      this.pendingPermissions.set(key, { request: params, requestId, startedAt, timer });
       const event = translatePermissionRequest(params, id);
-      const sessionId = isRecord(params) && typeof params.sessionId === "string" ? params.sessionId : undefined;
       const uiRequest = sessionId ? { ...event, sessionId } : event;
       for (const handler of this.permissionHandlers) handler(uiRequest);
+    });
+    this.rpc.onClose(() => {
+      for (const pending of this.pendingPermissions.values()) clearTimeout(pending.timer);
+      this.pendingPermissions.clear();
     });
   }
 
@@ -54,11 +69,16 @@ export class AcpConnection {
     };
   }
 
-  completePermission(id: string, ui: { confirmed?: boolean; cancelled?: boolean }): void {
-    const pending = this.pendingPermissions.get(id);
+  completePermission(
+    sessionId: string,
+    id: string,
+    ui: { confirmed?: boolean; cancelled?: boolean },
+  ): void {
+    const key = permissionKey(sessionId, id);
+    const pending = this.pendingPermissions.get(key);
     if (!pending) return;
     clearTimeout(pending.timer);
-    this.pendingPermissions.delete(id);
+    this.pendingPermissions.delete(key);
     this.rpc.respond(Number(id), resolvePermission(ui, pending.request, {
       startedAt: pending.startedAt,
       now: this.now(),
@@ -70,11 +90,19 @@ export class AcpConnection {
     const pending = this.pendingPermissions.get(id);
     if (!pending) return;
     this.pendingPermissions.delete(id);
-    this.rpc.respond(Number(id), resolvePermission({ cancelled: true }, pending.request, {
+    this.rpc.respond(Number(pending.requestId), resolvePermission({ cancelled: true }, pending.request, {
       startedAt: pending.startedAt,
       now: this.now(),
       timeoutMs: this.permissionTimeoutMs,
     }));
+  }
+
+  onClose(handler: (error: Error) => void): () => void {
+    return this.rpc.onClose(handler);
+  }
+
+  close(): void {
+    this.rpc.close();
   }
 
   async initialize(): Promise<unknown> {
@@ -98,11 +126,19 @@ export class AcpConnection {
   }
 
   sessionLoad(sessionId: string, cwd?: string): Promise<{ sessionId: string }> {
-    return this.rpc.request("session/load", { sessionId, cwd }) as Promise<{ sessionId: string }>;
+    return this.rpc.request("session/load", {
+      sessionId,
+      cwd,
+      mcpServers: [],
+    }) as Promise<{ sessionId: string }>;
   }
 
   sessionResume(sessionId: string, cwd: string): Promise<{ sessionId?: string }> {
-    return this.rpc.request("session/resume", { sessionId, cwd }) as Promise<{ sessionId?: string }>;
+    return this.rpc.request("session/resume", {
+      sessionId,
+      cwd,
+      mcpServers: [],
+    }) as Promise<{ sessionId?: string }>;
   }
 
   sessionClose(sessionId: string): Promise<{ _meta?: { "x.ai/closeOutcome"?: string }; outcome?: string }> {
@@ -157,6 +193,19 @@ export class AcpConnection {
 
   sessionSetMode(sessionId: string, modeId: string): Promise<unknown> {
     return this.rpc.request("session/set_mode", { sessionId, modeId });
+  }
+
+  sessionSetConfigOption(
+    sessionId: string,
+    id: string,
+    value: string | boolean,
+  ): Promise<unknown> {
+    return this.rpc.request("session/set_config_option", {
+      sessionId,
+      id,
+      configId: id,
+      value,
+    });
   }
 
   fsList(path: string): Promise<{ nodes: Array<{ name: string; path: string; type: string }> }> {
@@ -406,6 +455,17 @@ export class AcpConnection {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function validSessionId(value: unknown): string | undefined {
+  if (!isRecord(value) || typeof value.sessionId !== "string") return undefined;
+  return value.sessionId.length > 0 && value.sessionId.trim() === value.sessionId
+    ? value.sessionId
+    : undefined;
+}
+
+function permissionKey(sessionId: string, requestId: string): string {
+  return JSON.stringify([sessionId, requestId]);
 }
 
 function readAvailableCommands(value: unknown): Array<{ name: string; description?: string }> {

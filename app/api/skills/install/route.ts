@@ -8,7 +8,10 @@ import { getProjectTrustStatus } from "@/lib/project-trust";
 const ANSI_RE = /\x1B\[[0-9;]*m/g;
 
 // POST /api/skills/install  body: { package: string; scope: "global" | "project"; cwd?: string }
-export async function POST(req: Request) {
+export async function handleSkillsInstall(
+  req: Request,
+  runNpxImpl: typeof runNpx = runNpx,
+) {
   if (!isApiRequestAllowed(req)) {
     return Response.json({ error: "Untrusted API request" }, { status: 403 });
   }
@@ -38,7 +41,7 @@ export async function POST(req: Request) {
     if (isGlobal) args.push("-g");
 
     console.log(`[skills/install] running: npx ${args.join(" ")}`);
-    const { stdout, stderr } = await runNpx(args, {
+    const { stdout, stderr } = await runNpxImpl(args, {
       timeout: 60000,
       cwd: !isGlobal && cwd ? cwd : undefined,
       env: { ...process.env, FORCE_COLOR: "0" },
@@ -55,4 +58,8 @@ export async function POST(req: Request) {
     const output = ((err.stdout ?? "") + (err.stderr ?? "")).replace(ANSI_RE, "");
     return Response.json({ error: output || (err.message ?? String(e)) }, { status: 500 });
   }
+}
+
+export function POST(req: Request) {
+  return handleSkillsInstall(req);
 }

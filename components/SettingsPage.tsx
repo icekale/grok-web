@@ -20,7 +20,6 @@ import {
   SlidersHorizontal,
   Sun,
   Volume2,
-  X,
 } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import type { ThemePreference } from "@/hooks/useTheme";
@@ -57,6 +56,7 @@ interface Props {
   onSessionReloaded: () => void;
   onProjectsChanged: () => void;
   onRegisterSettingsBack: (handler: () => boolean) => void;
+  initialSection?: SettingsSection;
 }
 
 function SectionIcon({ section }: { section: SettingsSection }) {
@@ -90,9 +90,10 @@ export function SettingsPage({
   onSessionReloaded,
   onProjectsChanged,
   onRegisterSettingsBack,
+  initialSection = "general",
 }: Props) {
   const { t } = useI18n();
-  const [section, setSection] = useState<SettingsSection>("general");
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const [projects, setProjects] = useState<ProjectPreference[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => new Set());
@@ -193,17 +194,6 @@ export function SettingsPage({
       setPermissionSaving(false);
     }
   }, [permissionMode, permissionSaving]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (discardDialogOpen) return; // native <dialog> handles its own Escape
-      if (activeController?.handleBack()) return;
-      requestCloseOrNavigate(close);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [activeController, close, discardDialogOpen, requestCloseOrNavigate]);
 
   const handleSettingsBack = useCallback((): boolean => {
     if (activeController?.handleBack()) return true;
@@ -360,7 +350,7 @@ export function SettingsPage({
           </div>
         </section>
         <section className="settings-form-section">
-          <div className="settings-form-label"><Info size={16} aria-hidden="true" /><div><strong>{t("settings.about")}</strong><span>{t("settings.aboutVersion", { web: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0", pi: process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0" })}</span></div></div>
+          <div className="settings-form-label"><Info size={16} aria-hidden="true" /><div><strong>{t("settings.about")}</strong><span>{t("settings.aboutVersion", { web: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0" })}</span></div></div>
         </section>
       </div>
     );
@@ -436,60 +426,46 @@ export function SettingsPage({
   }
 
   return createPortal(
-    <div
-      className="settings-page-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-page-title"
-      onMouseDown={(event) => { if (event.target === event.currentTarget) requestCloseOrNavigate(close); }}
+    <DialogShell
+      size="page"
+      title={t("common.settings")}
+      ariaLabel={t("i18n.close")}
+      showClose
+      closeButtonRef={closeButtonRef}
+      onClose={() => requestCloseOrNavigate(close)}
+      onEscape={() => Boolean(activeController?.handleBack())}
+      bodyClassName="settings-page-dialog-body"
+      headerActions={section === "vision" ? (
+        <button
+          type="button"
+          className="settings-page-header-text"
+          onClick={() => visionController?.reveal()}
+        >
+          {t("vision.openConfig")}
+        </button>
+      ) : null}
     >
-      <div className="settings-page-shell">
-        <header className="settings-page-header">
-          <h2 id="settings-page-title">{t("common.settings")}</h2>
-          <div className="settings-page-header-actions">
-            {section === "vision" && (
-              <button
-                type="button"
-                className="settings-page-header-text"
-                onClick={() => visionController?.reveal()}
-              >
-                {t("vision.openConfig")}
-              </button>
-            )}
+      <div className="settings-page-layout">
+        <nav
+          className="settings-page-nav"
+          aria-label={t("settings.categories")}
+          data-hidden-mobile={activeController?.mobileDetailOpen ? "true" : undefined}
+        >
+          {sections.map((item) => (
             <button
-              ref={closeButtonRef}
+              key={item.id}
               type="button"
-              className="settings-page-header-close"
-              onClick={() => requestCloseOrNavigate(close)}
-              aria-label={t("i18n.close")}
-              title={t("i18n.close")}
+              data-active={section === item.id}
+              disabled={item.disabled}
+              title={item.disabled ? t("settings.selectProjectFirst") : item.label}
+              onClick={() => requestCloseOrNavigate(() => setSection(item.id))}
             >
-              <X size={17} aria-hidden="true" />
+              <SectionIcon section={item.id} />
+              <span>{item.label}</span>
             </button>
-          </div>
-        </header>
-        <div className="settings-page-layout">
-          <nav
-            className="settings-page-nav"
-            aria-label={t("settings.categories")}
-            data-hidden-mobile={activeController?.mobileDetailOpen ? "true" : undefined}
-          >
-            {sections.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                data-active={section === item.id}
-                disabled={item.disabled}
-                title={item.disabled ? t("settings.selectProjectFirst") : item.label}
-                onClick={() => requestCloseOrNavigate(() => setSection(item.id))}
-              >
-                <SectionIcon section={item.id} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-          <main className="settings-page-content">{content}</main>
-        </div>
+          ))}
+        </nav>
+        <main className="settings-page-content">{content}</main>
       </div>
       {discardDialogOpen && (
         <DialogShell
@@ -508,7 +484,7 @@ export function SettingsPage({
           <p className="codex-dialog-copy">{t("models.discardChangesDescription")}</p>
         </DialogShell>
       )}
-    </div>,
+    </DialogShell>,
     document.body,
   );
 }

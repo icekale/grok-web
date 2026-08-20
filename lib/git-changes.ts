@@ -19,12 +19,54 @@ const GIT_TIMEOUT_MS = 10_000;
 const GIT_STATUS_MAX_BUFFER = 8 * 1024 * 1024;
 
 async function git(cwd: string, args: string[], maxBuffer = GIT_STATUS_MAX_BUFFER): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+  const { stdout } = await execFileAsync("git", ["-C", cwd, "--literal-pathspecs", ...args], {
     timeout: GIT_TIMEOUT_MS,
     maxBuffer,
     env: { ...process.env, LC_ALL: "C" },
   });
   return stdout;
+}
+
+export async function stageGitFiles(cwd: string, paths: string[]): Promise<{ paths: string[] }> {
+  if (paths.length === 0) throw new Error("paths are required");
+  await git(cwd, ["add", "--", ...paths]);
+  return { paths };
+}
+
+export async function discardGitFiles(cwd: string, paths: string[]): Promise<{ ok: true }> {
+  if (paths.length === 0) throw new Error("paths are required");
+  const tracked: string[] = [];
+  for (const filePath of paths) {
+    try {
+      await git(cwd, ["ls-files", "--error-unmatch", "--", filePath]);
+      tracked.push(filePath);
+      continue;
+    } catch {
+      // Untracked paths are deleted only when the leaf is a regular file.
+    }
+    const absolutePath = path.resolve(cwd, filePath);
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(absolutePath);
+    } catch {
+      throw new Error(`Cannot discard untracked path unless it is a regular file: ${filePath}`);
+    }
+    if (!stat.isFile()) {
+      throw new Error(`Cannot discard untracked path unless it is a regular file: ${filePath}`);
+    }
+    fs.unlinkSync(absolutePath);
+  }
+  if (tracked.length > 0) {
+    await git(cwd, ["restore", "--worktree", "--", ...tracked]);
+  }
+  return { ok: true };
+}
+
+export async function commitGitChanges(cwd: string, message: string): Promise<{ ok: true }> {
+  const trimmed = message.trim();
+  if (!trimmed) throw new Error("message is required");
+  await git(cwd, ["commit", "-m", trimmed]);
+  return { ok: true };
 }
 
 async function findRepositoryRoot(cwd: string): Promise<string | null> {
@@ -187,9 +229,23 @@ async function createTrackedFilePatch(
 
 export async function getGitFileDiff(cwd: string, filePath: string): Promise<GitFileDiffResponse> {
   const repositoryRoot = await findRepositoryRoot(cwd);
-  if (!repositoryRoot || !isWithinPath(repositoryRoot, filePath)) return { supported: false };
+  if (!repositoryRoot) return { supported: false };
 
-  const resolvedFilePath = path.resolve(filePath);
+  let resolvedCwd: string;
+  try {
+    resolvedCwd = fs.realpathSync(cwd);
+  } catch {
+    resolvedCwd = path.resolve(cwd);
+  }
+  let resolvedFilePath: string;
+  try {
+    resolvedFilePath = path.join(fs.realpathSync(path.dirname(filePath)), path.basename(filePath));
+  } catch {
+    resolvedFilePath = path.resolve(filePath);
+  }
+  if (!isWithinPath(resolvedCwd, resolvedFilePath) || !isWithinPath(repositoryRoot, resolvedFilePath)) {
+    return { supported: false };
+  }
   const relativePath = toGitPath(path.relative(repositoryRoot, resolvedFilePath));
   const entries = await readStatusEntries(repositoryRoot);
   const entry = entries.find((candidate) => candidate.path === relativePath);
@@ -207,6 +263,12 @@ export async function getGitFileDiff(cwd: string, filePath: string): Promise<Git
     stat = fs.lstatSync(resolvedFilePath);
   } catch {
     return { supported: false };
+  }
+  if (stat.isSymbolicLink()) {
+    if (status === "untracked") return { supported: false };
+    const patch = await createTrackedFilePatch(repositoryRoot, relativePath, entry.originalPath);
+    if (!patch?.includes("\n@@ ")) return { supported: false };
+    return { supported: true, status, patch };
   }
   if (!stat.isFile() || stat.size > TEXT_PREVIEW_MAX_BYTES) return { supported: false };
 

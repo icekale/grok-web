@@ -3,8 +3,9 @@ import { toSlashPath } from "../paths.ts";
 import { nextPromptGeneration } from "../prompt-generation.ts";
 import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
+import { hasJsonContentType } from "../request-security.ts";
 import { formatGrokMissingError } from "./process.ts";
-import type { AgentCommand, AgentRuntime } from "./runtime.ts";
+import { AgentCapabilityError, type AgentCommand, type AgentRuntime } from "./runtime.ts";
 
 type AgentBody = {
   cwd?: unknown;
@@ -25,6 +26,9 @@ export function createAgentHandlers(runtime: AgentRuntime): {
 } {
   return {
     async postNew(req: Request): Promise<Response> {
+      if (!hasJsonContentType(req)) {
+        return Response.json({ error: "Content-Type must be application/json" }, { status: 415 });
+      }
       let commandType: string | undefined;
       let promptAccepted = false;
       try {
@@ -52,6 +56,13 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         const sessionId = await runtime.createSession(cwd);
         allowFileRoot(cwd);
         invalidateSessionListCache();
+        if (Array.isArray(body.toolNames)) {
+          try {
+            await runtime.send(sessionId, { type: "set_tools", toolNames: body.toolNames });
+          } catch (error) {
+            if (!(error instanceof AgentCapabilityError)) throw error;
+          }
+        }
 
         const state = await runtime.send(sessionId, { type: "get_state" }) as SessionState;
         const model = publicModel(state);
@@ -96,6 +107,9 @@ export function createAgentHandlers(runtime: AgentRuntime): {
     },
 
     async postSession(req: Request, id: string): Promise<Response> {
+      if (!hasJsonContentType(req)) {
+        return Response.json({ error: "Content-Type must be application/json" }, { status: 415 });
+      }
       let commandType: string | undefined;
       let promptAccepted = false;
       try {
@@ -104,6 +118,9 @@ export function createAgentHandlers(runtime: AgentRuntime): {
 
         if (command.type !== "get_state") {
           await loadSessionIfNeeded(runtime, id);
+        }
+        if (!runtime.hasSession(id)) {
+          return Response.json({ error: "Session not found" }, { status: 404 });
         }
 
         if (command.type === "prompt") {
@@ -127,6 +144,10 @@ export function createAgentHandlers(runtime: AgentRuntime): {
 
     async getSession(_req: Request, id: string): Promise<Response> {
       try {
+        await loadSessionIfNeeded(runtime, id);
+        if (!runtime.hasSession(id)) {
+          return Response.json({ error: "Session not found" }, { status: 404 });
+        }
         const state = await runtime.send(id, { type: "get_state" });
         return Response.json({ running: runtime.isBusy(id), state });
       } catch (error) {
@@ -159,7 +180,7 @@ async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<v
     await runtime.loadSession(id, session.cwd);
   } catch (error) {
     const message = errorMessage(error);
-    if (message.includes("already loaded") || message.includes("Invalid params")) return;
+    if (message.includes("already loaded")) return;
     throw error;
   }
 }
@@ -187,7 +208,11 @@ function agentErrorResponse(
   error: unknown,
   extras: { commandType?: string; promptAccepted?: boolean } = {},
 ): Response {
-  const status = isGrokMissing(error) ? 503 : 500;
+  const status = isGrokMissing(error)
+    ? 503
+    : error instanceof AgentCapabilityError || (error as { status?: unknown }).status === 501
+      ? 501
+    : 500;
   return Response.json({
     error: formatHandlerError(error),
     ...(extras.commandType === "prompt" && !extras.promptAccepted

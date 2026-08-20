@@ -3,12 +3,11 @@ import {
   createMiddleware,
   createStart,
 } from "@tanstack/react-start";
-import { getRequestSecurityRejection } from "@/lib/request-security";
 import { getApiMethodRejection } from "./api-methods";
+import { runRequestSecurityFromContext } from "./request-peer.server";
 
 const requestSecurityMiddleware = createMiddleware().server(async ({ next, request }) => {
-  const rejection = getRequestSecurityRejection(request);
-  return rejection ?? next();
+  return runRequestSecurityFromContext(request, () => next());
 });
 
 const apiMethodGuardMiddleware = createMiddleware().server(async ({ next, request }) => {

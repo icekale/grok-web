@@ -2,10 +2,10 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import path from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { getAgentDir, parseFrontmatter } from "@/lib/pi-stubs/coding-agent";
+import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { parseFrontmatter } from "@/lib/frontmatter";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { listGrokSkills } from "@/lib/grok-settings/home-config.ts";
 
 type AcpSkill = {
   name: string;
@@ -15,17 +15,6 @@ type AcpSkill = {
   enabled?: boolean;
   disable_model_invocation?: boolean;
 };
-
-function mapAcpSkill(skill: AcpSkill, cwd: string) {
-  return {
-    name: skill.name,
-    description: skill.description ?? "",
-    filePath: skill.path,
-    baseDir: cwd,
-    disableModelInvocation: skill.enabled === false || skill.disable_model_invocation === true,
-    sourceInfo: { source: "grok", scope: skill.scope === "user" ? "user" : "project" },
-  };
-}
 
 async function listAcpSkills(cwd: string): Promise<AcpSkill[]> {
   const listed = await getAgentRuntime().listSkills(cwd);
@@ -45,8 +34,7 @@ async function skillPatchAllowedRoots(): Promise<Set<string>> {
 }
 
 // GET /api/skills?cwd=<path>
-// Uses DefaultResourceLoader (same logic as AgentSession startup) so settings.json
-// skill paths, package skills, and .agents/skills directories are all included.
+// ACP skill list first, then GROK_HOME / project skill folders, with install lock metadata.
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const cwd = searchParams.get("cwd");
@@ -57,33 +45,7 @@ export async function GET(req: Request) {
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
-    try {
-      const skills = await listAcpSkills(cwd);
-      return Response.json({
-        skills: skills.map((skill) => mapAcpSkill(skill, cwd)),
-        diagnostics: [],
-        projectResourcesLoaded: true,
-      });
-    } catch {
-      // ACP unavailable — fall back to disk loaders
-    }
-    let loaded = { skills: [], diagnostics: [], projectResourcesLoaded: false };
-    try {
-      loaded = await loadSkillsWithInstallInfo(cwd);
-    } catch {
-      loaded = { skills: [], diagnostics: [], projectResourcesLoaded: false };
-    }
-    const extra = listGrokSkills(undefined, cwd).filter((skill) => (
-      !loaded.skills.some((item) => item.filePath === skill.path)
-    )).map((skill) => ({
-      name: skill.name,
-      description: "",
-      filePath: skill.path,
-      baseDir: cwd,
-      disableModelInvocation: false,
-      sourceInfo: { source: "grok", scope: "project" },
-    }));
-    return Response.json({ ...loaded, skills: [...loaded.skills, ...extra] });
+    return Response.json(await loadSkillsWithInstallInfo(cwd));
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 500 });
   }
@@ -107,11 +69,15 @@ export async function PATCH(req: Request) {
     }
     try {
       const runtime = getAgentRuntime();
-      const listCwd = body.cwd || path.dirname(filePath);
-      const skill = (await listAcpSkills(listCwd)).find((item) => item.path === filePath);
-      if (skill) {
-        await runtime.toggleSkill(skill.name, !disableModelInvocation);
-        return Response.json({ success: true });
+      const listCwds = [...new Set(
+        [body.cwd, getAgentDir(), path.dirname(filePath)].filter((value): value is string => Boolean(value)),
+      )];
+      for (const listCwd of listCwds) {
+        const skill = (await listAcpSkills(listCwd)).find((item) => item.path === filePath);
+        if (skill) {
+          await runtime.toggleSkill(skill.name, !disableModelInvocation);
+          return Response.json({ success: true });
+        }
       }
     } catch {
       // ACP unavailable — fall back to SKILL.md frontmatter
@@ -127,8 +93,8 @@ export async function PATCH(req: Request) {
 
     // Use parseFrontmatter to check current value, then do a surgical line edit
     // to preserve the original YAML formatting of all other fields.
-    const { frontmatter } = parseFrontmatter<Record<string, unknown>>(content);
-    const alreadySet = Boolean(frontmatter[key]);
+    const { data } = parseFrontmatter(content);
+    const alreadySet = Boolean(data?.[key]);
 
     let updated = content;
     if (disableModelInvocation && !alreadySet) {

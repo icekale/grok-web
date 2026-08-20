@@ -1,3 +1,9 @@
+const WINDOWS_ABSOLUTE_RE = /^[a-zA-Z]:[\\/]/;
+
+export function isWindowsAbsolutePath(filePath: string): boolean {
+  return WINDOWS_ABSOLUTE_RE.test(filePath) || filePath.startsWith("\\\\") || filePath.startsWith("//");
+}
+
 export function normalizeFilePathSlashes(filePath: string): string {
   if (/^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith("\\\\")) {
     return filePath.replace(/\\/g, "/");
@@ -40,4 +46,12 @@ export function getRelativeFilePath(filePath: string, cwd?: string): string {
 
 export function joinFilePath(parent: string, child: string): string {
   return `${normalizeFilePathSlashes(parent).replace(/\/$/, "")}/${child}`;
+}
+
+export function resolveWorkspaceFilePath(cwd: string, filePath: string): string {
+  const normalized = isWindowsAbsolutePath(cwd)
+    ? filePath.replace(/\\/g, "/")
+    : normalizeFilePathSlashes(filePath);
+  if (normalized.startsWith("/") || isWindowsAbsolutePath(normalized)) return normalized;
+  return joinFilePath(cwd, normalized.replace(/^\.\//, ""));
 }

@@ -1,49 +1,101 @@
-import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
+import type { Dispatcher } from "undici";
 
 export interface DiscoveredModel {
   id: string;
   name?: string;
 }
 
+// Source: IANA IPv4 Special-Purpose Address Space, last updated 2025-10-09
+// (retrieved 2026-08-20). Keep CIDRs explicit so registry additions are reviewable.
+const SPECIAL_IPV4_CIDRS = [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.31.196.0", 24],
+  ["192.52.193.0", 24],
+  ["192.88.99.0", 24],
+  ["192.168.0.0", 16],
+  ["192.175.48.0", 24],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  // Multicast is non-global but not a special-purpose registry row.
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+] as const;
+
+const SPECIAL_IPV4 = new BlockList();
+for (const [network, prefix] of SPECIAL_IPV4_CIDRS) {
+  SPECIAL_IPV4.addSubnet(network, prefix, "ipv4");
+}
+
+// Source: IANA IPv6 Special-Purpose Address Space, last updated 2025-10-09
+// (retrieved 2026-08-20). Keep CIDRs explicit so registry additions are reviewable.
+const SPECIAL_IPV6_CIDRS = [
+  ["::", 128],
+  ["::1", 128],
+  ["::ffff:0:0", 96],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["100::", 64],
+  ["100:0:0:1::", 64],
+  ["2001::", 23],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["2620:4f:8000::", 48],
+  ["3fff::", 20],
+  ["5f00::", 16],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  // Deprecated site-local and multicast are non-global but not registry rows.
+  ["fec0::", 10],
+  ["ff00::", 8],
+] as const;
+
+const SPECIAL_IPV6 = new BlockList();
+for (const [network, prefix] of SPECIAL_IPV6_CIDRS) {
+  SPECIAL_IPV6.addSubnet(network, prefix, "ipv6");
+}
+
 function isPrivateIpv4(address: string): boolean {
-  const octets = address.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true;
-  const [a, b] = octets;
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && (b === 168 || b === 0 || b === 2)) return true;
-  if (a === 198 && (b === 18 || b === 19 || b === 51)) return true;
-  if (a === 203 && b === 113) return true;
-  if (a >= 224) return true; // multicast + reserved
-  return false;
+  return isIP(address) !== 4 || SPECIAL_IPV4.check(address, "ipv4");
 }
 
 function isPrivateIpv6(address: string): boolean {
-  const lower = address.toLowerCase();
-  if (lower === "::" || lower === "::1") return true;
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // fc00::/7
-  if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true; // fe80::/10
-  if (lower.startsWith("2001:db8")) return true; // documentation
-  const mapped = /^::ffff:(.+)$/.exec(lower);
-  return mapped ? isPrivateIpv4(mapped[1]) : false;
+  return SPECIAL_IPV6.check(address, "ipv6");
 }
 
 function normalizeDiscoveryHostname(hostname: string): string {
   return hostname.toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
 }
 
+function mappedIpv4(hostname: string): string | undefined {
+  const normalized = normalizeDiscoveryHostname(hostname);
+  const dotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized)?.[1];
+  if (dotted && isIP(dotted) === 4) return dotted;
+  const hexadecimal = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(normalized);
+  if (!hexadecimal) return undefined;
+  const high = Number.parseInt(hexadecimal[1], 16);
+  const low = Number.parseInt(hexadecimal[2], 16);
+  return `${high >>> 8}.${high & 255}.${low >>> 8}.${low & 255}`;
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = normalizeDiscoveryHostname(hostname);
   if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
+  const mapped = mappedIpv4(normalized);
+  if (mapped) return isLoopbackHostname(mapped);
   const ipKind = isIP(normalized);
   if (ipKind === 4) return normalized.split(".").map(Number)[0] === 127;
-  if (ipKind === 6) {
-    if (normalized === "::1") return true;
-    const mapped = /^::ffff:(.+)$/.exec(normalized);
-    return mapped ? isLoopbackHostname(mapped[1]) : false;
-  }
+  if (ipKind === 6) return normalized === "::1";
   return false;
 }
 
@@ -59,13 +111,13 @@ function isLanIpv4(address: string): boolean {
 
 function isLanHostname(hostname: string): boolean {
   const normalized = normalizeDiscoveryHostname(hostname);
+  const mapped = mappedIpv4(normalized);
+  if (mapped) return isLanIpv4(mapped);
   const ipKind = isIP(normalized);
   if (ipKind === 4) return isLanIpv4(normalized);
   if (ipKind === 6) {
     const lower = normalized.toLowerCase();
     if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-    const mapped = /^::ffff:(.+)$/.exec(lower);
-    return mapped ? isLanIpv4(mapped[1]) : false;
   }
   return false;
 }
@@ -77,7 +129,7 @@ function isPrivateHostname(hostname: string): boolean {
   const ipKind = isIP(normalized);
   if (ipKind === 4) return isPrivateIpv4(normalized);
   if (ipKind === 6) return isPrivateIpv6(normalized);
-  return false; // public DNS name; ponytail: no DNS resolution, same-origin middleware covers rebinding
+  return false; // Public DNS names are resolved and pinned by safeDiscoveryFetch.
 }
 
 export interface DiscoveryTargetAuth {
@@ -85,26 +137,192 @@ export interface DiscoveryTargetAuth {
   headers?: Record<string, string | null | undefined>;
 }
 
+export interface DiscoveryLookupAddress {
+  address: string;
+  family: 4 | 6;
+}
+
+export type DiscoveryLookup = (
+  hostname: string,
+  signal?: AbortSignal,
+) => Promise<readonly DiscoveryLookupAddress[]>;
+type DiscoveryFetchInit = RequestInit & { dispatcher?: Dispatcher };
+type DiscoveryFetch = (input: string | URL, init?: DiscoveryFetchInit) => Promise<Response>;
+type PinnedLookup = (
+  hostname: string,
+  options: number | { all?: boolean; family?: number },
+  callback: (...args: unknown[]) => void,
+) => void;
+
+export interface SafeDiscoveryFetchOptions {
+  fetchImpl?: DiscoveryFetch;
+  lookup?: DiscoveryLookup;
+  createDispatcher?: (lookup: PinnedLookup) => Dispatcher;
+}
+
+const DEFAULT_MAX_REDIRECTS = 3;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const CROSS_ORIGIN_HEADERS = new Set(["accept", "content-type", "user-agent"]);
+const REQUEST_BODY_HEADERS = ["content-encoding", "content-language", "content-location", "content-type", "content-length"];
+
 /**
- * Guards discovery/test fetches against credential-forwarding SSRF.
- * Scheme is restricted to http(s); stored credentials are never forwarded to
- * link-local or special-use destinations (cloud metadata, unspecified,
- * multicast). Loopback and RFC1918/ULA LAN addresses are allowed with
- * credentials so local and LAN OpenAI-compatible proxies work.
+ * Guards discovery/test fetches against SSRF. Scheme is restricted to http(s).
+ * Link-local and special-use destinations (cloud metadata, unspecified,
+ * multicast) are never allowed. Loopback and RFC1918/ULA LAN addresses stay
+ * allowed so local and LAN OpenAI-compatible proxies work.
  */
-export function assertSafeDiscoveryTarget(target: URL, auth: DiscoveryTargetAuth): void {
+export function assertSafeDiscoveryTarget(target: URL, _auth: DiscoveryTargetAuth = {}): void {
+  void _auth;
   if (target.protocol !== "http:" && target.protocol !== "https:") {
     throw new Error("Base URL must use http or https");
   }
-  const hasCredentials = Boolean(auth.apiKey)
-    || Object.values(auth.headers ?? {}).some((value) => typeof value === "string" && value.length > 0);
   if (
-    hasCredentials
-    && isPrivateHostname(target.hostname)
+    isPrivateHostname(target.hostname)
     && !isLoopbackHostname(target.hostname)
     && !isLanHostname(target.hostname)
   ) {
-    throw new Error("Base URL must not target a link-local or private address when credentials are attached");
+    throw new Error("Base URL must not target a link-local or special-use address");
+  }
+}
+
+function assertSafeResolvedAddress(address: string): void {
+  const family = isIP(address);
+  const allowed = family === 4
+    ? isLoopbackHostname(address) || isLanIpv4(address)
+    : family === 6 && (isLoopbackHostname(address) || isLanHostname(address));
+  const special = family === 4 ? isPrivateIpv4(address) : family === 6 && isPrivateIpv6(address);
+  if (!family || (special && !allowed)) {
+    throw new Error(`Base URL resolved to a link-local or special-use address: ${address}`);
+  }
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+async function resolveSafeAddresses(
+  target: URL,
+  lookup: DiscoveryLookup,
+  signal: AbortSignal | null | undefined,
+): Promise<DiscoveryLookupAddress[]> {
+  const hostname = normalizeDiscoveryHostname(target.hostname);
+  const family = isIP(hostname);
+  const addresses = family
+    ? [{ address: hostname, family: family as 4 | 6 }]
+    : [...await abortable(Promise.resolve(lookup(hostname, signal ?? undefined)), signal)];
+  if (addresses.length === 0) throw new Error(`Base URL hostname did not resolve: ${hostname}`);
+  for (const result of addresses) {
+    if (isIP(result.address) !== result.family) {
+      throw new Error(`Base URL hostname returned an invalid address: ${result.address}`);
+    }
+    assertSafeResolvedAddress(result.address);
+  }
+  return addresses;
+}
+
+function pinnedLookup(addresses: readonly DiscoveryLookupAddress[]): PinnedLookup {
+  return (_hostname, options, callback) => {
+    const family = typeof options === "number" ? options : options.family;
+    const selected = family === 4 || family === 6
+      ? addresses.filter((address) => address.family === family)
+      : addresses;
+    if (selected.length === 0) {
+      const error = Object.assign(new Error("No validated address for requested family"), { code: "ENOTFOUND" });
+      callback(error);
+    } else if (typeof options !== "number" && options.all) {
+      callback(null, selected);
+    } else {
+      callback(null, selected[0].address, selected[0].family);
+    }
+  };
+}
+
+function redirectedHeaders(headers: Headers, crossOrigin: boolean): Headers {
+  if (!crossOrigin) return headers;
+  const safe = new Headers();
+  for (const [name, value] of headers) {
+    if (CROSS_ORIGIN_HEADERS.has(name.toLowerCase())) safe.set(name, value);
+  }
+  return safe;
+}
+
+function redirectRequestInit(init: DiscoveryFetchInit, status: number, crossOrigin: boolean): DiscoveryFetchInit {
+  const next = { ...init, headers: redirectedHeaders(new Headers(init.headers), crossOrigin) };
+  const method = (next.method ?? "GET").toUpperCase();
+  if (
+    (status === 303 && method !== "GET" && method !== "HEAD")
+    || ((status === 301 || status === 302) && method === "POST")
+  ) {
+    next.method = "GET";
+    delete next.body;
+    const headers = new Headers(next.headers);
+    for (const name of REQUEST_BODY_HEADERS) headers.delete(name);
+    next.headers = headers;
+  }
+  return next;
+}
+
+async function bufferedResponse(response: Response, dispatcher: Dispatcher): Promise<Response> {
+  try {
+    const body = response.body ? await response.arrayBuffer() : null;
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  } finally {
+    await dispatcher.close();
+  }
+}
+
+export async function safeDiscoveryFetch(
+  input: string | URL,
+  init: RequestInit = {},
+  options: SafeDiscoveryFetchOptions = {},
+): Promise<Response> {
+  const lookup = options.lookup ?? (async (hostname) => {
+    const addresses = await dnsLookup(hostname, { all: true, verbatim: true });
+    return addresses as DiscoveryLookupAddress[];
+  });
+  const fetchImpl = options.fetchImpl ?? (undiciFetch as unknown as DiscoveryFetch);
+  const createDispatcher = options.createDispatcher
+    ?? ((safeLookup: PinnedLookup) => new Agent({ connect: { lookup: safeLookup as never } }));
+  let target = new URL(input);
+  let requestInit: DiscoveryFetchInit = { ...init, headers: new Headers(init.headers), redirect: "manual" };
+
+  for (let redirects = 0; ; redirects += 1) {
+    requestInit.signal?.throwIfAborted();
+    assertSafeDiscoveryTarget(target);
+    const addresses = await resolveSafeAddresses(target, lookup, requestInit.signal);
+    const dispatcher = createDispatcher(pinnedLookup(addresses));
+    let response: Response;
+    try {
+      response = await fetchImpl(target, { ...requestInit, dispatcher, redirect: "manual" });
+    } catch (error) {
+      await dispatcher.close();
+      throw error;
+    }
+
+    if (!REDIRECT_STATUSES.has(response.status)) return bufferedResponse(response, dispatcher);
+    try {
+      await response.body?.cancel();
+    } finally {
+      await dispatcher.close();
+    }
+    if (redirects >= DEFAULT_MAX_REDIRECTS) {
+      throw new Error(`Upstream redirect limit exceeded (${DEFAULT_MAX_REDIRECTS})`);
+    }
+    const location = response.headers.get("location");
+    if (!location) throw new Error(`Upstream redirect response ${response.status} did not include Location`);
+    const nextTarget = new URL(location, target);
+    requestInit = redirectRequestInit(requestInit, response.status, nextTarget.origin !== target.origin);
+    target = nextTarget;
   }
 }
 

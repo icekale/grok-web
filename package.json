@@ -37,7 +37,7 @@
     "pack:tanstack": "node scripts/pack-tanstack.mjs",
     "start:tanstack": "node scripts/start-tanstack-output.mjs",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\""
+    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\" \"src/**/*.test.mjs\" \"scripts/**/*.test.mjs\""
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-mono": "5.3.0",

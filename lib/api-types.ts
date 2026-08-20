@@ -57,6 +57,7 @@ export interface SkillsResponse {
 export interface ProjectTrustStatus {
   requiresTrust: boolean;
   trusted: boolean;
+  error?: string;
 }
 
 export interface AppUpdateResponse {

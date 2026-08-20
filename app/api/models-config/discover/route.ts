@@ -1,5 +1,10 @@
 import { resolveModelDiscoveryAuth } from "@/lib/model-discovery-auth";
-import { assertSafeDiscoveryTarget, buildModelsListUrl, parseDiscoveredModels } from "@/lib/model-discovery";
+import {
+  assertSafeDiscoveryTarget,
+  buildModelsListUrl,
+  parseDiscoveredModels,
+  safeDiscoveryFetch,
+} from "@/lib/model-discovery";
 
 
 const DISCOVERY_TIMEOUT_MS = 20_000;
@@ -44,13 +49,14 @@ export async function POST(req: Request) {
     let endpoint: URL;
     try {
       endpoint = buildModelsListUrl(baseUrl, api);
+      assertSafeDiscoveryTarget(endpoint);
     } catch {
-      return Response.json({ error: "Base URL is invalid" }, { status: 400 });
+      return Response.json({ error: "Base URL is invalid or targets a link-local or special-use address" }, { status: 400 });
     }
 
-    const auth = await resolveModelDiscoveryAuth(providerName, body.provider);
+    let auth;
     try {
-      assertSafeDiscoveryTarget(endpoint, auth);
+      auth = await resolveModelDiscoveryAuth(providerName, body.provider);
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
     }
@@ -58,7 +64,7 @@ export async function POST(req: Request) {
       return Response.json({ error: `No API key found for "${providerName}"` }, { status: 400 });
     }
 
-    const response = await fetch(endpoint, {
+    const response = await safeDiscoveryFetch(endpoint, {
       cache: "no-store",
       headers: buildHeaders(api, auth.apiKey, auth.headers),
       signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -85,6 +91,9 @@ export async function POST(req: Request) {
     return Response.json({ models, endpoint: endpoint.toString() });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof SyntaxError || /resolved to a link-local or special-use address/i.test(message)) {
+      return Response.json({ error: error instanceof SyntaxError ? "Request body was not valid JSON" : message }, { status: 400 });
+    }
     const status = error instanceof DOMException && error.name === "TimeoutError" ? 504 : 500;
     return Response.json({ error: message }, { status });
   }

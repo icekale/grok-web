@@ -1,11 +1,56 @@
+import fs from "node:fs";
 import path from "node:path";
-import { getAgentRuntime } from "@/lib/acp/runtime";
 import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
-
-const ACP_MISSING = "Grok agent is not available";
+import { commitGitChanges, discardGitFiles, stageGitFiles } from "@/lib/git-changes";
 
 function isAbs(value: string): boolean {
   return value.startsWith("/") || isWindowsAbsolutePath(value);
+}
+
+export function canonicalizePath(filePath: string): string {
+  let existing = path.resolve(filePath);
+  const suffix: string[] = [];
+  while (true) {
+    try {
+      return path.join(fs.realpathSync(existing), ...suffix.reverse());
+    } catch {
+      const parent = path.dirname(existing);
+      if (parent === existing) return path.resolve(filePath);
+      suffix.push(path.basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+export function isPathInside(parent: string, target: string): boolean {
+  const relative = path.relative(parent, target);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+export function resolveAuthorizedGitFilePath(
+  canonicalCwd: string,
+  requestedPath: string,
+  allowedRoots: Set<string>,
+): { filePath: string; relativePath: string } | { error: string; status: number } {
+  if (!isFilePathAllowed(requestedPath, allowedRoots)) {
+    return { error: "Access denied", status: 403 };
+  }
+  const canonicalParent = canonicalizePath(path.dirname(requestedPath));
+  if (
+    !isExistingFilePathAllowed(canonicalParent, allowedRoots)
+    || !fs.statSync(canonicalParent).isDirectory()
+  ) {
+    return { error: "Access denied", status: 403 };
+  }
+  const filePath = path.join(canonicalParent, path.basename(requestedPath));
+  if (!isPathInside(canonicalCwd, filePath)) {
+    return { error: "path must be inside cwd", status: 400 };
+  }
+  const relativePath = path.relative(canonicalCwd, filePath).split(path.sep).join("/");
+  if (!relativePath) {
+    return { error: "path must be inside cwd", status: 400 };
+  }
+  return { filePath, relativePath };
 }
 
 export async function handleGitWrite(
@@ -23,19 +68,18 @@ export async function handleGitWrite(
     if (!isFilePathAllowed(cwd, allowedRoots) || !isExistingFilePathAllowed(cwd, allowedRoots)) {
       return Response.json({ error: "Access denied" }, { status: 403 });
     }
-
-    let runtime;
-    try {
-      runtime = getAgentRuntime();
-      await runtime.ensureProcess();
-    } catch {
-      return Response.json({ error: ACP_MISSING }, { status: 501 });
+    const canonicalCwd = canonicalizePath(cwd);
+    if (!isExistingFilePathAllowed(canonicalCwd, allowedRoots)) {
+      return Response.json({ error: "Access denied" }, { status: 403 });
+    }
+    if (!fs.statSync(canonicalCwd).isDirectory()) {
+      return Response.json({ error: "Not a directory" }, { status: 400 });
     }
 
     if (action === "commit") {
       const message = typeof body.message === "string" ? body.message.trim() : "";
       if (!message) return Response.json({ error: "message is required" }, { status: 400 });
-      const data = await runtime.gitCommit(message);
+      const data = await commitGitChanges(canonicalCwd, message);
       return Response.json({ success: true, data });
     }
 
@@ -43,17 +87,14 @@ export async function handleGitWrite(
     if (!filePath || !isAbs(filePath)) {
       return Response.json({ error: "path must be an absolute path" }, { status: 400 });
     }
-    if (!isFilePathAllowed(filePath, allowedRoots)) {
-      return Response.json({ error: "Access denied" }, { status: 403 });
-    }
-    const relativePath = path.relative(cwd, filePath).split(path.sep).join("/");
-    if (!relativePath || relativePath.startsWith("..")) {
-      return Response.json({ error: "path must be inside cwd" }, { status: 400 });
+    const resolved = resolveAuthorizedGitFilePath(canonicalCwd, filePath, allowedRoots);
+    if ("error" in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
     }
 
     const data = action === "stage"
-      ? await runtime.gitStage([relativePath])
-      : await runtime.gitDiscard([relativePath]);
+      ? await stageGitFiles(canonicalCwd, [resolved.relativePath])
+      : await discardGitFiles(canonicalCwd, [resolved.relativePath]);
     return Response.json({ success: true, data });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

@@ -1,13 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-import { completeSimple, type AssistantMessage } from "@/lib/pi-stubs/ai-compat";
-import { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
+import { testModelConnection } from "@/lib/model-connection-test";
+import { ModelDiscoveryAuthProvenanceError } from "@/lib/model-discovery-auth";
+import { assertSafeDiscoveryTarget, normalizeProviderBaseUrl } from "@/lib/model-discovery";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { normalizeProviderBaseUrl, assertSafeDiscoveryTarget } from "@/lib/model-discovery";
-
-
-const TEST_TIMEOUT_MS = 20_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15,13 +9,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function getAssistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 }
 
 export async function POST(req: Request) {
@@ -35,8 +22,6 @@ export async function POST(req: Request) {
     );
   }
 
-  let tempDir: string | undefined;
-
   try {
     const body = await req.json() as { providerName?: unknown; provider?: unknown; model?: unknown };
     const providerName = typeof body.providerName === "string" ? body.providerName.trim() : "";
@@ -46,85 +31,35 @@ export async function POST(req: Request) {
 
     const modelId = typeof body.model.id === "string" ? body.model.id.trim() : "";
     if (!modelId) return Response.json({ ok: false, error: "Model ID is required" }, { status: 400 });
-
-    tempDir = mkdtempSync(join(tmpdir(), "pi-web-model-test-"));
-    const modelsPath = join(tempDir, "models.json");
-    const normalizedProvider = {
-      ...body.provider,
-      baseUrl: normalizeProviderBaseUrl(body.provider.baseUrl, body.provider.api),
-    };
-    writeFileSync(modelsPath, JSON.stringify({
-      providers: {
-        [providerName]: {
-          ...normalizedProvider,
-          models: [{ ...body.model, id: modelId }],
-        },
-      },
-    }, null, 2), "utf8");
-
-    const modelRuntime = await ModelRuntime.create({ modelsPath });
-    const loadError = modelRuntime.getError();
-    if (loadError) return Response.json({ ok: false, error: loadError });
-
-    const model = modelRuntime.getModel(providerName, modelId);
-    if (!model) return Response.json({ ok: false, error: `Model not found: ${providerName}/${modelId}` });
-
-    const resolved = await modelRuntime.getAuth(model);
-    if (!resolved?.auth.apiKey) {
-      return Response.json({ ok: false, error: `No API key found for "${providerName}"` });
-    }
-
+    const baseUrl = typeof body.provider.baseUrl === "string" ? body.provider.baseUrl.trim() : "";
+    if (!baseUrl) return Response.json({ ok: false, error: "Base URL is required" }, { status: 400 });
+    const api = typeof body.model.api === "string" && body.model.api.trim()
+      ? body.model.api.trim()
+      : (typeof body.provider.api === "string" && body.provider.api.trim()
+        ? body.provider.api.trim()
+        : "openai-completions");
     try {
-      assertSafeDiscoveryTarget(new URL(normalizeProviderBaseUrl(body.provider.baseUrl, body.provider.api)), resolved.auth);
-    } catch (error) {
-      return Response.json({ ok: false, error: error instanceof Error ? error.message : String(error) }, { status: 400 });
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
-    let status: number | undefined;
-    const startedAt = Date.now();
-
-    try {
-      const message = await completeSimple(model, {
-        messages: [{
-          role: "user",
-          content: "Reply with OK only.",
-          timestamp: Date.now(),
-        }],
-      }, {
-        apiKey: resolved.auth.apiKey,
-        headers: resolved.auth.headers,
-        maxTokens: 16,
-        timeoutMs: TEST_TIMEOUT_MS,
-        maxRetries: 0,
-        cacheRetention: "none",
-        signal: controller.signal,
-        onResponse: (response) => { status = response.status; },
-      });
-
-      const latencyMs = Date.now() - startedAt;
-      if (message.stopReason === "error" || message.stopReason === "aborted") {
-        return Response.json({
-          ok: false,
-          error: message.errorMessage ?? (controller.signal.aborted ? "Test timed out" : "Model returned an error"),
-          latencyMs,
-          status,
-        });
-      }
-
+      assertSafeDiscoveryTarget(new URL(normalizeProviderBaseUrl(baseUrl, api)));
+    } catch {
       return Response.json({
-        ok: true,
-        latencyMs,
-        status,
-        responseText: getAssistantText(message).slice(0, 300),
-      });
-    } finally {
-      clearTimeout(timeout);
+        ok: false,
+        error: "Base URL is invalid or targets a link-local or special-use address",
+      }, { status: 400 });
     }
+
+    const result = await testModelConnection({
+      providerName,
+      provider: body.provider,
+      model: body.model,
+    });
+    return Response.json(result);
   } catch (error) {
+    if (error instanceof SyntaxError || error instanceof ModelDiscoveryAuthProvenanceError) {
+      return Response.json({
+        ok: false,
+        error: error instanceof SyntaxError ? "Request body was not valid JSON" : error.message,
+      }, { status: 400 });
+    }
     return Response.json({ ok: false, error: errorMessage(error) }, { status: 500 });
-  } finally {
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
   }
 }

@@ -1,11 +1,11 @@
-import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
+import { createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { domainToASCII } from "node:url";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
-import { writePrivateFileAtomicSync } from "./atomic-file";
+import { grokHome } from "./grok-home.ts";
+import { writePrivateFileAtomicSync } from "./atomic-file.ts";
 
 export const REMOTE_ACCESS_SCHEMA_VERSION = 1;
 export const PASSWORD_MIN_LENGTH = 12;
@@ -56,14 +56,14 @@ type FileCache =
   | { kind: "ok"; path: string; mtimeMs: number; ino: number; stored: StoredFile; allowedHosts: string[]; passwordHash: string | undefined };
 
 let fileCache: FileCache | undefined;
-const verifyCache = new Map<string, boolean>();
-let verifyCacheHashRecord: string | undefined;
+const verifyCacheSecret = randomBytes(32);
+let successfulVerifyCache: { hashRecord: string; credential: Buffer } | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function getRemoteAccessConfigPath(agentDir = getAgentDir()): string {
+export function getRemoteAccessConfigPath(agentDir = grokHome()): string {
   return join(agentDir, "pi-web.json");
 }
 
@@ -153,20 +153,31 @@ function parseScryptRecord(record: string): { N: number; r: number; p: number; s
   }
 }
 
-function verifyCacheKey(password: string, record: string): string {
-  return createHash("sha256").update(password, "utf8").update("\0").update(record, "utf8").digest("hex");
+function verificationCredential(password: string, record: string): Buffer {
+  return createHmac("sha256", verifyCacheSecret)
+    .update(password, "utf8")
+    .update("\0")
+    .update(record, "utf8")
+    .digest();
 }
 
-function resetVerifyCache(hashRecord: string | undefined): void {
-  if (verifyCacheHashRecord === hashRecord) return;
-  verifyCache.clear();
-  verifyCacheHashRecord = hashRecord;
+function derivePassword(
+  password: string,
+  salt: Buffer,
+  keyLength: number,
+  options: { N: number; r: number; p: number },
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, keyLength, options, (error, derived) => {
+      if (error) reject(error);
+      else resolve(derived);
+    });
+  });
 }
 
 export function invalidateRemoteAccessCache(): void {
   fileCache = undefined;
-  verifyCache.clear();
-  verifyCacheHashRecord = undefined;
+  successfulVerifyCache = undefined;
 }
 
 function readFileCache(path = getRemoteAccessConfigPath()): FileCache {
@@ -242,30 +253,46 @@ export function hasStoredPasswordHash(): boolean {
   return Boolean(readStoredPasswordHash());
 }
 
-export function verifyStoredPassword(password: string): boolean {
-  const record = readStoredPasswordHash();
-  if (!record) return false;
-  resetVerifyCache(record);
-  const key = verifyCacheKey(password, record);
-  const cached = verifyCache.get(key);
-  if (cached !== undefined) return cached;
+export function getRemoteAccessVerificationCacheSize(): 0 | 1 {
+  return successfulVerifyCache ? 1 : 0;
+}
 
-  const parsed = parseScryptRecord(record);
-  if (!parsed || parsed.hash.length !== SCRYPT_KEYLEN) {
-    verifyCache.set(key, false);
+export function isStoredPasswordVerificationCached(password: string): boolean {
+  const record = readStoredPasswordHash();
+  if (!record || successfulVerifyCache?.hashRecord !== record) {
+    successfulVerifyCache = undefined;
     return false;
   }
+  return timingSafeEqual(
+    verificationCredential(password, record),
+    successfulVerifyCache.credential,
+  );
+}
+
+export async function verifyStoredPassword(password: string): Promise<boolean> {
+  const record = readStoredPasswordHash();
+  if (!record) return false;
+  if (successfulVerifyCache?.hashRecord !== record) successfulVerifyCache = undefined;
+  const credential = verificationCredential(password, record);
+  if (
+    successfulVerifyCache
+    && timingSafeEqual(credential, successfulVerifyCache.credential)
+  ) {
+    return true;
+  }
+
+  const parsed = parseScryptRecord(record);
+  if (!parsed || parsed.hash.length !== SCRYPT_KEYLEN) return false;
   try {
-    const derived = scryptSync(password, parsed.salt, parsed.hash.length, {
+    const derived = await derivePassword(password, parsed.salt, parsed.hash.length, {
       N: parsed.N,
       r: parsed.r,
       p: parsed.p,
     });
     const matches = timingSafeEqual(derived, parsed.hash);
-    verifyCache.set(key, matches);
+    if (matches) successfulVerifyCache = { hashRecord: record, credential };
     return matches;
   } catch {
-    verifyCache.set(key, false);
     return false;
   }
 }

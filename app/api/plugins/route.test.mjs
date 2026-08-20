@@ -100,14 +100,12 @@ describe("/api/plugins MCP adapter", () => {
     assert.equal(body.packages.some((pkg) => pkg.source === "docs"), false);
   });
 
-  it("POST install adds a new package from a command source", async () => {
+  it("POST install and scope are rejected", async () => {
     setAgentRuntime(createRuntime());
-    const before = await (await getPlugins()).json();
-    const res = await postPlugins({ action: "install", source: "true" });
-    assert.equal(res.status, 200, await res.clone().text());
-    const body = await res.json();
-    assert.ok(body.packages.length > before.packages.length);
-    assert.ok(body.packages.some((pkg) => pkg.source === "true"));
+    const install = await postPlugins({ action: "install", source: "true" });
+    assert.equal(install.status, 400);
+    const scoped = await postPlugins({ action: "enable", source: "docs", scope: "global" });
+    assert.equal(scoped.status, 400);
   });
 
   it("POST update returns 400 because MCP update is not supported", async () => {

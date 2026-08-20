@@ -9,11 +9,9 @@ test("renders a Codex-style new-session home", () => {
   assert.match(source, /chat\.homeTitle/);
   assert.match(source, /className="new-session-home/);
   assert.match(source, /onDismiss=\{dismissNotice\}/);
-  assert.match(source, /insertIfEmpty\(`\/skill:\$\{skill\}/);
-  assert.match(source, /chat\.homeSkill/);
-  assert.doesNotMatch(source, /handleSend\(`\/skill:\$\{skill\}/);
-  assert.match(source, /skill: "requesting-code-review"/);
-  assert.match(source, /chat\.homeExplore/);
+  assert.doesNotMatch(source, /HOME_STARTERS/);
+  assert.doesNotMatch(source, /insertIfEmpty\(`\/skill:\$\{skill\}/);
+  assert.doesNotMatch(source, /chat\.homeExplore/);
   assert.match(source, /workspaceHint=\{isEmptyNew \? homeCwdLabel : null\}/);
   assert.doesNotMatch(source, /maxWidth: 820/);
   assert.doesNotMatch(source, /margin: "0 auto -14px"/);

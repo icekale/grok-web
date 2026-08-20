@@ -321,9 +321,9 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
 
       <Field label="API Key">
         <SecretTextInput value={provider.apiKey ?? ""} onChange={(v) => set("apiKey", v || undefined)}
-          placeholder="ENV_VAR_NAME, !shell-command, or literal key" mono />
+          placeholder="$ENV_VAR, ${ENV_VAR}, or literal key" mono />
         <span style={{ fontSize: "var(--text-meta)", color: "var(--text-dim)", marginTop: 2 }}>
-          Prefix with <code style={{ fontFamily: "var(--font-mono)" }}>!</code> to run a shell command, or use an env var name
+          Stored environment references are resolved server-side; temporary literal keys are sent as entered.
         </span>
       </Field>
 
@@ -772,6 +772,7 @@ function ModelDetail({
   const costDraftRef = useRef(costDraft);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const catalogRequestIdRef = useRef(0);
+  const testRequestIdRef = useRef(0);
   const catalogUndoRef = useRef<ModelEntry | null>(null);
   const costTemplateRef = useRef(model.cost);
   const set = <K extends keyof ModelEntry>(k: K, v: ModelEntry[K]) => onChange({ ...model, [k]: v });
@@ -819,12 +820,15 @@ function ModelDetail({
 
   useEffect(() => {
     catalogRequestIdRef.current += 1;
+    testRequestIdRef.current += 1;
     setCatalogState({ phase: "idle" });
+    setTestState({ phase: "idle" });
     catalogUndoRef.current = null;
   }, [providerName, provider.baseUrl, model.id]);
 
   const handleTest = useCallback(async () => {
     if (!model.id.trim() || testState.phase === "testing") return;
+    const generation = ++testRequestIdRef.current;
     setTestState({ phase: "testing" });
     try {
       const res = await fetch("/api/models-config/test", {
@@ -839,6 +843,7 @@ function ModelDetail({
         status?: number;
         responseText?: string;
       };
+      if (generation !== testRequestIdRef.current) return;
       if (!res.ok || !d.ok) {
         setTestState({
           phase: "error",
@@ -855,6 +860,7 @@ function ModelDetail({
         responseText: d.responseText,
       });
     } catch (e) {
+      if (generation !== testRequestIdRef.current) return;
       setTestState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
     }
   }, [model, provider, providerName, testState.phase]);
@@ -1314,9 +1320,18 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   }, [provider.id, onRefresh]);
 
   const handleLogout = useCallback(async () => {
-    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
-    setLoginState({ phase: "idle" });
-    onRefresh();
+    try {
+      const res = await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok || d.error) {
+        setLoginState({ phase: "error", message: d.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      setLoginState({ phase: "idle" });
+      onRefresh();
+    } catch (e) {
+      setLoginState({ phase: "error", message: e instanceof Error ? e.message : "Network error" });
+    }
   }, [provider.id, onRefresh]);
 
   const submitCode = useCallback(async (token: string, code: string) => {

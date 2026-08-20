@@ -37,6 +37,15 @@ test("custom model config exposes provider-level request headers", () => {
   assert.match(providerDetail, /set\("headers", headers\)/);
 });
 
+test("custom provider auth does not advertise command-backed API keys", () => {
+  const providerDetail = source.slice(
+    source.indexOf("function ProviderDetail"),
+    source.indexOf("// ── ThinkingLevelMap editor"),
+  );
+  assert.doesNotMatch(providerDetail, /!shell-command|run a shell command/i);
+  assert.match(providerDetail, /environment variable|literal key/i);
+});
+
 test("custom model config exposes model headers and supportsDeveloperRole compat flag", () => {
   // Model-level headers editor, wired to the model entry.
   assert.match(source, /headers=\{model\.headers\}/);
@@ -273,6 +282,13 @@ test("discard repairs selection and returns to the list when nothing remains", (
   assert.match(source, /if \(!next\) setMobileView\("list"\)/);
 });
 
+test("oauth disconnect reports HTTP errors instead of refreshing as if it worked", () => {
+  const oauth = source.slice(source.indexOf("function OAuthDetail"), source.indexOf("function ApiKeyDetail"));
+  assert.match(oauth, /\/api\/auth\/logout\/\$\{encodeURIComponent\(provider\.id\)\}/);
+  assert.match(oauth, /if \(!res\.ok \|\| d\.error\)/);
+  assert.match(oauth, /setLoginState\(\{ phase: "error"/);
+});
+
 test("auth list refresh repairs a disconnected account selection", () => {
   assert.match(source, /resolveModelsSelection\(current, configRef\.current, oauthProviders, apiKeyProviders\)/);
   assert.match(
@@ -304,6 +320,16 @@ test("add-provider picker is a modal dialog that restores focus", () => {
   assert.match(picker, /dialog\.showModal\(\)/);
   assert.match(picker, /previousFocusRef\.current\?\.focus\(\)/);
   assert.match(picker, /aria-label=\{t\("i18n\.addProvider"\)\}/);
+});
+
+test("model connection tests ignore stale responses", () => {
+  const modelDetail = source.slice(
+    source.indexOf("function ModelDetail"),
+    source.indexOf("// ── OAuth detail"),
+  );
+  assert.match(modelDetail, /testRequestIdRef/);
+  assert.match(modelDetail, /generation !== testRequestIdRef\.current/);
+  assert.match(modelDetail, /\/api\/models-config\/test/);
 });
 
 test("model detail moves deletion to a labelled danger section", () => {

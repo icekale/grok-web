@@ -4,6 +4,7 @@ import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@/
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { epochMillis } from "./epoch-ms.ts";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
@@ -177,6 +178,7 @@ export class AgentSessionWrapper {
   private extensionWidgetsResetting = false;
   private pendingPromptCount = 0;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
+  private queueMutationTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
   private extensionBindingError: unknown = null;
@@ -437,30 +439,29 @@ export class AgentSessionWrapper {
    * not yet delivered; the already-delivered ones keep their message_start path.
    */
   private async steerAllQueued(): Promise<{ steering: string[]; followUp: string[] }> {
-    const { steering, followUp } = this.inner.clearQueue();
-    const delivered: string[] = [];
-    try {
-      for (const text of steering) {
-        await this.inner.steer(text);
-        delivered.push(text);
-      }
-      for (const text of followUp) {
-        await this.inner.steer(text);
-        delivered.push(text);
-      }
-    } catch (error) {
-      const remaining = {
-        steering: steering.filter((text) => !delivered.includes(text)),
-        followUp: followUp.filter((text) => !delivered.includes(text)),
-      };
+    return this.serializeQueueMutation(async () => {
+      const { steering, followUp } = this.inner.clearQueue();
+      let steeringDelivered = 0;
+      let followUpDelivered = 0;
       try {
-        await this.requeueAll(remaining.steering, remaining.followUp);
-      } catch {
-        // The restore itself failed; already-steered items stay delivered.
+        for (const text of steering) {
+          await this.inner.steer(text);
+          steeringDelivered += 1;
+        }
+        for (const text of followUp) {
+          await this.inner.steer(text);
+          followUpDelivered += 1;
+        }
+      } catch (error) {
+        try {
+          await this.requeueAll(steering.slice(steeringDelivered), followUp.slice(followUpDelivered));
+        } catch {
+          // The restore itself failed; already-steered items stay delivered.
+        }
+        throw error;
       }
-      throw error;
-    }
-    return this.snapshotQueue();
+      return this.snapshotQueue();
+    });
   }
 
 
@@ -480,6 +481,20 @@ export class AgentSessionWrapper {
           error instanceof Error ? error.message : error,
         );
       }
+    }
+  }
+
+  private async serializeQueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.queueMutationTail;
+    let release!: () => void;
+    this.queueMutationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
     }
   }
 
@@ -800,7 +815,7 @@ export class AgentSessionWrapper {
         const text = command.text as string;
         const replacement = command.replacement as string | undefined;
         const op = type === "queue_remove" ? "remove" : type === "queue_edit" ? "edit" : "steer";
-        return this.mutateQueue(kind, text, op, replacement);
+        return this.serializeQueueMutation(() => this.mutateQueue(kind, text, op, replacement));
       }
 
       case "queue_steer_all": {
@@ -1577,10 +1592,25 @@ declare global {
 function getRegistry(): Map<string, AgentSessionWrapper> {
   if (!globalThis.__piSessions) {
     globalThis.__piSessions = new Map();
-    const cleanup = () => globalThis.__piSessions?.forEach((s) => s.destroy());
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      globalThis.__piSessions?.forEach((session) => {
+        try {
+          session.destroy();
+        } catch {
+          // Continue remaining sessions so one bad destroy cannot skip the rest.
+        }
+      });
+    };
+    const reraise = (signal: NodeJS.Signals) => {
+      cleanup();
+      process.kill(process.pid, signal);
+    };
     process.once("exit", cleanup);
-    process.once("SIGINT", cleanup);
-    process.once("SIGTERM", cleanup);
+    process.once("SIGINT", () => reraise("SIGINT"));
+    process.once("SIGTERM", () => reraise("SIGTERM"));
   }
   return globalThis.__piSessions;
 }
@@ -1648,7 +1678,7 @@ function runtimeMessageText(entry: SessionMessageEntry): string {
 
 function runtimeMessageActivityMs(entry: SessionMessageEntry): number | undefined {
   if (entry.message.role !== "user" && entry.message.role !== "assistant") return undefined;
-  if (typeof entry.message.timestamp === "number") return entry.message.timestamp;
+  if (typeof entry.message.timestamp === "number") return epochMillis(entry.message.timestamp);
   const timestamp = new Date(entry.timestamp).getTime();
   return Number.isNaN(timestamp) ? undefined : timestamp;
 }

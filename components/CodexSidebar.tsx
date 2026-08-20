@@ -161,10 +161,12 @@ export function CodexSidebar({
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([]);
   const [worktreeProjectRoot, setWorktreeProjectRoot] = useState<string | null>(null);
   const [worktreeOpen, setWorktreeOpen] = useState(false);
-  const [recentOpen, setRecentOpen] = useState(true);
+  const [recentOpen, setRecentOpen] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
-  const [pendingConfirmation, setPendingConfirmation] = useState<{ type: "worktree"; path: string } | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<
+    { type: "worktree"; path: string } | { type: "project"; path: string; name: string } | null
+  >(null);
   const [newBranch, setNewBranch] = useState("");
   const previousRunningRef = useRef<Set<string> | null>(null);
   const previousRawRunningRef = useRef<Set<string> | null>(null);
@@ -177,6 +179,7 @@ export function CodexSidebar({
   const loadDataInFlightRef = useRef<Promise<void> | null>(null);
   const loadDataQueuedRef = useRef(false);
   const loadDataForceQueuedRef = useRef(false);
+  const worktreeRequestRef = useRef(0);
 
   const fetchData = useCallback(async (force: boolean) => {
     const [sessionsResponse, projectsResponse] = await Promise.all([
@@ -534,13 +537,19 @@ export function CodexSidebar({
 
   useEffect(() => {
     if (!selectedProject) { setWorktrees([]); setWorktreeProjectRoot(null); return; }
+    const generation = ++worktreeRequestRef.current;
     fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd ?? selectedProject.path)}`)
       .then((response) => response.json())
       .then((data: { projectRoot?: string; worktrees?: WorktreeEntry[] }) => {
+        if (generation !== worktreeRequestRef.current) return;
         setWorktrees(data.worktrees ?? []);
         setWorktreeProjectRoot(data.projectRoot ?? selectedProject.path);
       })
-      .catch(() => { setWorktrees([]); setWorktreeProjectRoot(null); });
+      .catch(() => {
+        if (generation !== worktreeRequestRef.current) return;
+        setWorktrees([]);
+        setWorktreeProjectRoot(null);
+      });
   }, [selectedCwd, selectedProject]);
 
   useEffect(() => {
@@ -835,7 +844,7 @@ export function CodexSidebar({
         </div>
       </section>
 
-      <section className="codex-sidebar-section codex-sidebar-recent">
+      <section className="codex-sidebar-section codex-sidebar-recent" data-open={recentOpen}>
         <button type="button" className="codex-sidebar-tool-heading codex-sidebar-section-heading" onClick={() => setRecentOpen((open) => !open)} aria-expanded={recentOpen}>
           <Chevron open={recentOpen} />
           <span>{t("sidebar.recent")}</span>
@@ -914,10 +923,30 @@ export function CodexSidebar({
             <button type="button" role="menuitem" onClick={() => { moveProject(project.path, 1); setMenuProject(null); }}><ArrowDown size={14} aria-hidden="true" />{t("sidebar.moveDown")}</button>
             <button type="button" role="menuitem" onClick={() => { setRenameValue(project.name ?? projectName(project.path)); setRenamingProject(project.path); setMenuProject(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.renameProject")}</button>
             <button type="button" role="menuitem" onClick={() => { updateProject(project.path, { archived: true }); setMenuProject(null); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveProject")}</button>
-            <button type="button" role="menuitem" className="danger" onClick={() => { updateProject(project.path, { removed: true }); setMenuProject(null); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.removeProject")}</button>
+            <button type="button" role="menuitem" className="danger" onClick={() => { setPendingConfirmation({ type: "project", path: project.path, name: project.name ?? projectName(project.path) }); setMenuProject(null); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.removeProject")}</button>
           </div>
         );
       })(), document.body)}
+      {pendingConfirmation?.type === "project" && (
+        <DialogShell
+          size="confirm"
+          title={t("sidebar.confirmRemoveProject")}
+          onClose={() => setPendingConfirmation(null)}
+          backdropDismissible={false}
+          footer={(
+            <>
+              <button type="button" className="codex-dialog-button" onClick={() => setPendingConfirmation(null)}>{t("sidebar.cancel")}</button>
+              <button type="button" className="codex-dialog-button" data-variant="danger" onClick={() => {
+                updateProject(pendingConfirmation.path, { removed: true });
+                setPendingConfirmation(null);
+              }}>{t("sidebar.removeThisProject")}</button>
+            </>
+          )}
+        >
+          <p className="codex-dialog-copy">{t("sidebar.confirmRemoveProjectCopy")}</p>
+          <code className="codex-dialog-inset">{pendingConfirmation.name}</code>
+        </DialogShell>
+      )}
       {pendingConfirmation?.type === "worktree" && (
         <DialogShell
           size="confirm"
@@ -1019,6 +1048,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [value, setValue] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1060,15 +1090,17 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
   };
 
   const remove = async () => {
-    if (deleting) return;
+    if (deleting) return false;
     setDeleting(true);
     setDeleteError(null);
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       onDeleted();
+      return true;
     } catch (cause) {
       setDeleteError(cause instanceof Error ? cause.message : String(cause));
+      return false;
     } finally {
       setDeleting(false);
     }
@@ -1121,7 +1153,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
             role="status"
           />
         ) : (
-          <span className="codex-session-state" data-unread={unread} />
+          <span className="codex-session-state" data-unread={unread} aria-label={unread ? t("sidebar.newActivity") : undefined} />
         )}
         {renaming ? (
           <input
@@ -1156,7 +1188,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
             <div ref={menuRef} className="codex-project-menu codex-project-menu-portal" role="menu" style={{ left: menuPos.left, top: menuPos.top }}>
               <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.rename")}</button>
               <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveSession")}</button>
-              <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); void remove(); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
+              <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
             </div>,
             document.body,
           )}
@@ -1164,6 +1196,25 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
       )}
     </div>
     {deleteError && <div role="alert" className="codex-row-error">{deleteError}</div>}
+    {pendingDelete && (
+      <DialogShell
+        size="confirm"
+        title={t("sidebar.confirmDeleteSession")}
+        onClose={() => { if (!deleting) setPendingDelete(false); }}
+        dismissible={!deleting}
+        backdropDismissible={false}
+        footer={(
+          <>
+            <button type="button" className="codex-dialog-button" onClick={() => setPendingDelete(false)} disabled={deleting}>{t("sidebar.cancel")}</button>
+            <button type="button" className="codex-dialog-button" data-variant="danger" disabled={deleting} onClick={async () => { if (await remove()) setPendingDelete(false); }}>{t("sidebar.deleteSession")}</button>
+          </>
+        )}
+      >
+        <p className="codex-dialog-copy">{t("sidebar.confirmDeleteSessionCopy")}</p>
+        <code className="codex-dialog-inset">{title}</code>
+        {deleteError && <div role="alert" className="codex-dialog-error">{deleteError}</div>}
+      </DialogShell>
+    )}
     </>
   );
 }

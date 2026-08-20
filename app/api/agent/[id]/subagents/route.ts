@@ -264,6 +264,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (typeof body.childSessionId !== "string" || !body.childSessionId) {
       return Response.json({ error: "childSessionId is required" }, { status: 400 });
     }
+    if (action === "interrupt") {
+      if (body.message !== undefined && body.message !== null && String(body.message).trim().length > 0) {
+        return Response.json({ error: "interrupt does not accept a message" }, { status: 400 });
+      }
+    } else if (typeof body.message !== "string" || body.message.trim().length === 0) {
+      return Response.json({ error: `${action} requires a non-empty message` }, { status: 400 });
+    }
     const sessions = await listAllSessions();
     const metas = await listGrokMetas(rootId);
     const child = findGrokChild(rootId, body.childSessionId, sessions, metas);
@@ -277,6 +284,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         body.childSessionId,
         action,
         typeof body.message === "string" ? body.message : undefined,
+        { subagentId: child.subagentRunId },
       );
       return Response.json({
         success: true,

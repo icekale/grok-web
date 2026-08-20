@@ -16,6 +16,10 @@ function messageHtml(message: HistoryMessage): string {
   if (message.role === "user") {
     return `<section class="user"><h2>User</h2><pre>${escapeHtml(message.content)}</pre></section>`;
   }
+  if (message.role === "toolResult") {
+    const text = message.content.map((part) => part.text).join("\n");
+    return `<section class="tool-result"><h2>Tool result</h2><pre>${escapeHtml(text)}</pre></section>`;
+  }
   const parts = message.content.map((part) => {
     if (part.type === "text") return `<p>${escapeHtml(part.text)}</p>`;
     if (part.type === "thinking") return `<details><summary>Thinking</summary><pre>${escapeHtml(part.thinking)}</pre></details>`;

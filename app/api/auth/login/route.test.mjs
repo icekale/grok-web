@@ -8,7 +8,7 @@ import { afterEach, describe, it } from "node:test";
 import { createJiti } from "jiti";
 import { AcpConnection } from "../../../../lib/acp/connection.ts";
 import { JsonRpcConn } from "../../../../lib/acp/jsonrpc.ts";
-import { hasGrokApiKey } from "../../../../lib/grok-settings/home-config.ts";
+import { hasGrokApiKey, readGrokAuth } from "../../../../lib/grok-settings/home-config.ts";
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
 const { AgentRuntime, resetAgentRuntime, setAgentRuntime } = await jiti.import("@/lib/acp/runtime.ts");
@@ -78,10 +78,13 @@ function spawnFake() {
 describe("auth HTTP routes", () => {
   /** @type {import("node:child_process").ChildProcess[]} */
   const children = [];
+  const originalGrokHome = process.env.GROK_HOME;
 
   afterEach(() => {
     resetAgentRuntime();
     for (const child of children.splice(0)) child.kill();
+    if (originalGrokHome === undefined) delete process.env.GROK_HOME;
+    else process.env.GROK_HOME = originalGrokHome;
   });
 
   function createRuntime() {
@@ -147,15 +150,75 @@ describe("auth HTTP routes", () => {
   });
 
   it("POST /api/auth/logout calls through", async () => {
-    const runtime = createRuntime();
-    setAgentRuntime(runtime);
-    await runtime.authenticate("xai.api_key");
-    const { POST } = await jiti.import("../logout/[provider]/route.ts");
-    const res = await POST(new Request("http://127.0.0.1/api/auth/logout/grok.com", { method: "POST" }), {
-      params: Promise.resolve({ provider: "grok.com" }),
-    });
-    assert.equal(res.status, 200);
-    assert.equal((await runtime.authCheck()).authenticated, false);
+    const home = mkdtempSync(join(tmpdir(), "grok-logout-"));
+    const prev = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    try {
+      const runtime = createRuntime();
+      setAgentRuntime(runtime);
+      await runtime.authenticate("xai.api_key");
+      const { POST } = await jiti.import("../logout/[provider]/route.ts");
+      const res = await POST(new Request("http://127.0.0.1/api/auth/logout/grok.com", { method: "POST" }), {
+        params: Promise.resolve({ provider: "grok.com" }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal((await runtime.authCheck()).authenticated, false);
+    } finally {
+      if (prev === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = prev;
+    }
+  });
+
+  it("POST /api/auth/logout disconnects a model-table api_key account", async () => {
+    const home = mkdtempSync(join(tmpdir(), "grok-logout-model-key-"));
+    const prev = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    writeFileSync(join(home, "config.toml"), `[model."grok-4.6"]\napi_key = "model-secret"\n`);
+    try {
+      const runtime = createRuntime();
+      setAgentRuntime(runtime);
+      const { POST } = await jiti.import("../logout/[provider]/route.ts");
+      const res = await POST(new Request("http://127.0.0.1/api/auth/logout/grok.com", { method: "POST" }), {
+        params: Promise.resolve({ provider: "grok.com" }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal(hasGrokApiKey(home), false);
+      const { GET: getProviders } = await jiti.import("../providers/route.ts");
+      const providers = await (await getProviders()).json();
+      assert.equal(providers.providers[0].loggedIn, false);
+      const { GET: getKeys } = await jiti.import("../all-providers/route.ts");
+      const keys = await (await getKeys()).json();
+      assert.equal(keys.providers[0].configured, false);
+    } finally {
+      if (prev === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = prev;
+    }
+  });
+
+  it("POST /api/auth/logout still clears OAuth tokens if ACP logout fails", async () => {
+    const home = mkdtempSync(join(tmpdir(), "grok-logout-acp-fail-"));
+    const prev = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    writeFileSync(join(home, "config.toml"), `[model."grok-4.6"]\napi_key = "model-secret"\n`);
+    writeFileSync(join(home, "auth.json"), JSON.stringify({ "grok.com": { token: "oauth" } }));
+    try {
+      setAgentRuntime({
+        authLogout: async () => {
+          throw new Error("agent offline");
+        },
+      });
+      const { POST } = await jiti.import("../logout/[provider]/route.ts");
+      const res = await POST(new Request("http://127.0.0.1/api/auth/logout/grok.com", { method: "POST" }), {
+        params: Promise.resolve({ provider: "grok.com" }),
+      });
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).ok, true);
+      assert.equal(hasGrokApiKey(home), false);
+      assert.equal(readGrokAuth(home).loggedIn, false);
+    } finally {
+      if (prev === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = prev;
+    }
   });
 
   it("GET /api/auth/login for unknown provider emits SSE error", async () => {
@@ -269,6 +332,26 @@ describe("auth HTTP routes", () => {
       assert.equal(body.configured, true);
       assert.equal(hasGrokApiKey(home), true);
       const deleted = await DELETE(new Request("http://127.0.0.1/api/auth/api-key/xai.api_key", { method: "DELETE" }), params);
+      assert.equal(deleted.status, 200);
+      assert.equal(hasGrokApiKey(home), false);
+    } finally {
+      if (prev === undefined) delete process.env.GROK_HOME;
+      else process.env.GROK_HOME = prev;
+    }
+  });
+
+  it("DELETE /api/auth/api-key disconnects a model-table api_key", async () => {
+    const home = mkdtempSync(join(tmpdir(), "grok-apikey-model-http-"));
+    const prev = process.env.GROK_HOME;
+    process.env.GROK_HOME = home;
+    writeFileSync(join(home, "config.toml"), `[model."grok-4.6"]\napi_key = "model-secret"\n`);
+    try {
+      const runtime = createRuntime();
+      setAgentRuntime(runtime);
+      const { DELETE } = await jiti.import("../api-key/[provider]/route.ts");
+      const deleted = await DELETE(new Request("http://127.0.0.1/api/auth/api-key/xai.api_key", { method: "DELETE" }), {
+        params: Promise.resolve({ provider: "xai.api_key" }),
+      });
       assert.equal(deleted.status, 200);
       assert.equal(hasGrokApiKey(home), false);
     } finally {

@@ -54,6 +54,16 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
   });
 }
 
+export function nextActiveFileTabId(
+  tabs: Tab[],
+  closingId: string,
+  currentActiveId: string | null,
+): string | null {
+  if (currentActiveId !== closingId) return currentActiveId;
+  const remaining = tabs.filter((tab) => tab.id !== closingId);
+  return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+}
+
 export function saveFileViewerState(
   tabs: Tab[],
   tabId: string,
