@@ -5,8 +5,6 @@ import { grokHome } from "@/lib/grok-home";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { getProjectTrustStatus, trustProject } from "@/lib/project-trust";
-import { destroyRpcSessionsForCwd, hasBusyRpcSessionForCwd } from "@/lib/rpc-manager";
-
 
 async function validateCwd(value: unknown): Promise<
   { cwd: string } | { response: Response }
@@ -49,14 +47,13 @@ export async function POST(req: Request) {
     if (!current.requiresTrust) {
       return Response.json({ error: "This project has no resources that require trust" }, { status: 409 });
     }
-    if (getAgentRuntime().hasBusySessionForCwd(result.cwd) || hasBusyRpcSessionForCwd(result.cwd)) {
+    if (getAgentRuntime().hasBusySessionForCwd(result.cwd)) {
       return Response.json({ error: "Wait for the active session to finish before trusting this project" }, { status: 409 });
     }
 
     const status = trustProject(result.cwd, agentDir);
     invalidateModelsCache();
     await getAgentRuntime().dropSessionsForCwd(result.cwd);
-    await destroyRpcSessionsForCwd(result.cwd);
     return Response.json(status);
   } catch (error) {
     return Response.json(

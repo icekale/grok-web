@@ -1,131 +1,88 @@
-import { attachSessionRelations } from "@/lib/session-relations";
-import { buildSubagentTree, collectLiveSubagentSessionIds, findOwnedSubagent } from "@/lib/subagent-tree";
-import { getRpcSession, notifyRunningChange, startRpcSession, type AgentSessionWrapper } from "@/lib/rpc-manager";
 import { listAllSessions, resolveSessionPath } from "@/lib/session-reader";
 import { findGrokSession } from "@/lib/session-index.ts";
 import { listSubagentMetas } from "@/lib/grok-fs/subagent-meta.ts";
 import type { SubagentTreeResponse, SubagentControlResponse } from "@/lib/api-types";
 import type { SessionInfo } from "@/lib/types";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { controlGrokSubagent, findGrokChild, grokSubagentTree, type GrokSubagentTreeExtras } from "@/lib/acp/subagents.ts";
-
-type SubagentTreeReason = NonNullable<SubagentTreeResponse["unavailableReason"]>;
-
-function rpcErrorOf(error: unknown): { code: string; stage?: string; message: string } | null {
-  if (!(error instanceof Error)) return null;
-  const code = (error as { code?: unknown }).code;
-  if (typeof code !== "string" || code.length === 0) return null;
-  const stage = (error as { stage?: unknown }).stage;
-  return { code, stage: typeof stage === "string" ? stage : undefined, message: error.message };
-}
+import {
+  controlGrokSubagent,
+  findGrokChild,
+  grokSubagentTree,
+  type GrokSubagentTreeExtras,
+  type SubagentRuntime,
+} from "@/lib/acp/subagents.ts";
 
 // ============================================================================
 // GET  /api/agent/[rootId]/subagents
 // POST /api/agent/[rootId]/subagents
 //
-// Root-scoped subagent tree and controls. All status/control traffic executes
-// through the owning root parent session's RPC client; the browser never
-// supplies run ids, indexes, or run directories.
+// Root-scoped subagent tree and controls. Tree and control traffic goes through
+// AgentRuntime (ACP); rpcAvailable means the ACP session is loaded (or live
+// subagent listing succeeded), not a Pi RPC wrapper.
 // ============================================================================
+
+export type SubagentHttpRuntime = SubagentRuntime & {
+  hasSession?(sessionId: string): boolean;
+  listRunningSubagents(sessionId: string): Promise<{ subagents?: GrokSubagentTreeExtras["live"] }>;
+};
 
 export interface SubagentRouteDeps {
   listSessions: () => Promise<SessionInfo[]>;
-  getWrapper: (id: string) => AgentSessionWrapper | undefined;
-  startWrapper: (id: string, filePath: string) => Promise<{ session: AgentSessionWrapper }>;
+  runtime: SubagentHttpRuntime;
   resolveSessionPath: (id: string) => Promise<string | null>;
 }
 
-const defaultDeps: SubagentRouteDeps = {
-  // The cached session list (30s TTL) is fresh enough for durable tree nodes;
-  // forcing a full re-scan on every poll made 1.5s polling rebuild the whole
-  // session index (including nested discovery) per tick. Live children still
-  // appear instantly as RPC placeholders.
-  listSessions: () => listAllSessions(),
-  getWrapper: (id) => getRpcSession(id),
-  startWrapper: async (id, filePath) => startRpcSession(id, filePath, undefined),
-  resolveSessionPath: async (id) => resolveSessionPath(id),
-};
+function resolveDeps(overrides: Partial<SubagentRouteDeps> = {}): SubagentRouteDeps {
+  return {
+    // The cached session list (30s TTL) is fresh enough for durable tree nodes;
+    // forcing a full re-scan on every poll made 1.5s polling rebuild the whole
+    // session index (including nested discovery) per tick. Live children still
+    // appear instantly from ACP listRunningSubagents.
+    listSessions: overrides.listSessions ?? (() => listAllSessions()),
+    runtime: overrides.runtime ?? getAgentRuntime(),
+    resolveSessionPath: overrides.resolveSessionPath ?? resolveSessionPath,
+  };
+}
 
-async function startRootWrapper(rootId: string, deps: SubagentRouteDeps): Promise<AgentSessionWrapper | null> {
-  const existing = deps.getWrapper(rootId);
-  if (existing?.isAlive()) return existing;
-  const filePath = await deps.resolveSessionPath(rootId);
-  if (!filePath) return null;
+async function listGrokMetas(rootId: string) {
+  const grokSession = await findGrokSession(rootId);
+  return grokSession ? listSubagentMetas(grokSession.path) : [];
+}
+
+async function mergedGrokSubagentTree(
+  rootId: string,
+  sessions: SessionInfo[],
+  runtime: SubagentHttpRuntime,
+): Promise<SubagentTreeResponse> {
+  const extras: GrokSubagentTreeExtras = {
+    metas: await listGrokMetas(rootId),
+    live: [],
+    rpcAvailable: runtime.hasSession?.(rootId) === true,
+  };
   try {
-    return (await deps.startWrapper(rootId, filePath)).session;
+    extras.live = (await runtime.listRunningSubagents(rootId)).subagents ?? [];
+    extras.rpcAvailable = true;
   } catch {
-    return null;
+    extras.live = [];
   }
+  return grokSubagentTree(rootId, sessions, Date.now(), extras);
 }
 
-function durableTree(rootId: string, sessions: SessionInfo[], reason: SubagentTreeReason): SubagentTreeResponse {
-  return buildSubagentTree({
-    rootId,
-    sessions,
-    runs: null,
-    rpcAvailable: false,
-    unavailableReason: reason,
-    polledAt: Date.now(),
-  });
-}
+export function createSubagentHandlers(deps: Partial<SubagentRouteDeps> = {}) {
+  const resolved = resolveDeps(deps);
 
-function rememberLiveChildren(wrapper: AgentSessionWrapper, sessions: SessionInfo[], runs: Parameters<typeof collectLiveSubagentSessionIds>[1]): void {
-  if (typeof wrapper.setLiveSubagentSessionIds !== "function") return;
-  if (wrapper.setLiveSubagentSessionIds(collectLiveSubagentSessionIds(sessions, runs))) {
-    notifyRunningChange();
-  }
-}
-
-export function createSubagentHandlers(deps: SubagentRouteDeps = defaultDeps) {
   async function GET(
     _req: Request,
     { params }: { params: Promise<{ id: string }> },
   ): Promise<Response> {
     const { id: rootId } = await params;
     try {
-      const sessions = await deps.listSessions();
-      const related = attachSessionRelations(sessions);
-      const root = related.find((session) => session.id === rootId);
+      const sessions = await resolved.listSessions();
+      const root = sessions.find((session) => session.id === rootId);
       if (!root) {
         return Response.json({ error: "Session not found" }, { status: 404 });
       }
-      if (root.sessionRole !== "primary") {
-        return Response.json({ error: "Subagent tree requires a primary root session" }, { status: 400 });
-      }
-
-      const fallback = durableTree(rootId, sessions, "offline");
-      const wrapper = await startRootWrapper(rootId, deps);
-      if (!wrapper) {
-        return Response.json(fallback);
-      }
-
-      const client = await wrapper.getSubagentRpcClient();
-      try {
-        const runs = await client.getRunStatus();
-        if (runs) {
-          rememberLiveChildren(wrapper, sessions, runs);
-          return Response.json(buildSubagentTree({
-            rootId,
-            sessions,
-            runs,
-            rpcAvailable: true,
-            polledAt: Date.now(),
-          }));
-        }
-        rememberLiveChildren(wrapper, sessions, null);
-        const reason = client.lastNegotiationReason === "incompatible" ? "incompatible" : "not-installed";
-        return Response.json(durableTree(rootId, sessions, reason));
-      } catch (error) {
-        const rpcError = rpcErrorOf(error);
-        if (rpcError?.stage === "status" && rpcError.code === "timeout") {
-          return Response.json({
-            error: "subagent status timeout",
-            fallback,
-            ...(wrapper.isRunning() ? { busy: true } : {}),
-          }, { status: 504 });
-        }
-        return Response.json(fallback);
-      }
+      return Response.json(await mergedGrokSubagentTree(rootId, sessions, resolved.runtime));
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
@@ -157,60 +114,35 @@ export function createSubagentHandlers(deps: SubagentRouteDeps = defaultDeps) {
         return Response.json({ error: `${action} requires a non-empty message` }, { status: 400 });
       }
 
-      const sessions = await deps.listSessions();
-      const child = findOwnedSubagent(rootId, body.childSessionId, sessions);
+      const sessions = await resolved.listSessions();
+      const metas = await listGrokMetas(rootId);
+      const child = findGrokChild(rootId, body.childSessionId, sessions, metas);
       if (!child) {
         return Response.json({ error: "Child session does not belong to this root" }, { status: 400 });
       }
-      if (!child.subagentRunId) {
-        return Response.json({ error: "Child session has no run identity" }, { status: 400 });
-      }
-
-      const wrapper = await startRootWrapper(rootId, deps);
-      if (!wrapper) {
-        return Response.json({ error: "Root session is offline" }, { status: 409 });
-      }
-
-      const client = await wrapper.getSubagentRpcClient();
-      const params = {
-        runId: child.subagentRunId,
-        ...(child.subagentIndex !== undefined ? { index: child.subagentIndex } : {}),
-        ...(action !== "interrupt" ? { message: (body.message as string).trim() } : {}),
-      };
       try {
-        const controlResult = await client.control(action, params);
-        let tree: SubagentTreeResponse | undefined;
-        try {
-          const runs = await client.getRunStatus();
-          if (runs) {
-            rememberLiveChildren(wrapper, sessions, runs);
-            tree = buildSubagentTree({ rootId, sessions, runs, rpcAvailable: true, polledAt: Date.now() });
-          }
-        } catch {
-          // The control succeeded; a failed follow-up snapshot keeps last data.
-        }
+        const data = await controlGrokSubagent(
+          resolved.runtime,
+          rootId,
+          body.childSessionId,
+          action,
+          typeof body.message === "string" ? body.message : undefined,
+          { subagentId: child.subagentRunId },
+        );
         return Response.json({
           success: true,
           data: {
-            action,
-            childSessionId: body.childSessionId,
-            ...(tree ? { tree } : {}),
+            action: data.action,
+            childSessionId: data.childSessionId,
+            tree: await mergedGrokSubagentTree(rootId, sessions, resolved.runtime),
           },
         } satisfies SubagentControlResponse);
       } catch (error) {
-        const rpcError = rpcErrorOf(error);
-        if (rpcError) {
-          if (rpcError.code === "not_found" || rpcError.code === "invalid_state" || rpcError.code === "no_active_session") {
-            return Response.json({ error: rpcError.message }, { status: 409 });
-          }
-          if (rpcError.code === "invalid_params" || rpcError.code === "invalid_request") {
-            return Response.json({ error: rpcError.message }, { status: 400 });
-          }
-          if (rpcError.code === "timeout") {
-            return Response.json({ error: rpcError.message }, { status: 504 });
-          }
+        const message = error instanceof Error ? error.message : String(error);
+        if (action === "resume") {
+          return Response.json({ error: message }, { status: 400 });
         }
-        return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+        throw error;
       }
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
@@ -220,88 +152,10 @@ export function createSubagentHandlers(deps: SubagentRouteDeps = defaultDeps) {
   return { GET, POST };
 }
 
-async function listGrokMetas(rootId: string) {
-  const grokSession = await findGrokSession(rootId);
-  return grokSession ? listSubagentMetas(grokSession.path) : [];
-}
-
-async function mergedGrokSubagentTree(rootId: string, sessions: SessionInfo[]): Promise<SubagentTreeResponse> {
-  const extras: GrokSubagentTreeExtras = {
-    metas: await listGrokMetas(rootId),
-    live: [],
-    rpcAvailable: false,
-  };
-  try {
-    extras.live = (await getAgentRuntime().listRunningSubagents(rootId)).subagents ?? [];
-    extras.rpcAvailable = true;
-  } catch {
-    extras.live = [];
-    extras.rpcAvailable = false;
-  }
-  return grokSubagentTree(rootId, sessions, Date.now(), extras);
-}
-
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { id: rootId } = await ctx.params;
-  try {
-    const sessions = await listAllSessions();
-    const root = sessions.find((session) => session.id === rootId);
-    if (!root) return Response.json({ error: "Session not found" }, { status: 404 });
-    return Response.json(await mergedGrokSubagentTree(rootId, sessions));
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
-  }
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  return createSubagentHandlers().GET(req, ctx);
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
-  const { id: rootId } = await ctx.params;
-  try {
-    const body = await req.json() as { childSessionId?: unknown; action?: unknown; message?: unknown };
-    const action = body.action;
-    if (action !== "steer" && action !== "interrupt" && action !== "resume") {
-      return Response.json({ error: "Unsupported subagent control action" }, { status: 400 });
-    }
-    if (typeof body.childSessionId !== "string" || !body.childSessionId) {
-      return Response.json({ error: "childSessionId is required" }, { status: 400 });
-    }
-    if (action === "interrupt") {
-      if (body.message !== undefined && body.message !== null && String(body.message).trim().length > 0) {
-        return Response.json({ error: "interrupt does not accept a message" }, { status: 400 });
-      }
-    } else if (typeof body.message !== "string" || body.message.trim().length === 0) {
-      return Response.json({ error: `${action} requires a non-empty message` }, { status: 400 });
-    }
-    const sessions = await listAllSessions();
-    const metas = await listGrokMetas(rootId);
-    const child = findGrokChild(rootId, body.childSessionId, sessions, metas);
-    if (!child) {
-      return Response.json({ error: "Child session does not belong to this root" }, { status: 400 });
-    }
-    try {
-      const data = await controlGrokSubagent(
-        getAgentRuntime(),
-        rootId,
-        body.childSessionId,
-        action,
-        typeof body.message === "string" ? body.message : undefined,
-        { subagentId: child.subagentRunId },
-      );
-      return Response.json({
-        success: true,
-        data: {
-          action: data.action,
-          childSessionId: data.childSessionId,
-          tree: await mergedGrokSubagentTree(rootId, sessions),
-        },
-      } satisfies SubagentControlResponse);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (action === "resume") {
-        return Response.json({ error: message }, { status: 400 });
-      }
-      throw error;
-    }
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
-  }
+  return createSubagentHandlers().POST(req, ctx);
 }
