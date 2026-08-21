@@ -1,0 +1,11 @@
+{
+  "sessionId": "s",
+  "prompt": [
+    { "type": "text", "text": "look" },
+    {
+      "type": "image",
+      "mimeType": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+    }
+  ]
+}

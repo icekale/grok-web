@@ -1,0 +1,17 @@
+{
+  "signals": {
+    "contextWindowUsage": 31,
+    "contextTokensUsed": 159068,
+    "contextWindowTokens": 500000,
+    "turnCount": 21,
+    "userMessageCount": 21,
+    "toolCallCount": 619,
+    "toolsUsed": ["list_dir", "read_file", "grep", "run_terminal_command"]
+  },
+  "chatHistory": [
+    {"type":"user","content":[{"type":"text","text":"<user_query>\nfix\n</user_query>"}]},
+    {"type":"tool_result","tool_call_id":"call-5fd5cbf8-f687-4d9b-bd0e-94ae755f9e16-1","content":"part 1"},
+    {"type":"tool_result","tool_call_id":"call-5fd5cbf8-f687-4d9b-bd0e-94ae755f9e16-2","content":"part 2"},
+    {"type":"tool_result","tool_call_id":"call-9cf7582e-0af3-4ba6-ad93-3d4d89ecf8d0-5","content":"other"}
+  ]
+}

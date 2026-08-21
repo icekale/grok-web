@@ -1,0 +1,18 @@
+{
+  "sessionId": "s",
+  "toolCall": {
+    "title": "run_terminal_command",
+    "kind": "execute",
+    "rawInput": {
+      "variant": "Bash",
+      "command": "ls -la ~/.grok",
+      "description": "Inspect grok home",
+      "is_background": false
+    }
+  },
+  "options": [
+    { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" },
+    { "optionId": "allow-always", "name": "Allow always", "kind": "allow_always" },
+    { "optionId": "reject", "name": "Reject", "kind": "reject" }
+  ]
+}

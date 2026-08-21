@@ -1,0 +1,4 @@
+{"timestamp":1,"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"read it"}},"_meta":{"eventId":"u1"}}}
+{"timestamp":1,"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-bbbb-1","title":"read_file","rawInput":{"target_file":"/tmp/a.ts"}},"_meta":{"eventId":"a1"}}}
+{"timestamp":1,"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-bbbb-1","title":"Read `/tmp/a.ts`","kind":"read","rawInput":{"variant":"ReadFile","target_file":"/tmp/a.ts"}}}}
+{"timestamp":1,"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-bbbb-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"file body\n"}}]}}}
