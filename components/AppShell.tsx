@@ -1287,7 +1287,6 @@ export function AppShell() {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onToggleSidebar={handleSidebarToggle}
-        onOpenSettings={openSettings}
       />
       <div className="codex-sidebar-footer">
         <button className="codex-sidebar-footer-item" onClick={() => openSettings("general")} title={translate("common.settings")} aria-label={translate("common.settings")}>

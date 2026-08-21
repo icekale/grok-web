@@ -126,24 +126,17 @@
 
 `lib/acp/permissions.test.mjs` 和 `permission-bash.json` 夹具按新规则改期望。补一条 `read_file` / path 夹具，证明不是 JSON dump。
 
-### 5.6 侧栏：会话动作对齐 TUI
+### 5.6 侧栏：会话动作
 
-会话 `⋯` 菜单：
-
-- **重命名** — 有 ACP / `x.ai` 方法走协议，否则只改该会话 `summary.json` 标题（等同 `/rename`，自动标题不再覆盖）。菜单标 `/rename`。
-- **删除** — 二次确认后删会话目录（等同 `/delete`）。菜单标 `/delete`。确认文案保持「从磁盘删掉，不能撤销」。
-- **导出** — 走已有 `GET /api/sessions/:id/export`，打包该会话目录。
-- **从侧栏隐藏** — grok-web 元数据，不是 TUI 命令。分隔线以下，不要写成 `/archive`，也不要做成另一套会话库。
-
-顺序：Rename / Delete / Export，然后才是隐藏。Composer `/` 同样露出 `/rename` `/delete` `/export`（`/name` 仍可当别名）。`/delete` 走同一套磁盘删除确认。Recent 留下，当作同一批 `~/.grok` 会话的跳转，不是另一套会话库。
+会话 `⋯` 菜单保持原来的 Rename / Archive / Delete，不要改成 TUI 命令条，也不要在侧栏加 Export。Composer `/` 仍露出 `/rename` `/delete` `/export`（`/name` 仍可当别名）。`/delete` 走同一套磁盘删除确认。Recent 留下，当作同一批 `~/.grok` 会话的跳转。
 
 ### 5.7 Worktrees / Skills / Plugins / MCP / 子代理
 
-这些是 TUI 日常能力，放在项目列表和 Recent 之间，不要埋在设置或项目 `⋯` 里。
+侧栏顺序：New task、Projects、Recent，然后才是 Worktrees。不要把 Skills / Plugins / MCP 做成侧栏日常按钮。
 
-**Worktrees。** 选中项目是 git 仓库且 `worktrees` 拉回来后，侧栏区块默认展开（含创建行）。创建/删除行为不变。
+**Worktrees。** 选中项目是 git 仓库且有 worktree 时，区块出现在 Recent 下面，默认折叠。创建/删除行为不变。
 
-**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。Composer `/skills` `/plugins` `/mcp` 进同一页。从这条路径打开时，对话框是 Grok 工具面板（只含 Skills / Plugins / MCP），标题不是 Settings。完整设置页仍可从页脚进入。项目 `⋯` 不再重复这三项。页内编辑器不重写。
+**Skills / Plugins / MCP。** 从页脚 Settings 或 Composer `/skills` `/plugins` `/mcp` 打开。从 `/` 打开时，对话框是 Grok 工具面板（只含 Skills / Plugins / MCP），标题不是 Settings。页内编辑器不重写。
 
 **子代理。** 打开的是根会话时，顶栏子代理控件就要在，不必等 `count > 0`。桌面顶栏写出 Subagents / 子代理，不要只剩图标。count 为 0 时控件仍可打开，空状态用现有 `subagents.empty`。用户文案不要出现 Codex。
 

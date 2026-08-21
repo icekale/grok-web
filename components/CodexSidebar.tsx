@@ -11,8 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArrowDown, ArrowUp, ChevronRight, Download, Ellipsis, Folder, FolderPlus, Layers3, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plug, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
-import type { SettingsSection } from "./SettingsPage";
+import { Archive, ArrowDown, ArrowUp, ChevronRight, Ellipsis, Folder, FolderPlus, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
@@ -39,7 +38,6 @@ interface Props {
   onBackgroundTaskDone?: () => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onToggleSidebar?: () => void;
-  onOpenSettings?: (section: SettingsSection) => void;
 }
 
 interface ProjectView extends ProjectPreference {
@@ -142,7 +140,6 @@ export function CodexSidebar({
   onBackgroundTaskDone,
   onRunningSessionIdsChange,
   onToggleSidebar,
-  onOpenSettings,
 }: Props) {
   const { t, locale } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -167,7 +164,7 @@ export function CodexSidebar({
   const [draggedProject, setDraggedProject] = useState<string | null>(null);
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([]);
   const [worktreeProjectRoot, setWorktreeProjectRoot] = useState<string | null>(null);
-  const [worktreeOpen, setWorktreeOpen] = useState(true);
+  const [worktreeOpen, setWorktreeOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
@@ -852,53 +849,6 @@ export function CodexSidebar({
         </div>
       </section>
 
-      {selectedProject && !selectedProject.archived && !selectedProject.removed && (worktrees.length > 0 || onOpenSettings) && (
-        <div className="codex-sidebar-project-tools">
-          {worktrees.length > 0 && (
-            <div className="codex-worktree-block">
-              <button type="button" className="codex-sidebar-tool-heading" onClick={() => setWorktreeOpen((open) => !open)}>
-                <Chevron open={worktreeOpen} />
-                <span>{t("sidebar.worktrees")}</span>
-                <span className="codex-sidebar-count">{worktrees.length}</span>
-              </button>
-              {worktreeOpen && (
-                <div className="codex-worktree-list">
-                  {worktrees.map((worktree) => (
-                    <div className="codex-worktree-row" key={worktree.path} data-selected={selectedCwd === worktree.path}>
-                      <button type="button" title={worktree.path} onClick={() => setSelectedCwd(worktree.path)}>{worktree.branch ?? projectName(worktree.path)}</button>
-                      {!worktree.isMain && <IconButton disabled={worktreeBusy} label={t("sidebar.removeWorktreeTitle", { path: worktree.path })} onClick={() => void removeWorktree(worktree.path)}><X size={13} aria-hidden="true" /></IconButton>}
-                    </div>
-                  ))}
-                  <div className="codex-worktree-create">
-                    <input value={newBranch} onChange={(event) => setNewBranch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createWorktree(); }} placeholder={t("sidebar.branchName")} />
-                    <IconButton disabled={!newBranch.trim() || worktreeBusy} label={t("sidebar.create")} onClick={() => void createWorktree()}>
-                      <Plus size={13} aria-hidden="true" />
-                    </IconButton>
-                  </div>
-                  {worktreeError && <div className="codex-sidebar-error">{worktreeError}</div>}
-                </div>
-              )}
-            </div>
-          )}
-          {onOpenSettings ? (
-            <div className="codex-project-daily-links">
-              <button type="button" onClick={() => onOpenSettings("skills")}>
-                <Layers3 size={13} aria-hidden="true" />
-                {t("common.skills")}
-              </button>
-              <button type="button" onClick={() => onOpenSettings("plugins")}>
-                <Plug size={13} aria-hidden="true" />
-                {t("common.plugins")}
-              </button>
-              <button type="button" onClick={() => onOpenSettings("mcp")}>
-                <Plug size={13} aria-hidden="true" />
-                {t("common.mcp")}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      )}
-
       <section className="codex-sidebar-section codex-sidebar-recent" data-open={recentOpen}>
         <button type="button" className="codex-sidebar-tool-heading codex-sidebar-section-heading" onClick={() => setRecentOpen((open) => !open)} aria-expanded={recentOpen}>
           <Chevron open={recentOpen} />
@@ -935,6 +885,34 @@ export function CodexSidebar({
         )}
       </section>
 
+      {selectedProject && !selectedProject.archived && !selectedProject.removed && worktrees.length > 0 && (
+        <div className="codex-sidebar-project-tools">
+            <div className="codex-worktree-block">
+              <button type="button" className="codex-sidebar-tool-heading" onClick={() => setWorktreeOpen((open) => !open)}>
+                <Chevron open={worktreeOpen} />
+                <span>{t("sidebar.worktrees")}</span>
+                <span className="codex-sidebar-count">{worktrees.length}</span>
+              </button>
+              {worktreeOpen && (
+                <div className="codex-worktree-list">
+                  {worktrees.map((worktree) => (
+                    <div className="codex-worktree-row" key={worktree.path} data-selected={selectedCwd === worktree.path}>
+                      <button type="button" title={worktree.path} onClick={() => setSelectedCwd(worktree.path)}>{worktree.branch ?? projectName(worktree.path)}</button>
+                      {!worktree.isMain && <IconButton disabled={worktreeBusy} label={t("sidebar.removeWorktreeTitle", { path: worktree.path })} onClick={() => void removeWorktree(worktree.path)}><X size={13} aria-hidden="true" /></IconButton>}
+                    </div>
+                  ))}
+                  <div className="codex-worktree-create">
+                    <input value={newBranch} onChange={(event) => setNewBranch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createWorktree(); }} placeholder={t("sidebar.branchName")} />
+                    <IconButton disabled={!newBranch.trim() || worktreeBusy} label={t("sidebar.create")} onClick={() => void createWorktree()}>
+                      <Plus size={13} aria-hidden="true" />
+                    </IconButton>
+                  </div>
+                  {worktreeError && <div className="codex-sidebar-error">{worktreeError}</div>}
+                </div>
+              )}
+            </div>
+        </div>
+      )}
       {menuProject && createPortal((() => {
         const project = projects.find((candidate) => candidate.path === menuProject.path);
         if (!project) return null;
@@ -1149,8 +1127,8 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
     // context menu, fall back to the built-in row menu.
     if (!handled) {
       setMenuPos({
-        left: Math.max(8, Math.min(window.innerWidth - 220, event.clientX)),
-        top: Math.max(8, Math.min(window.innerHeight - 180, event.clientY)),
+        left: Math.max(8, Math.min(window.innerWidth - 180, event.clientX)),
+        top: Math.max(8, Math.min(window.innerHeight - 110, event.clientY)),
       });
     }
   };
@@ -1205,33 +1183,17 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
           <IconButton ref={menuButtonRef} label={t("sidebar.sessionActions")} onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             setMenuPos((current) => current ? null : {
-              left: Math.max(8, Math.min(window.innerWidth - 220, rect.right - 212)),
-              top: Math.max(8, Math.min(window.innerHeight - 180, rect.bottom + 2)),
+              left: Math.max(8, Math.min(window.innerWidth - 180, rect.right - 172)),
+              top: Math.max(8, Math.min(window.innerHeight - 110, rect.bottom + 2)),
             });
           }}>
             <Ellipsis size={14} aria-hidden="true" />
           </IconButton>
           {menuPos && createPortal(
             <div ref={menuRef} className="codex-project-menu codex-project-menu-portal" role="menu" style={{ left: menuPos.left, top: menuPos.top }}>
-              <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}>
-                <Pencil size={14} aria-hidden="true" />
-                {t("sidebar.rename")}
-                <span className="codex-menu-command">{t("sidebar.renameCommand")}</span>
-              </button>
-              <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}>
-                <Trash2 size={14} aria-hidden="true" />
-                {t("sidebar.delete")}
-                <span className="codex-menu-command">{t("sidebar.deleteCommand")}</span>
-              </button>
-              <button type="button" role="menuitem" onClick={() => { setMenuPos(null); window.location.assign(`/api/sessions/${encodeURIComponent(session.id)}/export`); }}>
-                <Download size={14} aria-hidden="true" />
-                {t("sidebar.exportSession")}
-              </button>
-              <div className="codex-project-menu-sep" role="separator" />
-              <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}>
-                <Archive size={14} aria-hidden="true" />
-                {t("sidebar.archiveSession")}
-              </button>
+              <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.rename")}</button>
+              <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveSession")}</button>
+              <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
             </div>,
             document.body,
           )}
