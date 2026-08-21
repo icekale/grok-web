@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { grokHome } from "./grok-home";
 import lockfile from "proper-lockfile";
@@ -13,7 +13,12 @@ interface ProjectRegistryFile {
 }
 
 export function getProjectRegistryPath(): string {
-  return join(grokHome(), "pi-web-projects.json");
+  const canonical = join(grokHome(), "grok-web-projects.json");
+  const legacy = join(grokHome(), "pi-web-projects.json");
+  if (!existsSync(canonical) && existsSync(legacy)) {
+    copyFileSync(legacy, canonical);
+  }
+  return canonical;
 }
 
 export function readProjectPreferences(

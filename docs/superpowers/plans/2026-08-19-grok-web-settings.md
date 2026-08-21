@@ -91,7 +91,7 @@ it("checks auth, starts device login, submits a code, cancels, and logs out", as
 });
 ```
 
-- [ ] **Step 2:** `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/connection.test.mjs`
+- [ ] **Step 2:** `node --experimental-strip-types --test lib/acp/connection.test.mjs`
 
 Expected: FAIL，`authCheck` 不存在。
 

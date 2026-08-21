@@ -1,8 +1,24 @@
 {
   "name": "grok-web",
-  "version": "0.14.5",
-  "description": "Web UI for Grok",
+  "version": "0.10.0",
+  "description": "Local browser workspace for Grok Build",
+  "author": "icekale",
   "license": "MIT",
+  "homepage": "https://github.com/icekale/grok-web#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icekale/grok-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/icekale/grok-web/issues"
+  },
+  "keywords": [
+    "grok",
+    "coding-agent",
+    "local-first",
+    "acp",
+    "tanstack"
+  ],
   "engines": {
     "node": ">=22.19.0"
   },
@@ -15,6 +31,7 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "package.json"
   ],
   "scripts": {
@@ -29,7 +46,10 @@
     "pack:tanstack": "node scripts/pack-tanstack.mjs",
     "start:tanstack": "node scripts/start-tanstack-output.mjs",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\" \"src/**/*.test.mjs\" \"scripts/**/*.test.mjs\""
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "node scripts/reject-root-publish.mjs",
+    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\" \"src/**/*.test.mjs\" \"scripts/**/*.test.mjs\"",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-mono": "5.3.0",

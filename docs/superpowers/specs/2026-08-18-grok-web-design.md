@@ -1,8 +1,8 @@
 # grok-web 设计规格
 
 日期：2026-08-18  
-仓库：`/Users/kale/grok-web`  
-参考 UI：https://github.com/icekale/pi-web（本地 `/Users/kale/pi-web`）
+仓库：`icekale/grok-web`  
+参考 UI：https://github.com/icekale/pi-web
 
 ## 1. 产品
 

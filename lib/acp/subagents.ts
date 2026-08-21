@@ -175,10 +175,11 @@ export async function controlGrokSubagent(
       throw new Error(`${action} requires a non-empty message`);
     }
   }
+  const text = message?.trim() ?? "";
   if (action === "steer") {
     await runtime.send(rootId, {
       type: "prompt",
-      message: message.trim(),
+      message: text,
       streamingBehavior: "steer",
     });
   } else if (action === "interrupt") {
@@ -193,7 +194,7 @@ export async function controlGrokSubagent(
     await runtime.resumeSession(childSessionId);
     await runtime.send(childSessionId, {
       type: "prompt",
-      message: message.trim(),
+      message: text,
     });
   }
   return { action, childSessionId, rootSessionId: rootId };

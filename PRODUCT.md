@@ -10,7 +10,7 @@ web
 
 Primary users already run Grok Build from the TUI (`grok` CLI) and keep their work in `~/.grok`. They open grok-web when they want the same sessions in a browser: pick a project, continue or start a chat, watch the agent, preview files and Git, and change settings.
 
-The operator of this repository will publish it so other Grok TUI users can run the same app locally. LAN access is a same-trust, optional extra (another machine, same person or a trusted peer on the LAN), not a hosted team product.
+Published at [icekale/grok-web](https://github.com/icekale/grok-web) so other Grok TUI users can run the same app locally. LAN access is a same-trust, optional extra (another machine, same person or a trusted peer on the LAN), not a hosted team product.
 
 ## Product Purpose
 
@@ -45,10 +45,12 @@ Confirmed:
 - Prompt images are sent as ACP `image` content blocks on `session/prompt`. Tool presets (`none|read-only|default|full`) are ACP `configOptions` ids. Extension custom UI is unsupported.
 - Custom providers in Settings can import and test models against an OpenAI-compatible base URL; the live chat model list still comes from Grok ACP.
 
-Undecided (do not invent):
+Distribution (0.x preview):
 
-- Public distribution channel, versioning, and support policy for third-party installs.
-- Whether the incumbent pi-web-shaped chrome stays a hard product lock or is allowed to evolve once published.
+- Channel: GitHub [icekale/grok-web](https://github.com/icekale/grok-web). Clone and `npm run dev`, or `npm run pack:tanstack` for a tarball. Not an xAI official release.
+- Versioning: semver starting at `0.10.0`. While the major version is `0`, breaking changes may land without a major bump.
+- Support: best-effort. No compatibility contract with other web UIs, including pi-web SSE.
+- Chrome: the current workspace shell may evolve after publish. It is not a hard lock to the first pi-web-shaped layout.
 
 ## Brand Commitments
 
@@ -59,7 +61,7 @@ Undecided (do not invent):
 
 ## Evidence on Hand
 
-- Running app and source: `/Users/kale/grok-web`
+- Running app and source: this repository ([icekale/grok-web](https://github.com/icekale/grok-web))
 - Locked design notes: `docs/superpowers/specs/2026-08-18-grok-web-design.md` and later phase specs under `docs/superpowers/`
 - Icons and PWA assets: `public/icons/`, `public/manifest.webmanifest`
 - No customer quotes, benchmarks, press, or pricing exist. Future work must not fabricate them.

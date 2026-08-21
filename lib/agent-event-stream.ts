@@ -3,13 +3,10 @@ import {
   toClientAgentEvent,
   type AgentEventLike,
 } from "./agent-event-wire";
+import type { ContextUsage } from "./pi-types";
 import { getPromptGeneration } from "./prompt-generation";
 
-export type AgentEventStreamContextUsage = {
-  percent: number | null;
-  contextWindow: number;
-  tokens: number | null;
-};
+export type AgentEventStreamContextUsage = ContextUsage;
 
 export interface AgentEventStreamSession {
   readonly isStreaming: boolean;

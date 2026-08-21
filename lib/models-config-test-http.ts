@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     if (error instanceof SyntaxError || error instanceof ModelDiscoveryAuthProvenanceError) {
       return Response.json({
         ok: false,
-        error: error instanceof SyntaxError ? "Request body was not valid JSON" : error.message,
+        error: error instanceof SyntaxError ? "Request body was not valid JSON" : errorMessage(error),
       }, { status: 400 });
     }
     return Response.json({ ok: false, error: errorMessage(error) }, { status: 500 });

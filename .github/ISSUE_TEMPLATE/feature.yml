@@ -1,0 +1,16 @@
+name: Feature
+description: A change that stays inside the local-workspace product
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Why this still belongs in a single-operator local app
+    validations:
+      required: true

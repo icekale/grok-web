@@ -125,7 +125,7 @@ it("replays the Grok bash fixture without the description prefix", () => {
 - [ ] **Step 3: 跑测试**
 
 ```bash
-cd /Users/kale/grok-web
+在仓库根目录运行后续命令
 node --experimental-strip-types --test lib/history-map.test.mjs lib/acp/map-events.test.mjs lib/acp/permissions.test.mjs
 ```
 
@@ -564,7 +564,7 @@ git commit -m "fix: drop Pi-only composer bash and document ACP as the contract"
 ## 验收清单（整计划结束时）
 
 ```bash
-cd /Users/kale/grok-web
+在仓库根目录运行后续命令
 node --experimental-strip-types --test
 ```
 

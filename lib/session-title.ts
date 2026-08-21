@@ -280,7 +280,7 @@ export function sanitizeTitleMessages(messages: AgentMessage[]): AgentMessage[] 
     }
 
     if (message.role === "toolResult") {
-      if (expectedToolResultIds?.delete(message.toolCallId)) {
+      if (message.toolCallId && expectedToolResultIds?.delete(message.toolCallId)) {
         sanitized.push(message);
       }
       continue;

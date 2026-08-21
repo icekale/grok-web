@@ -1,7 +1,7 @@
 # grok-web 内部模型改为 Grok ACP 真相
 
 日期：2026-08-21  
-仓库：`/Users/kale/grok-web`  
+仓库：`icekale/grok-web`  
 状态：已定方向，按 `docs/superpowers/plans/2026-08-21-grok-native-core.md` 分阶段落地
 
 ## 1. 问题

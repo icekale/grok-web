@@ -2572,7 +2572,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           className={`composer-menu-item${isActive ? " is-active" : ""}`}
                           onClick={() => {
                             setThinkingMenuOpen(false);
-                            if (!isActive) onThinkingLevelChange(lvl);
+                            if (!isActive) {
+                              onThinkingLevelChange(lvl as "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max");
+                            }
                           }}
                         >
                           {isActive

@@ -524,8 +524,8 @@ function AssistantMessageView({
   const time = showTimestamp ? formatTime(message.timestamp) : null;
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
-    .filter(({ block }): block is { block: typeof block; originalIndex: number } => (
-      isAssistantContentBlock(block) && !isEmptyThinkingBlock(block, { isStreaming })
+    .filter((item): item is { block: typeof item.block; originalIndex: number } => (
+      isAssistantContentBlock(item.block) && !isEmptyThinkingBlock(item.block, { isStreaming })
     )), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   const visibleBlockItems = useMemo(() => {

@@ -71,7 +71,7 @@ it("cancels a waiting prompt via session/cancel notification", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/connection.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/connection.test.mjs`
 
 Expected: FAIL，`sessionCancel` 不存在，或 `WAIT` 立刻 `end_turn`。
 
@@ -111,7 +111,7 @@ if (method === "session/cancel") {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/connection.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/connection.test.mjs`
 
 Expected: PASS
 
@@ -153,7 +153,7 @@ it("abort cancels a WAIT prompt and clears busy", async () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/runtime.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/runtime.test.mjs`
 
 Expected: FAIL（`sessionCancel` 若已接上，可能只是 `busy` 没清，或 abort 仍抛 `ACP cancel is not available`）。
 
@@ -173,7 +173,7 @@ private async sendAbort(sessionId: string): Promise<unknown> {
 
 - [ ] **Step 4: PASS**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/runtime.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/runtime.test.mjs`
 
 - [ ] **Step 5: Commit**
 
@@ -229,7 +229,7 @@ describe("SessionQueue", () => {
 
 - [ ] **Step 2: FAIL**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/queue.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/queue.test.mjs`
 
 Expected: FAIL，`SessionQueue` 不存在。
 
@@ -292,7 +292,7 @@ export class SessionQueue {
 
 - [ ] **Step 4: PASS**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/queue.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/queue.test.mjs`
 
 - [ ] **Step 5: Commit**
 
@@ -422,7 +422,7 @@ it("drains the next follow-up after a successful prompt", async () => {
 
 - [ ] **Step 2: FAIL**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/runtime.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/runtime.test.mjs`
 
 - [ ] **Step 3: Implement**
 
@@ -511,7 +511,7 @@ return snap;
 
 - [ ] **Step 4: PASS**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/*.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/*.test.mjs`
 
 删掉或改写旧的 `queue_remove throws not implemented`。`queue_*` 在 Task 5 接完前，若本任务只实现 `clear_queue`，`queue_remove` 仍可先抛 not implemented。本任务至少实现 follow-up 入队、`get_state.queuedMessages`、`clear_queue`、steer→interject、成功后 drain。
 
@@ -926,7 +926,7 @@ fork：有 `entryId` 时对 `newSessionId` rewind。
 
 - [ ] **Step 4: PASS**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/*.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/*.test.mjs`
 
 - [ ] **Step 5: Commit**
 
@@ -993,7 +993,7 @@ it("POST fork returns newSessionId", async () => {
 
 - [ ] **Step 4: PASS**
 
-Run: `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/*.test.mjs lib/session-http.test.mjs`
+Run: `node --experimental-strip-types --test lib/acp/*.test.mjs lib/session-http.test.mjs`
 
 Expected: 全部 PASS，0 fail。
 

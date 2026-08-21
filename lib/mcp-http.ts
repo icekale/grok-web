@@ -85,7 +85,6 @@ function serversFromPlugin(plugin: GrokPluginInfo): McpServer[] {
     return [];
   }
   const table = isRecord(parsed) && isRecord(parsed.mcpServers) ? parsed.mcpServers : {};
-  const enabled = plugin.enabled !== false;
   const servers: McpServer[] = [];
   for (const [name, spec] of Object.entries(table)) {
     if (!name || !isRecord(spec)) continue;
@@ -99,7 +98,7 @@ function serversFromPlugin(plugin: GrokPluginInfo): McpServer[] {
       pluginName: plugin.name,
       command: command ? [command, ...args].join(" ") : undefined,
       url,
-      session: { enabled },
+      session: { enabled: true },
     });
   }
   return servers;

@@ -17,6 +17,7 @@ const INCLUDED_FILES = [
   "README.md",
   "README.zh-CN.md",
   "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
   "lib/bind-guard.ts",
   "lib/web-auth.ts",
   "lib/remote-access-config.ts",

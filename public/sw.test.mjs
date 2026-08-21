@@ -86,6 +86,12 @@ test("notification click opens a window and rejects cross-origin targets", async
   assert.deepEqual(opened, ["https://pi.test/"]);
 });
 
+test("service worker cache prefix is grok-web", async () => {
+  const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+  assert.match(swSource, /CACHE_PREFIX = "grok-web"/);
+  assert.doesNotMatch(swSource, /CACHE_PREFIX = "pi-web"/);
+});
+
 test("service worker treats emitted /assets as static and drops Next markers", async () => {
   const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
   assert.match(swSource, /startsWith\("\/assets\/"\)/);

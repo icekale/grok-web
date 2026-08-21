@@ -7,6 +7,7 @@ export type HistoryToolResult = {
   toolName?: string;
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
+  timestamp?: number;
 };
 
 export type HistoryUserImage = {
@@ -58,20 +59,20 @@ export function mapUpdatesJsonl(text: string): {
   const toolOutputs = new Map<string, ToolOutputState>();
   let fallbackId = 0;
   let lastModelId: string | undefined;
-  let current: HistoryMessage | null = null;
+  const open: { current: HistoryMessage | null } = { current: null };
   let currentEntryId: string | undefined;
 
   const flush = () => {
-    if (!current) return;
-    messages.push(current);
+    if (!open.current) return;
+    messages.push(open.current);
     entryIds.push(currentEntryId ?? `msg-${fallbackId++}`);
-    current = null;
+    open.current = null;
     currentEntryId = undefined;
   };
 
   const begin = (message: HistoryMessage, eventId: string | undefined) => {
     flush();
-    current = message;
+    open.current = message;
     currentEntryId = eventId;
   };
 
@@ -87,7 +88,7 @@ export function mapUpdatesJsonl(text: string): {
 
     const params = isRecord(record.params) ? record.params : undefined;
     const update = params && isRecord(params.update) ? params.update : undefined;
-    if (!update || typeof update.sessionUpdate !== "string") continue;
+    if (!params || !update || typeof update.sessionUpdate !== "string") continue;
 
     const meta = isRecord(params._meta) ? params._meta : {};
     const eventId = typeof meta.eventId === "string" && meta.eventId ? meta.eventId : undefined;
@@ -106,17 +107,17 @@ export function mapUpdatesJsonl(text: string): {
 
     if (kind === "user_message_chunk") {
       const { text: chunk, images } = userChunkParts(update.content);
-      if (current?.role === "user") {
-        appendUserContent(current, chunk, images);
+      if (open.current?.role === "user") {
+        appendUserContent(open.current, chunk, images);
         continue;
       }
-      const lastUser = lastUserMessage(messages, current);
+      const lastUser = lastUserMessage(messages, open.current);
       // Grok sometimes replays the same prompt when a turn restarts, before
       // turn_completed. That is not a second user send. Image-only follow-up
       // chunks have empty text, so treat those as the same prompt too.
       const replayedText = lastUser === chunk;
       const replayedImageOnly = chunk === "" && images.length > 0 && lastFlushedUser(messages) != null;
-      if (current?.role === "assistant" && (replayedText || replayedImageOnly)) {
+      if (open.current?.role === "assistant" && (replayedText || replayedImageOnly)) {
         if (images.length > 0) {
           const flushed = lastFlushedUser(messages);
           if (flushed) appendNewUserImages(flushed, images);
@@ -135,7 +136,7 @@ export function mapUpdatesJsonl(text: string): {
     }
 
     if (kind === "agent_thought_chunk" || kind === "agent_message_chunk" || kind === "tool_call") {
-      if (current?.role !== "assistant") {
+      if (open.current?.role !== "assistant") {
         const assistant: AssistantMessage = {
           role: "assistant",
           content: [],
@@ -145,10 +146,10 @@ export function mapUpdatesJsonl(text: string): {
         if (timestamp !== undefined) assistant.timestamp = timestamp;
         begin(assistant, eventId);
       } else if (modelId) {
-        current.model = modelId;
+        open.current.model = modelId;
       }
 
-      const assistant = current as AssistantMessage;
+      const assistant = open.current as AssistantMessage;
       if (kind === "agent_thought_chunk") {
         appendThinking(assistant.content, contentText(update.content));
       } else if (kind === "agent_message_chunk") {
@@ -173,7 +174,7 @@ export function mapUpdatesJsonl(text: string): {
     if (kind === "tool_call_update") {
       const id = stringField(update.toolCallId) || stringField(update.id);
       if (!id) continue;
-      const tool = findToolCall(current, messages, id);
+      const tool = findToolCall(open.current, messages, id);
       if (tool) {
         Object.assign(tool.input, sanitizeGrokToolInput(asRecord(update.input ?? update.rawInput)));
         if (typeof update.status === "string") tool.status = update.status;

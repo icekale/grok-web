@@ -1,7 +1,7 @@
 # grok-web 原生 Git 写入与反馈 / 历史
 
 日期：2026-08-19  
-仓库：`/Users/kale/grok-web`  
+仓库：`icekale/grok-web`  
 上级规格：`docs/superpowers/specs/2026-08-18-grok-web-design.md`
 
 ## 1. 产品

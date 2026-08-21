@@ -11,6 +11,8 @@ const eslintConfig = [
       ".next/**",
       "public/sw.js",
       "src/routeTree.gen.ts",
+      "test-results/**",
+      "playwright-report/**",
     ],
   },
   {

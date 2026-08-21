@@ -103,6 +103,7 @@ export function createSubagentHandlers(deps: Partial<SubagentRouteDeps> = {}) {
       if (action !== "steer" && action !== "interrupt" && action !== "resume") {
         return Response.json({ error: "Unsupported subagent control action" }, { status: 400 });
       }
+      const controlAction: "steer" | "interrupt" | "resume" = action;
       if (typeof body.childSessionId !== "string" || body.childSessionId.length === 0) {
         return Response.json({ error: "childSessionId is required" }, { status: 400 });
       }
@@ -125,14 +126,14 @@ export function createSubagentHandlers(deps: Partial<SubagentRouteDeps> = {}) {
           resolved.runtime,
           rootId,
           body.childSessionId,
-          action,
+          controlAction,
           typeof body.message === "string" ? body.message : undefined,
           { subagentId: child.subagentRunId },
         );
         return Response.json({
           success: true,
           data: {
-            action: data.action,
+            action: controlAction,
             childSessionId: data.childSessionId,
             tree: await mergedGrokSubagentTree(rootId, sessions, resolved.runtime),
           },

@@ -82,7 +82,7 @@ it("lists running subagents and cancels by subagentId", async () => {
 });
 ```
 
-- [ ] **Step 2:** `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/connection.test.mjs`
+- [ ] **Step 2:** `node --experimental-strip-types --test lib/acp/connection.test.mjs`
 
 Expected: FAIL，`subagentListRunning` 不存在。
 

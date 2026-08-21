@@ -13,7 +13,8 @@
  * Stored in localStorage; best-effort (silently ignored when unavailable).
  */
 
-const STORAGE_KEY = "pi-web:last-open-by-workspace";
+const STORAGE_KEY = "grok-web:last-open-by-workspace";
+const LEGACY_STORAGE_KEY = "pi-web:last-open-by-workspace";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -31,7 +32,7 @@ function getBrowserStorage(): StorageLike | null {
 }
 
 function readMap(storage: StorageLike): Record<string, string | undefined> {
-  const raw = storage.getItem(STORAGE_KEY);
+  const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(LEGACY_STORAGE_KEY);
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -67,6 +68,7 @@ export function setLastOpenSession(
     const map = readMap(storage);
     map[workspaceKey] = sessionId;
     storage.setItem(STORAGE_KEY, JSON.stringify(map));
+    storage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
     // storage unavailable — memory is best-effort
   }
@@ -82,8 +84,13 @@ export function clearLastOpen(
     if (!(workspaceKey in map)) return;
     delete map[workspaceKey];
     // Keep the store clean: drop the key entirely when nothing is remembered.
-    if (Object.keys(map).length === 0) storage.removeItem(STORAGE_KEY);
-    else storage.setItem(STORAGE_KEY, JSON.stringify(map));
+    if (Object.keys(map).length === 0) {
+      storage.removeItem(STORAGE_KEY);
+      storage.removeItem(LEGACY_STORAGE_KEY);
+    } else {
+      storage.setItem(STORAGE_KEY, JSON.stringify(map));
+      storage.removeItem(LEGACY_STORAGE_KEY);
+    }
   } catch {
     // ignore
   }

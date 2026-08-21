@@ -4,3 +4,13 @@ node_modules/
 .worktrees/
 *.log
 .DS_Store
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.impeccable/
+.omg/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

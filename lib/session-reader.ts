@@ -69,7 +69,7 @@ export function getSessionEntries(filePath: string): SessionEntry[] {
     }
     if (!isRecord(record) || record.type === "session") continue;
     if (isSessionEntry(record)) {
-      native.push(record);
+      native.push(record as unknown as SessionEntry);
       continue;
     }
     collectBashHints(record, commandsByTool, bashByPath);
@@ -77,7 +77,8 @@ export function getSessionEntries(filePath: string): SessionEntry[] {
 
   const entries = native.length > 0 ? [...native] : mapGrokEntries(text);
   for (const bash of bashByPath.values()) {
-    const path = bash.message.role === "bashExecution" ? bash.message.fullOutputPath : undefined;
+    if (bash.type !== "message" || bash.message.role !== "bashExecution") continue;
+    const path = bash.message.fullOutputPath;
     if (!path) continue;
     if (entries.some((entry) => (
       entry.type === "message"
@@ -214,7 +215,7 @@ function timestampString(record: Record<string, unknown>): string {
     : new Date(0).toISOString();
 }
 
-function isSessionEntry(record: Record<string, unknown>): record is SessionEntry {
+function isSessionEntry(record: Record<string, unknown>): boolean {
   return typeof record.type === "string"
     && typeof record.id === "string"
     && record.type !== "session"

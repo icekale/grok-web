@@ -73,7 +73,7 @@ it("lists models and sets model and mode", async () => {
 });
 ```
 
-- [ ] **Step 2:** `cd /Users/kale/grok-web && node --experimental-strip-types --test lib/acp/connection.test.mjs`  
+- [ ] **Step 2:** `node --experimental-strip-types --test lib/acp/connection.test.mjs`  
 Expected: FAIL，方法不存在。
 
 - [ ] **Step 3: Implement**

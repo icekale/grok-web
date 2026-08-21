@@ -20,7 +20,9 @@ type LoadExtensionsResult = {
   errors: Array<{ path?: string; error?: string }>;
 };
 
-function createBashToolDefinition(..._args: unknown[]): never {
+function createBashToolDefinition(..._args: unknown[]): Record<string, unknown> & {
+  execute: (...args: unknown[]) => unknown;
+} {
   throw new Error("not implemented in foundation");
 }
 
@@ -115,7 +117,7 @@ export function createProjectCommandBashExtension(options: {
       const displayDefinition = createBashToolDefinition(options.cwd);
       pi.registerTool({
         ...displayDefinition,
-        execute(toolCallId, params, signal, onUpdate, context) {
+        execute(toolCallId: unknown, params: unknown, signal: unknown, onUpdate: unknown, context: unknown) {
           const executionDefinition = createBashToolDefinition(options.cwd, {
             commandPrefix: options.settings.getShellCommandPrefix(),
             operations: createProjectCommandBashOperations({

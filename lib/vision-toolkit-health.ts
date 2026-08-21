@@ -238,7 +238,7 @@ async function checkService(
       headers: {
         Authorization: `Bearer ${secret}`,
         Accept: "application/json",
-        "User-Agent": "pi-web-vision-toolkit",
+        "User-Agent": "grok-web-vision-toolkit",
       },
       signal: AbortSignal.timeout(CONNECTION_TIMEOUT_MS),
     }, {

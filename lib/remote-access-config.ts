@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
@@ -64,7 +64,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function getRemoteAccessConfigPath(agentDir = grokHome()): string {
-  return join(agentDir, "pi-web.json");
+  const canonical = join(agentDir, "grok-web.json");
+  const legacy = join(agentDir, "pi-web.json");
+  if (!existsSync(canonical) && existsSync(legacy)) {
+    copyFileSync(legacy, canonical);
+  }
+  return canonical;
 }
 
 export function parseEnvAllowedHosts(
@@ -207,7 +212,7 @@ function readFileCache(path = getRemoteAccessConfigPath()): FileCache {
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
     if (!isRecord(parsed)) {
-      fileCache = { kind: "invalid", path, mtimeMs, ino, configError: "pi-web.json must be a JSON object" };
+      fileCache = { kind: "invalid", path, mtimeMs, ino, configError: "remote access config must be a JSON object" };
       return fileCache;
     }
     const hosts = Array.isArray(parsed.allowedHosts)

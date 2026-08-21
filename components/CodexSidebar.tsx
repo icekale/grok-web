@@ -55,13 +55,16 @@ type QuickResult =
   | { type: "project"; project: ProjectView }
   | { type: "session"; session: SessionInfo; project: ProjectView };
 
-const COLLAPSED_STORAGE_KEY = "pi-web:collapsed-projects";
-const UNREAD_STORAGE_KEY = "pi-web:unread-session-ids";
+const COLLAPSED_STORAGE_KEY = "grok-web:collapsed-projects";
+const UNREAD_STORAGE_KEY = "grok-web:unread-session-ids";
+const LEGACY_COLLAPSED_STORAGE_KEY = "pi-web:collapsed-projects";
+const LEGACY_UNREAD_STORAGE_KEY = "pi-web:unread-session-ids";
 
-function readStringSet(key: string): Set<string> {
+function readStringSet(key: string, legacyKey: string): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const value = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+    const raw = localStorage.getItem(key) ?? localStorage.getItem(legacyKey) ?? "[]";
+    const value = JSON.parse(raw) as unknown;
     return Array.isArray(value)
       ? new Set(value.filter((item): item is string => typeof item === "string"))
       : new Set();
@@ -70,10 +73,11 @@ function readStringSet(key: string): Set<string> {
   }
 }
 
-function writeStringSet(key: string, values: Set<string>): void {
+function writeStringSet(key: string, legacyKey: string, values: Set<string>): void {
   try {
     if (values.size) localStorage.setItem(key, JSON.stringify([...values]));
     else localStorage.removeItem(key);
+    localStorage.removeItem(legacyKey);
   } catch {
     // Browser storage is best-effort.
   }
@@ -150,9 +154,9 @@ export function CodexSidebar({
   const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [directoryBusy, setDirectoryBusy] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => readStringSet(COLLAPSED_STORAGE_KEY));
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readStringSet(COLLAPSED_STORAGE_KEY, LEGACY_COLLAPSED_STORAGE_KEY));
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStringSet(UNREAD_STORAGE_KEY));
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStringSet(UNREAD_STORAGE_KEY, LEGACY_UNREAD_STORAGE_KEY));
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => readArchivedSessionIds());
   const [menuProject, setMenuProject] = useState<{ path: string; left: number; top: number } | null>(null);
   const [renamingProject, setRenamingProject] = useState<string | null>(null);
@@ -238,8 +242,8 @@ export function CodexSidebar({
   }, [fetchData]);
 
   useEffect(() => { void loadData(false); }, [loadData, refreshKey]);
-  useEffect(() => { writeStringSet(COLLAPSED_STORAGE_KEY, collapsed); }, [collapsed]);
-  useEffect(() => { writeStringSet(UNREAD_STORAGE_KEY, unreadIds); }, [unreadIds]);
+  useEffect(() => { writeStringSet(COLLAPSED_STORAGE_KEY, LEGACY_COLLAPSED_STORAGE_KEY, collapsed); }, [collapsed]);
+  useEffect(() => { writeStringSet(UNREAD_STORAGE_KEY, LEGACY_UNREAD_STORAGE_KEY, unreadIds); }, [unreadIds]);
   useEffect(() => { writeArchivedSessionIds(archivedIds); }, [archivedIds]);
   useEffect(() => { setArchivedIds(readArchivedSessionIds()); }, [refreshKey]);
 

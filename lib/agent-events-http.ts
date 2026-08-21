@@ -1,4 +1,5 @@
 import { createAgentEventStream } from "@/lib/agent-event-stream";
+import type { AgentEventLike } from "@/lib/agent-event-wire";
 import { getAgentRuntime } from "@/lib/acp/runtime";
 import { readSessionContextUsage } from "@/lib/session-signals";
 
@@ -15,7 +16,9 @@ export async function GET(
     isStreaming: runtime.isBusy(id),
     streamingMessage: null,
     contextUsage: readSessionContextUsage(id),
-    onEvent: (listener: (event: Record<string, unknown>) => void) => runtime.subscribe(id, listener),
+    onEvent: (listener: (event: AgentEventLike) => void) => (
+      runtime.subscribe(id, listener as (event: Record<string, unknown>) => void)
+    ),
   });
 
   const stream = createAgentEventStream(req, id, sessionPromise);

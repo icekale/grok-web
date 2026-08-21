@@ -335,7 +335,7 @@ export async function getSessionExport(req: Request, id: string): Promise<Respon
     }
 
     const archive = packSessionArchive(session.path, id);
-    return new Response(archive.bytes, {
+    return new Response(Uint8Array.from(archive.bytes), {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": contentDisposition(archive.fileName, false),

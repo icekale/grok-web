@@ -47,6 +47,10 @@ export type AgentCommand =
   | { type: "extension_ui_response"; id: string; confirmed?: boolean; cancelled?: boolean; value?: string }
   | { type: string; [key: string]: unknown };
 
+function commandField(command: AgentCommand, key: string): unknown {
+  return (command as Record<string, unknown>)[key];
+}
+
 type SessionListener = (event: Record<string, unknown>) => void;
 
 type SessionState = {
@@ -648,9 +652,9 @@ export class AgentRuntime {
 
   private async sendPermission(sessionId: string, command: AgentCommand): Promise<void> {
     await this.ensureProcess();
-    this.requireAcp().completePermission(sessionId, stringField(command.id), {
-      confirmed: command.confirmed === true,
-      cancelled: command.cancelled === true,
+    this.requireAcp().completePermission(sessionId, stringField(commandField(command, "id")), {
+      confirmed: commandField(command, "confirmed") === true,
+      cancelled: commandField(command, "cancelled") === true,
     });
   }
 
@@ -666,7 +670,7 @@ export class AgentRuntime {
     exitCode?: number;
     truncated: boolean;
   }> {
-    const script = stringField(command.command);
+    const script = stringField(commandField(command, "command"));
     if (!script) throw new Error("command is required");
     if (this.isBusy(sessionId)) throw new Error("Cannot run a shell command while the session is busy");
     const session = this.ensureSession(sessionId);
@@ -675,7 +679,7 @@ export class AgentRuntime {
       await this.ensureProcess();
       const created = await this.requireAcp().terminalCreate(sessionId, script, {
         cwd: session.cwd,
-        excludeFromContext: command.excludeFromContext === true,
+        excludeFromContext: commandField(command, "excludeFromContext") === true,
       });
       session.bashTerminalIds.add(created.terminalId);
       session.bashStarting = false;
@@ -822,7 +826,7 @@ export class AgentRuntime {
     forkedSession.loaded = true;
     forkedSession.cwd = cwd;
     invalidateSessionListCache();
-    const entryId = typeof command.entryId === "string" ? command.entryId : "";
+    const entryId = typeof commandField(command, "entryId") === "string" ? commandField(command, "entryId") as string : "";
     if (entryId) {
       await this.rewindSession(forked.newSessionId, sessionId, entryId);
     }
@@ -831,7 +835,7 @@ export class AgentRuntime {
 
   private async sendNavigateTree(sessionId: string, command: AgentCommand): Promise<{ cancelled: false }> {
     await this.ensureProcess();
-    await this.rewindSession(sessionId, sessionId, stringField(command.targetId));
+    await this.rewindSession(sessionId, sessionId, stringField(commandField(command, "targetId")));
     return { cancelled: false };
   }
 
@@ -996,8 +1000,9 @@ export class AgentRuntime {
     if (!hasToolsConfig(session.configOptions)) {
       throw new AgentCapabilityError("Tool presets are not advertised");
     }
-    const names = Array.isArray(command.toolNames)
-      ? command.toolNames.filter((name): name is string => typeof name === "string")
+    const toolNames = commandField(command, "toolNames");
+    const names = Array.isArray(toolNames)
+      ? toolNames.filter((name): name is string => typeof name === "string")
       : [];
     const preset = getPresetFromTools(names.map((name) => ({ name, description: name, active: true })));
     await this.ensureProcess();

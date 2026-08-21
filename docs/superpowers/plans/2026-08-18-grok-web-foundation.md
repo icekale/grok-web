@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `/Users/kale/grok-web` 做出可启动的本机应用：复刻 icekale/pi-web 的工作区壳，侧栏列出真实 `~/.grok` 会话，点开后只读展示 `updates.jsonl` 历史。
+**Goal:** 在 `本仓库` 做出可启动的本机应用：复刻 icekale/pi-web 的工作区壳，侧栏列出真实 `~/.grok` 会话，点开后只读展示 `updates.jsonl` 历史。
 
 **Architecture:** 先写与 UI 无关的适配器（Grok 家目录、会话索引、历史翻译、置顶/归档元数据、绑定保护）。再按文件移植 pi-web 的 `components/`、`hooks/`、`src/` 壳。`lib/session-reader.ts` 与会话 API 改走适配器。本计划不启动 `grok agent`；发送/设置等按钮可以存在，后端返回明确错误。
 
-**Tech Stack:** Node `>= 22.19.0`，Vite + TanStack Start + React 19（版本对齐 `/Users/kale/pi-web/package.json`），测试用 `node --test`。不引入 `@earendil-works/pi-*`。
+**Tech Stack:** Node `>= 22.19.0`，Vite + TanStack Start + React 19（版本对齐 icekale/pi-web 的 package.json），测试用 `node --test`。不引入 `@earendil-works/pi-*`。
 
 **后续计划（本文件不实现）：** ACP 实时对话与权限；排队/插话/分叉；文件/Git/worktree；设置/登录/MCP/远程访问；子代理树。
 
@@ -534,21 +534,21 @@ git commit -m "feat: refuse non-loopback bind without password"
 ### Task 6: 从 pi-web 移植壳，去掉 Pi 包
 
 **Files:**
-- Create/copy from `/Users/kale/pi-web`（不要复制 `node_modules`、`.git`、`.next`、`.output`、`.superpowers`）
+- Create/copy from `https://github.com/icekale/pi-web`（不要复制 `node_modules`、`.git`、`.next`、`.output`、`.superpowers`）
 - Modify: `package.json`、`vite.tanstack.config.ts`、`src/routes/__root.tsx`
 
 - [ ] **Step 1: 复制 UI 与工程文件**
 
 ```bash
-cd /Users/kale/grok-web
+在仓库根目录运行后续命令
 rsync -a --exclude node_modules --exclude .git --exclude .next --exclude .output \
   --exclude .superpowers --exclude docs/superpowers \
-  /Users/kale/pi-web/components /Users/kale/pi-web/hooks /Users/kale/pi-web/public \
-  /Users/kale/pi-web/src /Users/kale/pi-web/app /Users/kale/pi-web/lib \
-  /Users/kale/pi-web/bin /Users/kale/pi-web/scripts \
-  /Users/kale/pi-web/package.json /Users/kale/pi-web/tsconfig.json \
-  /Users/kale/pi-web/vite.tanstack.config.ts /Users/kale/pi-web/eslint.config.mjs \
-  /Users/kale/pi-web/next-env.d.ts .
+  https://github.com/icekale/pi-web/components https://github.com/icekale/pi-web/hooks https://github.com/icekale/pi-web/public \
+  https://github.com/icekale/pi-web/src https://github.com/icekale/pi-web/app https://github.com/icekale/pi-web/lib \
+  https://github.com/icekale/pi-web/bin https://github.com/icekale/pi-web/scripts \
+  https://github.com/icekale/pi-web/package.json https://github.com/icekale/pi-web/tsconfig.json \
+  https://github.com/icekale/pi-web/vite.tanstack.config.ts https://github.com/icekale/pi-web/eslint.config.mjs \
+  https://github.com/icekale/pi-web/next-env.d.ts .
 ```
 
 然后立刻：
@@ -571,7 +571,7 @@ Expected: PASS
 - [ ] **Step 3: 安装依赖**
 
 ```bash
-cd /Users/kale/grok-web && npm install
+npm install
 ```
 
 Expected: lockfile 生成，且 `package-lock.json` 里没有 `@earendil-works/`。
@@ -685,7 +685,7 @@ git commit -m "feat: serve Grok session list and read-only history"
 - [ ] **Step 2: 启动检查**
 
 ```bash
-cd /Users/kale/grok-web && npm run dev
+npm run dev
 ```
 
 Expected: 监听 `127.0.0.1:30142`。浏览器打开后侧栏能看到当前 `GROK_HOME`（默认 `~/.grok`）下的会话。点开本设计会话应出现用户/助手历史，而不是空会话或 Pi 路径错误。
