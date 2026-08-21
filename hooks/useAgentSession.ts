@@ -20,7 +20,7 @@ import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-stor
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getPresetFromTools, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import { userMessageKey } from "@/lib/prompt-recovery";
+import { retainUnpersistedUserMessages, userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
 import { getToolExecutionProgress } from "@/lib/tool-execution-progress";
 import {
@@ -567,7 +567,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       textDeltaBatcher.flush();
       setData(d);
       setActiveLeafId(d.leafId);
-      setMessages(persistedMessages);
+      setMessages((prev) => retainUnpersistedUserMessages(persistedMessages, prev));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride((current) => {
         if (!current) return null;
@@ -1532,6 +1532,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         await ensureEventsConnected(sid);
         promptRequestStarted = true;
+        promoteNewSession(1, message);
         const promptResult = await sendAgentCommand<{ promptGeneration?: number } | null>(sid, {
           type: "prompt",
           message,
@@ -1540,7 +1541,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (typeof promptResult?.promptGeneration === "number") {
           lastPromptGenerationRef.current = promptResult.promptGeneration;
         }
-        promoteNewSession(1, message);
       } else if (session) {
         sentSessionId = session.id;
         await ensureEventsConnected(session.id);

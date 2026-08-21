@@ -36,6 +36,19 @@ function imageSignature(block: unknown): string {
   ].join(":");
 }
 
+export function retainUnpersistedUserMessages(
+  persisted: AgentMessage[],
+  live: AgentMessage[],
+): AgentMessage[] {
+  const lastLive = live.at(-1);
+  if (!lastLive || lastLive.role !== "user") return persisted;
+  const lastKey = userMessageKey(lastLive);
+  if (persisted.some((message) => message.role === "user" && userMessageKey(message) === lastKey)) {
+    return persisted;
+  }
+  return [...persisted, lastLive];
+}
+
 export function userMessageKey(message: Partial<AgentMessage>): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") return JSON.stringify({ text: content, images: [] });

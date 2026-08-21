@@ -200,6 +200,15 @@ export function mapUpdatesJsonl(text: string): {
   return { messages, entryIds };
 }
 
+const MAX_SESSION_TITLE = 80;
+
+export function firstUserTitleFromUpdates(jsonl: string, max = MAX_SESSION_TITLE): string {
+  const user = mapUpdatesJsonl(jsonl).messages.find((message) => message.role === "user");
+  const collapsed = historyUserText(user?.content).replace(/\s+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed.length <= max ? collapsed : collapsed.slice(0, max).trimEnd();
+}
+
 export function historyUserText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";

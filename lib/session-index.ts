@@ -1,7 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { grokSessionsDir } from "./grok-home.ts";
+import { firstUserTitleFromUpdates } from "./history-map.ts";
 import type { SessionInfo } from "./types";
+
+const EMPTY_SESSION_LABEL = "(no messages)";
 
 export type { SessionInfo };
 
@@ -76,12 +79,22 @@ async function readSession(
       ? (body.info as Record<string, unknown>)
       : {};
   const id = stringField(info.id) || dirName;
-  const name = stringField(body.generated_title) || stringField(body.session_summary);
   const created = stringField(body.created_at);
   const modified = stringField(body.last_active_at) || stringField(body.updated_at);
   const messageCount =
     numberField(body.num_chat_messages) ?? numberField(body.num_messages) ?? 0;
-  const firstMessage = stringField(body.session_summary) || "(no messages)";
+  const summary = stringField(body.session_summary);
+  const generated = stringField(body.generated_title);
+  let firstMessage = summary;
+  let name = generated || summary;
+  if (!firstMessage || firstMessage === EMPTY_SESSION_LABEL || !name || name === EMPTY_SESSION_LABEL) {
+    const fromHistory = await titleFromUpdates(sessionDir);
+    if (fromHistory) {
+      if (!firstMessage || firstMessage === EMPTY_SESSION_LABEL) firstMessage = fromHistory;
+      if (!name || name === EMPTY_SESSION_LABEL) name = fromHistory;
+    }
+  }
+  if (!firstMessage) firstMessage = EMPTY_SESSION_LABEL;
   const parentSessionId =
     stringField(info.parent_session_id) || stringField(body.parent_session_id) || undefined;
   const sessionKind = stringField(body.session_kind);
@@ -101,6 +114,14 @@ async function readSession(
     session.sessionRole = "subagent";
   }
   return session;
+}
+
+async function titleFromUpdates(sessionDir: string): Promise<string> {
+  try {
+    return firstUserTitleFromUpdates(await readFile(join(sessionDir, "updates.jsonl"), "utf8"));
+  } catch {
+    return "";
+  }
 }
 
 function stringField(value: unknown): string {

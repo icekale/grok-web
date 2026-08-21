@@ -166,6 +166,19 @@ test("a rejected submission preserves a different run reported by the server", (
   assert.match(reconcileSource, /if \(!agentRunningRef\.current\) return;[\s\S]*?finishPromptWithoutStream/);
 });
 
+test("aborting a new-session wait keeps the sent user message", () => {
+  const sendSource = source.slice(
+    source.indexOf("  const handleSend = useCallback"),
+    source.indexOf("  const handleAbort = useCallback"),
+  );
+  const loadSource = source.slice(
+    source.indexOf("  const loadSession = useCallback"),
+    source.indexOf("  const loadContext = useCallback"),
+  );
+  assert.match(loadSource, /retainUnpersistedUserMessages\(persistedMessages, prev\)/);
+  assert.match(sendSource, /promptRequestStarted = true;[\s\S]*promoteNewSession\(1, message\);[\s\S]*await sendAgentCommand/);
+});
+
 test("new-session promotion rekeys drafts before publishing the real session", () => {
   const promoteSource = source.slice(
     source.indexOf("  const promoteNewSession = useCallback"),
