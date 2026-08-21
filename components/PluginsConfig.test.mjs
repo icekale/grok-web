@@ -12,10 +12,19 @@ test("PluginsConfig is Settings-only master-detail and keeps POST payloads", () 
   assert.match(source, /fetch\(`\$\{apiPath\}\?cwd=\$\{encodeURIComponent\(cwd\)\}`\)/);
   assert.match(source, /postPlugins\(\{ action, source: pkg\.source \}\)/);
   assert.match(source, /action: "install"/);
+  assert.match(source, /action: "add"/);
   assert.match(source, /runMarketplaceAction\("add_source"/);
   assert.match(source, /runMarketplaceAction\(\s*"marketplace_install"/);
   assert.doesNotMatch(source, /AddPluginPanel/);
   assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
+});
+
+test("MCP settings can add a server and hide plugin-owned remove", () => {
+  assert.match(source, /i18n\.mcpCommandPlaceholder/);
+  assert.match(source, /postPlugins\(\{ action: "add", source: name, command \}\)/);
+  assert.match(source, /pkg\.origin !== "plugin"/);
+  assert.match(source, /variant !== "mcp"/);
+  assert.match(source, /variant !== "mcp" && \(\s*<div style=\{\{ display: "flex", flexDirection: "column", gap: 8 \}\}>/);
 });
 
 test("PluginsConfig repairs selection by scope\\0source and returns to list when gone", () => {

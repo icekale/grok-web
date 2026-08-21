@@ -241,6 +241,7 @@ function PackageDetail({
   actionError,
   actionMessage,
   sessionId,
+  variant,
   onAction,
   onReloadSession,
 }: {
@@ -250,6 +251,7 @@ function PackageDetail({
   actionError: string | null;
   actionMessage: string | null;
   sessionId: string | null;
+  variant: PluginsVariant;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onReloadSession: () => void;
 }) {
@@ -310,13 +312,15 @@ function PackageDetail({
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            onClick={() => onAction("update", pkg)}
-            disabled={busy || reloadBusy}
-            style={buttonStyle(busy || reloadBusy)}
-          >
-             {busyKey === `update:${key}` ? t("i18n.updating") : t("i18n.update")}
-          </button>
+          {variant !== "mcp" && (
+            <button
+              onClick={() => onAction("update", pkg)}
+              disabled={busy || reloadBusy}
+              style={buttonStyle(busy || reloadBusy)}
+            >
+               {busyKey === `update:${key}` ? t("i18n.updating") : t("i18n.update")}
+            </button>
+          )}
           <button
             onClick={onReloadSession}
             disabled={!sessionId || reloadBusy || busy}
@@ -325,13 +329,15 @@ function PackageDetail({
           >
              {reloadBusy ? t("i18n.reloading") : t("i18n.reloadSession")}
           </button>
-          <button
-            onClick={() => onAction("remove", pkg)}
-            disabled={busy || reloadBusy}
-            style={buttonStyle(busy || reloadBusy, true)}
-          >
-             {busyKey === `remove:${key}` ? t("i18n.removing") : t("i18n.remove")}
-          </button>
+          {pkg.origin !== "plugin" && (
+            <button
+              onClick={() => onAction("remove", pkg)}
+              disabled={busy || reloadBusy}
+              style={buttonStyle(busy || reloadBusy, true)}
+            >
+               {busyKey === `remove:${key}` ? t("i18n.removing") : t("i18n.remove")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -348,8 +354,18 @@ function PackageDetail({
         <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>
           {pkg.status}{pkg.trusted === false ? ` · ${t("i18n.untrusted")}` : ""}
         </div>
-        <div style={{ color: "var(--text-dim)" }}>{t("i18n.version")}</div>
-         <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{versionSummary(pkg, t)}</div>
+        {variant !== "mcp" && (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("i18n.version")}</div>
+             <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{versionSummary(pkg, t)}</div>
+          </>
+        )}
+        {pkg.pluginName ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("common.plugins")}</div>
+            <div style={{ color: "var(--text-muted)" }}>{t("i18n.mcpFromPlugin", { name: pkg.pluginName })}</div>
+          </>
+        ) : null}
         {pkg.description ? (
           <>
             <div style={{ color: "var(--text-dim)" }}>{t("i18n.description")}</div>
@@ -360,8 +376,12 @@ function PackageDetail({
         <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
           {pkg.packageName ?? t("i18n.unknown")}
         </div>
-        <div style={{ color: "var(--text-dim)" }}>{t("i18n.resources")}</div>
-         <div style={{ color: "var(--text-muted)" }}>{resourceSummary(pkg, t)}</div>
+        {variant !== "mcp" && (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("i18n.resources")}</div>
+            <div style={{ color: "var(--text-muted)" }}>{resourceSummary(pkg, t)}</div>
+          </>
+        )}
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.installedPath")}</div>
         <div
           style={{
@@ -378,12 +398,14 @@ function PackageDetail({
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: "var(--text-meta)", fontWeight: 700, color: "var(--text)" }}>
-          {t("i18n.resolvedResources")}
+      {variant !== "mcp" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: "var(--text-meta)", fontWeight: 700, color: "var(--text)" }}>
+            {t("i18n.resolvedResources")}
+          </div>
+          <ResourceList pkg={pkg} />
         </div>
-        <ResourceList pkg={pkg} />
-      </div>
+      )}
 
       {actionMessage && (
         <div style={{ fontSize: "var(--text-meta)", color: "#16a34a" }}>
@@ -432,6 +454,8 @@ export function PluginsConfig({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [view, setView] = useState<PluginsView>(variant === "mcp" ? "plugins" : initialView);
   const [installSource, setInstallSource] = useState("");
+  const [mcpName, setMcpName] = useState("");
+  const [mcpCommand, setMcpCommand] = useState("");
   const [marketplaceUrl, setMarketplaceUrl] = useState("");
   const [selectedMarketPlugin, setSelectedMarketPlugin] = useState<string | null>(null);
 
@@ -516,6 +540,28 @@ export function PluginsConfig({
       setBusyKey(null);
     }
   }, [isMobile, mobileView, postPlugins, reloadIfNeeded, t]);
+
+  const runAddMcp = useCallback(async () => {
+    const name = mcpName.trim();
+    const command = mcpCommand.trim();
+    if (!name || !command) return;
+    setBusyKey("add");
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const next = await postPlugins({ action: "add", source: name, command });
+      setMcpName("");
+      setMcpCommand("");
+      setActionMessage(t("i18n.mcpAdded"));
+      const added = next.packages.find((pkg) => pkg.source === name);
+      if (added) setSelected(pluginIdentity(added));
+      await reloadIfNeeded();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }, [mcpCommand, mcpName, postPlugins, reloadIfNeeded, t]);
 
   const runInstall = useCallback(async () => {
     const source = installSource.trim();
@@ -806,7 +852,31 @@ export function PluginsConfig({
                     {t("i18n.install")}
                   </button>
                 </form>
-              ) : null}
+              ) : (
+                <form
+                  className="resource-settings-install"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void runAddMcp();
+                  }}
+                >
+                  <input
+                    value={mcpName}
+                    onChange={(event) => setMcpName(event.target.value)}
+                    placeholder={t("i18n.mcpNamePlaceholder")}
+                    aria-label={t("i18n.mcpNamePlaceholder")}
+                  />
+                  <input
+                    value={mcpCommand}
+                    onChange={(event) => setMcpCommand(event.target.value)}
+                    placeholder={t("i18n.mcpCommandPlaceholder")}
+                    aria-label={t("i18n.mcpCommandPlaceholder")}
+                  />
+                  <button type="submit" className="resource-settings-header-button" disabled={Boolean(busyKey) || !mcpName.trim() || !mcpCommand.trim()}>
+                    {t("i18n.addMcp")}
+                  </button>
+                </form>
+              )}
               onQueryChange={setQuery}
               onSelect={(id) => openDetail(id)}
               onRetry={() => void loadPlugins()}
@@ -821,6 +891,7 @@ export function PluginsConfig({
                 actionError={actionError}
                 actionMessage={actionMessage}
                 sessionId={sessionId}
+                variant={variant}
                 onAction={runAction}
                 onReloadSession={reloadSession}
               />

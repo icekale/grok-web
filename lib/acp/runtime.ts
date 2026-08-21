@@ -252,9 +252,21 @@ export class AgentRuntime {
     return this.requireAcp().authenticate(methodId);
   }
 
-  async listMcp() {
-    await this.ensureProcess();
-    return this.requireAcp().mcpList();
+  async listMcp(cwd?: string) {
+    if (!cwd) {
+      await this.ensureProcess();
+      return this.requireAcp().mcpList();
+    }
+    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpList(sessionId)) as Promise<{
+      servers: Array<{
+        name: string;
+        source?: string;
+        type?: string;
+        command?: string;
+        url?: string;
+        session?: { enabled?: boolean };
+      }>;
+    }>;
   }
 
   async withSession(cwd: string, fn: (sessionId: string) => Promise<unknown>) {

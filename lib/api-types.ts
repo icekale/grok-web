@@ -110,6 +110,8 @@ export interface PluginPackageInfo {
   configuredVersion?: string;
   description?: string;
   trusted?: boolean;
+  origin?: "config" | "plugin";
+  pluginName?: string;
   counts: PluginResourceCounts;
   resources: PluginResourceInfo[];
   status: "loaded" | "installed" | "missing" | "disabled";

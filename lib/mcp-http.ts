@@ -1,4 +1,7 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
+import type { GrokPluginInfo } from "@/lib/acp/connection.ts";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { listMcpServers, readGrokConfig } from "@/lib/grok-settings/home-config.ts";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
@@ -12,11 +15,16 @@ import type {
   PluginsResponse,
 } from "@/lib/api-types";
 
-type PluginAction = "remove" | "update" | "disable" | "enable";
+type PluginAction = "remove" | "update" | "disable" | "enable" | "add";
+
+const MCP_NAME = /^[A-Za-z0-9_-]+$/;
 
 type McpServer = {
   name: string;
   source?: string;
+  pluginName?: string;
+  command?: string;
+  url?: string;
   session?: { enabled?: boolean };
 };
 
@@ -24,14 +32,22 @@ function emptyCounts(): PluginResourceCounts {
   return { extensions: 0, skills: 0, prompts: 0, themes: 0, agents: 0, hooks: 0, mcpServers: 0 };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 function toPackage(server: McpServer): PluginPackageInfo {
   const disabled = server.session?.enabled === false;
+  const plugin = Boolean(server.pluginName);
   return {
     source: server.name,
     scope: server.source === "project" ? "project" : "global",
     filtered: false,
     disabled,
     packageName: server.name,
+    installedPath: server.command || server.url,
+    origin: plugin ? "plugin" : "config",
+    pluginName: server.pluginName,
     counts: emptyCounts(),
     resources: [],
     status: disabled ? "disabled" : "loaded",
@@ -52,10 +68,97 @@ function toPluginsResponse(
   };
 }
 
-async function readMcp(cwd: string): Promise<PluginsResponse> {
+function expandPluginRoot(value: string, root: string): string {
+  return value.replaceAll("${GROK_PLUGIN_ROOT}", root);
+}
+
+function serversFromPlugin(plugin: GrokPluginInfo): McpServer[] {
+  if (plugin.enabled === false) return [];
+  const root = plugin.root;
+  if (!root) return [];
+  const file = join(root, ".mcp.json");
+  if (!existsSync(file)) return [];
+  let parsed: unknown;
   try {
-    const listed = await getAgentRuntime().listMcp();
-    return toPluginsResponse(listed.servers ?? [], cwd);
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return [];
+  }
+  const table = isRecord(parsed) && isRecord(parsed.mcpServers) ? parsed.mcpServers : {};
+  const enabled = plugin.enabled !== false;
+  const servers: McpServer[] = [];
+  for (const [name, spec] of Object.entries(table)) {
+    if (!name || !isRecord(spec)) continue;
+    const command = typeof spec.command === "string" ? expandPluginRoot(spec.command, root) : undefined;
+    const url = typeof spec.url === "string" ? spec.url : undefined;
+    const args = Array.isArray(spec.args)
+      ? spec.args.map((arg) => typeof arg === "string" ? expandPluginRoot(arg, root) : String(arg))
+      : [];
+    servers.push({
+      name,
+      pluginName: plugin.name,
+      command: command ? [command, ...args].join(" ") : undefined,
+      url,
+      session: { enabled },
+    });
+  }
+  return servers;
+}
+
+async function pluginMcpServers(cwd: string): Promise<McpServer[]> {
+  try {
+    const listed = await getAgentRuntime().listPlugins(cwd);
+    return (listed.plugins ?? []).flatMap(serversFromPlugin);
+  } catch {
+    return [];
+  }
+}
+
+function mergeMcpServers(primary: McpServer[], extra: McpServer[]): McpServer[] {
+  const pluginByName = new Map(extra.map((server) => [server.name, server]));
+  const merged = primary.map((server) => {
+    const plugin = pluginByName.get(server.name);
+    return plugin
+      ? {
+        ...server,
+        pluginName: plugin.pluginName,
+        command: server.command ?? plugin.command,
+        url: server.url ?? plugin.url,
+      }
+      : server;
+  });
+  const seen = new Set(merged.map((server) => server.name));
+  for (const server of extra) {
+    if (seen.has(server.name)) continue;
+    seen.add(server.name);
+    merged.push(server);
+  }
+  return merged;
+}
+
+function parseTransport(body: {
+  command?: unknown;
+  url?: unknown;
+  args?: unknown;
+}): { command?: string; url?: string; args?: string[] } | { error: string } {
+  if (typeof body.url === "string" && body.url.trim()) {
+    return { url: body.url.trim() };
+  }
+  const raw = typeof body.command === "string" ? body.command.trim() : "";
+  if (!raw) return { error: "command or url required" };
+  if (/^https?:\/\//i.test(raw)) return { url: raw };
+  const [command, ...args] = raw.split(/\s+/);
+  if (typeof body.args === "object" && Array.isArray(body.args)) {
+    return { command, args: body.args.filter((arg): arg is string => typeof arg === "string") };
+  }
+  return { command, ...(args.length ? { args } : {}) };
+}
+
+async function readMcp(cwd: string): Promise<PluginsResponse> {
+  const pluginServers = await pluginMcpServers(cwd);
+  try {
+    const listed = await getAgentRuntime().listMcp(cwd);
+    return toPluginsResponse(mergeMcpServers(listed.servers ?? [], pluginServers), cwd);
   } catch (error) {
     const diagnostics: PluginDiagnostic[] = [{
       type: "error",
@@ -65,7 +168,7 @@ async function readMcp(cwd: string): Promise<PluginsResponse> {
       name: server.name,
       session: server.enabled === false ? { enabled: false } : undefined,
     }));
-    return toPluginsResponse(servers, cwd, diagnostics);
+    return toPluginsResponse(mergeMcpServers(servers, pluginServers), cwd, diagnostics);
   }
 }
 
@@ -95,10 +198,13 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json() as {
-      action?: PluginAction;
+      action?: PluginAction | "install";
       source?: string;
       scope?: PluginScope;
       cwd?: string;
+      command?: string;
+      url?: string;
+      args?: string[];
     };
     if (!body.cwd) return Response.json({ error: "cwd required" }, { status: 400 });
     if (!body.action) return Response.json({ error: "action required" }, { status: 400 });
@@ -116,11 +222,22 @@ export async function POST(req: Request) {
     if (body.action === "update") {
       return Response.json({ error: "MCP update is not supported" }, { status: 400 });
     }
-    if (body.action === "enable" || body.action === "disable") {
+    if (body.action === "add") {
+      if (!source || !MCP_NAME.test(source)) {
+        return Response.json({ error: "MCP name may only contain letters, numbers, hyphens, and underscores" }, { status: 400 });
+      }
+      const transport = parseTransport(body);
+      if ("error" in transport) return Response.json({ error: transport.error }, { status: 400 });
+      await runtime.upsertMcp(body.cwd, source, transport);
+    } else if (body.action === "enable" || body.action === "disable") {
       if (!source) return Response.json({ error: "source required" }, { status: 400 });
       await runtime.toggleMcp(body.cwd, source, body.action === "enable");
     } else if (body.action === "remove") {
       if (!source) return Response.json({ error: "source required" }, { status: 400 });
+      const listed = await readMcp(body.cwd);
+      if (listed.packages.find((pkg) => pkg.source === source)?.origin === "plugin") {
+        return Response.json({ error: "Plugin MCP servers are removed by disabling or uninstalling the plugin." }, { status: 400 });
+      }
       await runtime.deleteMcp(body.cwd, source);
     } else {
       return Response.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });

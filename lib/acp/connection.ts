@@ -400,14 +400,15 @@ export class AcpConnection {
     return this.rpc.request("authenticate", { methodId });
   }
 
-  mcpList(): Promise<{ servers: Array<{
+  mcpList(sessionId?: string): Promise<{ servers: Array<{
     name: string;
     source?: string;
     type?: string;
     command?: string;
+    url?: string;
     session?: { enabled?: boolean };
   }> }> {
-    return this.rpc.request("_x.ai/mcp/list", {}).then((raw) => unwrapResult(raw) as never);
+    return this.rpc.request("_x.ai/mcp/list", sessionId ? { session_id: sessionId } : {}).then((raw) => unwrapResult(raw) as never);
   }
 
   mcpToggle(sessionId: string, serverName: string, enabled: boolean): Promise<unknown> {

@@ -4345,13 +4345,14 @@ span.linenumber {
 
 .resource-settings-install {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 10px 0;
 }
 
 .resource-settings-install input {
-  min-width: 0;
-  flex: 1;
+  min-width: 96px;
+  flex: 1 1 96px;
   height: 32px;
   padding: 0 8px;
   border: 1px solid var(--border);
