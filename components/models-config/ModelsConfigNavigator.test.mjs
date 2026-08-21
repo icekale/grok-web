@@ -33,9 +33,15 @@ test("connection status is text, not color alone", () => {
   assert.match(source, /t\("i18n\.notConnected"\)/);
 });
 
-test("footer holds one add-provider command and empty state offers recovery", () => {
+test("footer holds one add-provider command and empty state offers Grok sign-in", () => {
   assert.match(source, /models-settings-add-provider[\s\S]*?t\("i18n\.addProvider"\)/);
-  assert.match(source, /t\("models\.noMatches"\)[\s\S]*?onClick=\{onAddProvider\}/);
+  assert.match(source, /t\("models\.signInGrok"\)/);
+  assert.match(source, /onClick=\{onSignInGrok\}/);
+});
+
+test("lists read-only Grok ACP models above custom providers", () => {
+  assert.match(source, /aria-label=\{t\("models\.liveChat"\)\}/);
+  assert.match(source, /t\("models\.customProvidersHint"\)/);
 });
 
 test("navigator stays controlled: no fetch or config mutation inside", () => {

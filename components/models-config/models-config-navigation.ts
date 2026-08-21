@@ -55,6 +55,18 @@ function firstProviderSelection(config: ModelsJson): Selection | null {
   return keys.length > 0 ? { type: "provider", name: keys[0] } : null;
 }
 
+export function preferredModelsSelection(
+  config: ModelsJson,
+  oauthProviders: OAuthProvider[],
+  apiKeyProviders: ApiKeyProvider[],
+): Selection | null {
+  const grokOauth = oauthProviders.find((provider) => provider.id === "grok.com");
+  if (grokOauth) return { type: "oauth", providerId: grokOauth.id };
+  const grokKey = apiKeyProviders.find((provider) => provider.id === "grok.com");
+  if (grokKey) return { type: "apikey", providerId: grokKey.id };
+  return firstProviderSelection(config);
+}
+
 /**
  * Resolves a stale selection against freshly loaded data. Falls back to the
  * parent provider for a deleted model, to the nearest provider for a deleted

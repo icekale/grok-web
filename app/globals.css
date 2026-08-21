@@ -3081,6 +3081,13 @@ html.dark .settings-inline-success { color: #4ade80; }
   white-space: nowrap;
 }
 
+.models-settings-header-title > .models-settings-header-sub {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 400;
+  white-space: normal;
+}
+
 .models-settings-header-title > code {
   min-width: 0;
   overflow: hidden;
@@ -3258,6 +3265,16 @@ html.dark .settings-inline-success { color: #4ade80; }
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.models-settings-group-hint {
+  margin: 0 8px 6px;
+  color: var(--text-dim);
+  font-size: var(--text-meta);
+  line-height: var(--leading-prose);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 .models-settings-row {

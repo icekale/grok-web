@@ -104,11 +104,12 @@ test("shows an icon-only session stats button on mobile so numbers don't crowd t
   assert.doesNotMatch(source, /mobileContextText/);
 });
 
-test("Get Started opens Settings on the Models section", () => {
-  assert.match(source, /workspace\.addModels/);
-  assert.match(source, /workspace\.openModels/);
+test("Get Started asks for a project and session, not adding models", () => {
+  assert.match(source, /workspace\.continueOrNew/);
+  assert.match(source, /workspace\.loginHint/);
   assert.match(source, /openSettings\("models"\)/);
   assert.match(source, /initialSection=\{settingsSection\}/);
+  assert.doesNotMatch(source, /workspace\.addModels/);
   assert.doesNotMatch(source, /Models button at the bottom/);
 });
 

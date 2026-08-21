@@ -354,6 +354,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
+  const [toolsAdvertised, setToolsAdvertised] = useState(false);
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
@@ -646,9 +647,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (tools) {
         const { getPresetFromTools } = await import("@/lib/tool-presets");
         setToolPresetState(getPresetFromTools(tools));
+        setToolsAdvertised(true);
+      } else {
+        setToolsAdvertised(false);
       }
-    } catch (e) {
-      console.error("Failed to load tools:", e);
+    } catch {
+      setToolsAdvertised(false);
     }
   }, [setToolPresetState]);
 
@@ -720,6 +724,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ) {
         setThinkingLevel(result.thinkingLevel);
       }
+      void loadTools(realId);
       return realId;
     })();
 
@@ -729,7 +734,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, toolPreset]);
+  }, [isNew, newSessionCwd, loadTools, toolPreset]);
 
   const loadSlashCommands = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
@@ -2118,9 +2123,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionHookMountedRef.current = true;
     if (session) {
       sessionIdRef.current = session.id;
+      setToolsAdvertised(false);
       loadSession(session.id, true, !opts.readOnlyHistory).then((agentState) => {
+        void loadTools(session.id);
         if (agentState?.running) {
-          loadTools(session.id);
           if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
             sdkAgentActiveRef.current = Boolean(agentState.state.isStreaming);
             rpcPromptPendingRef.current = Boolean(agentState.state.isPromptRunning);
@@ -2263,7 +2269,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,

@@ -12,7 +12,9 @@ const GROK_EFFORT_RANK: Record<string, number> = {
 };
 
 export function visibleGrokEffortLevels(available?: string[] | null): string[] {
-  const levels = available && available.length > 0 ? [...available] : [...GROK_EFFORT_LEVELS];
+  const allowed = new Set<string>(GROK_EFFORT_LEVELS);
+  const filtered = (available ?? []).filter((level) => allowed.has(level));
+  const levels = filtered.length > 0 ? filtered : [...GROK_EFFORT_LEVELS];
   return levels.sort((left, right) => (GROK_EFFORT_RANK[left] ?? 50) - (GROK_EFFORT_RANK[right] ?? 50));
 }
 

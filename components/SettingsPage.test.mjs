@@ -21,7 +21,7 @@ test("general settings can change Grok permission mode", () => {
 });
 
 test("settings embeds the model, skill, plugin, and remote modules", () => {
-  assert.match(settings, /<ModelsConfig onControllerChange=\{setModelsController\} \/>/);
+  assert.match(settings, /<ModelsConfig cwd=\{cwd\} onControllerChange=\{setModelsController\} \/>/);
   assert.match(settings, /<SkillsConfig cwd=\{cwd\} onControllerChange=\{setSkillsController\} \/>/);
   assert.match(settings, /onControllerChange=\{setPluginsController\}/);
   assert.doesNotMatch(settings, /VisionToolkitConfig/);

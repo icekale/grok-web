@@ -287,7 +287,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   const {
     data, loading, error, messages, entryIds, liveToolResults, streamState,
-    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, toolsAdvertised, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -637,6 +637,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       compactError={compactError}
       compactResult={compactResult}
       toolPreset={toolPreset}
+      toolsAdvertised={toolsAdvertised}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       thinkingLevel={thinkingLevel}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
@@ -751,6 +752,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               }}>
                 {homeCwdLabel ? t("chat.homeTitle", { cwd: homeCwdLabel }) : t("chat.homeTitleGeneric")}
               </h1>
+              <p style={{
+                margin: "8px 0 0",
+                fontSize: "var(--text-meta)",
+                color: "var(--text-muted)",
+                lineHeight: "var(--leading-prose)",
+              }}>
+                {t("chat.homeSubtitle")}
+              </p>
             </div>
           </div>
           <div className="relative mx-auto w-full max-w-[960px]">
@@ -1213,7 +1222,7 @@ function ExtensionDialog({
         </>
       )}
     >
-      {request.method === "confirm" && <div className="codex-dialog-message">{request.message}</div>}
+      {request.method === "confirm" && <pre className="codex-dialog-inset">{request.message}</pre>}
       {request.method === "select" && (
         <div
           className="codex-dialog-options"

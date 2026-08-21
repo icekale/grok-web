@@ -32,6 +32,7 @@ import type { SubagentTreeNode } from "@/lib/api-types";
 import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { nextActiveFileTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
+import type { SettingsSection } from "./SettingsPage";
 const SettingsPage = lazy(() => import("./SettingsPage").then((module) => ({
   default: module.SettingsPage,
 })));
@@ -134,8 +135,9 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"general" | "models" | "plugins" | "marketplace">("general");
-  const openSettings = useCallback((section: "general" | "models" | "plugins" | "marketplace" = "general") => {
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
+  const [grokSignedOut, setGrokSignedOut] = useState(false);
+  const openSettings = useCallback((section: SettingsSection = "general") => {
     setSettingsSection(section);
     setSettingsOpen(true);
   }, []);
@@ -217,6 +219,22 @@ export function AppShell() {
   useEffect(() => {
     setMobileSidebarReady(true);
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/auth/providers")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { providers?: Array<{ id?: string; loggedIn?: boolean }> } | null) => {
+        if (cancelled) return;
+        const grok = body?.providers?.find((provider) => provider.id === "grok.com");
+        setGrokSignedOut(grok?.loggedIn === false);
+      })
+      .catch(() => {
+        if (!cancelled) setGrokSignedOut(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen]);
   useEffect(() => {
     if (!rightPanelOpen) return;
     reclampSidebarWidth();
@@ -1263,6 +1281,7 @@ export function AppShell() {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onToggleSidebar={handleSidebarToggle}
+        onOpenSettings={openSettings}
       />
       <div className="codex-sidebar-footer">
         <button className="codex-sidebar-footer-item" onClick={() => openSettings("general")} title={translate("common.settings")} aria-label={translate("common.settings")}>
@@ -1358,7 +1377,7 @@ export function AppShell() {
         >
           <History size={13} strokeWidth={2} style={{ color: selectedSession ? "var(--text-muted)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true" />
         </button>
-        {subagentCount > 0 ? (
+        {selectedSession ? (
           <button
             type="button"
             data-subagent-panel-toggle="true"
@@ -2445,7 +2464,7 @@ export function AppShell() {
           ) : showPlaceholder ? (
             activeCwd ? (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "var(--text-title)" }}>
-                 {translate("workspace.selectSession")}
+                 {translate("workspace.selectSessionOrNew")}
               </div>
             ) : (
               <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none", pointerEvents: "none" }}>
@@ -2454,24 +2473,29 @@ export function AppShell() {
                    <div style={{ fontSize: "var(--text-title)", fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("workspace.getStarted")}</div>
                   <div style={{ fontSize: "var(--text-meta)", color: "var(--text-muted)", lineHeight: "var(--leading-prose)" }}>
                      <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>{translate("workspace.selectProject")}<br />
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.addModels")}{" "}
-                    <button
-                      type="button"
-                      onClick={() => openSettings("models")}
-                      style={{
-                        pointerEvents: "auto",
-                        margin: 0,
-                        padding: 0,
-                        border: 0,
-                        background: "none",
-                        color: "var(--accent)",
-                        cursor: "pointer",
-                        font: "inherit",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      {translate("workspace.openModels")}
-                    </button>
+                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.continueOrNew")}
+                    {grokSignedOut ? (
+                      <>
+                        <br />
+                        <button
+                          type="button"
+                          onClick={() => openSettings("models")}
+                          style={{
+                            pointerEvents: "auto",
+                            margin: "8px 0 0",
+                            padding: 0,
+                            border: 0,
+                            background: "none",
+                            color: "var(--text-dim)",
+                            cursor: "pointer",
+                            font: "inherit",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          {translate("workspace.loginHint")}
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </div>

@@ -205,7 +205,7 @@ test("thinking level overrides keep explicit default, disabled, and custom contr
 });
 
 test("ModelsConfig is a Settings-only master-detail surface", () => {
-  assert.match(source, /export function ModelsConfig\(\{ onControllerChange \}: ModelsConfigProps\)/);
+  assert.match(source, /export function ModelsConfig\(\{ cwd, onControllerChange \}: ModelsConfigProps\)/);
   assert.doesNotMatch(source, /embedded = false/);
   assert.doesNotMatch(source, /\{ onClose \}/);
   assert.match(source, /<ModelsConfigNavigator/);

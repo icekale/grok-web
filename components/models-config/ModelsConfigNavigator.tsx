@@ -122,18 +122,28 @@ export function ProviderIcon({ id, size }: { id: string; size: number }) {
   return <pi.Icon size={size} style={{ color: "var(--text-muted)" }} />;
 }
 
+export interface LiveChatModelRow {
+  id: string;
+  name: string;
+  efforts: string[];
+}
+
 export interface ModelsConfigNavigatorProps {
   selection: Selection | null;
   query: string;
   expandedProviders: ReadonlySet<string>;
   accounts: ModelsAccountItem[];
   providers: ModelsCustomProviderItem[];
+  liveModels: LiveChatModelRow[];
+  customOpen: boolean;
   loading: boolean;
   errors: { accounts?: string; config?: string };
   onQueryChange(query: string): void;
   onToggleProvider(name: string): void;
+  onToggleCustom(): void;
   onSelect(selection: Selection): void;
   onAddProvider(): void;
+  onSignInGrok(): void;
   onAddModel(providerName: string): void;
   onRetryAccounts(): void;
   onRetryConfig(): void;
@@ -145,18 +155,28 @@ export function ModelsConfigNavigator({
   expandedProviders,
   accounts,
   providers,
+  liveModels,
+  customOpen,
   loading,
   errors,
   onQueryChange,
   onToggleProvider,
+  onToggleCustom,
   onSelect,
   onAddProvider,
+  onSignInGrok,
   onAddModel,
   onRetryAccounts,
   onRetryConfig,
 }: ModelsConfigNavigatorProps) {
   const { t } = useI18n();
-  const noResults = !loading && !errors.config && accounts.length === 0 && providers.length === 0;
+  const filteredLive = query.trim()
+    ? liveModels.filter((model) => {
+      const q = query.trim().toLocaleLowerCase();
+      return model.id.toLocaleLowerCase().includes(q) || model.name.toLocaleLowerCase().includes(q);
+    })
+    : liveModels;
+  const noResults = !loading && !errors.config && accounts.length === 0 && providers.length === 0 && filteredLive.length === 0;
 
   return (
     <div className="models-settings-navigator">
@@ -193,11 +213,24 @@ export function ModelsConfigNavigator({
           <div className="models-settings-nav-status">{t("i18n.loading")}</div>
         ) : noResults ? (
           <div className="models-settings-nav-status">
-            <span>{t("models.noMatches")}</span>
-            <button type="button" onClick={onAddProvider}>{t("i18n.addProvider")}</button>
+            <span>{query.trim() ? t("models.noMatches") : t("models.emptyLive")}</span>
+            <button type="button" onClick={onSignInGrok}>{t("models.signInGrok")}</button>
           </div>
         ) : (
           <>
+            {filteredLive.length > 0 && (
+              <div className="models-settings-group" role="group" aria-label={t("models.liveChat")}>
+                <div className="models-settings-group-label">{t("models.liveChat")}</div>
+                <p className="models-settings-group-hint">{t("models.liveChatHint")}</p>
+                {filteredLive.map((model) => (
+                  <div key={model.id} className="models-settings-row" data-readonly="true">
+                    <ProviderIcon id="grok" size={16} />
+                    <span className="models-settings-row-label">{model.name}</span>
+                    <span className="models-settings-row-count">{t("models.liveEffort", { levels: model.efforts.join(" · ") })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {accounts.length > 0 && (
               <div className="models-settings-group" role="group" aria-label={t("models.accounts")}>
                 <div className="models-settings-group-label">{t("models.accounts")}</div>
@@ -227,8 +260,17 @@ export function ModelsConfigNavigator({
 
             {providers.length > 0 && (
               <div className="models-settings-group" role="group" aria-label={t("models.customProviders")}>
-                <div className="models-settings-group-label">{t("models.customProviders")}</div>
-                {providers.map((provider) => {
+                <button
+                  type="button"
+                  className="models-settings-group-label models-settings-disclosure"
+                  aria-expanded={customOpen}
+                  onClick={onToggleCustom}
+                >
+                  <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
+                  <span>{t("models.customProviders")}</span>
+                </button>
+                <p className="models-settings-group-hint">{t("models.customProvidersHint")}</p>
+                {customOpen && providers.map((provider) => {
                   const expanded = expandedProviders.has(provider.name);
                   const isProviderSelected = selection?.type === "provider" && selection.name === provider.name;
                   return (
