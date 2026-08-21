@@ -141,7 +141,7 @@ export type BuiltinSlashCommandResult =
     handled: true;
     message?: string;
     error?: string;
-    action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" | "openSkills" | "openMcp" | "confirmDeleteSession";
+    action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" | "openSkills" | "openMcp" | "confirmDeleteSession" | "exportSession";
   };
 
 export interface UseAgentSessionOptions {
@@ -1847,6 +1847,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return { handled: true, error: "No session to delete" };
       }
       return { handled: true, action: "confirmDeleteSession" };
+    }
+    if (commandName === "export") {
+      const exportId = sessionIdRef.current;
+      if (!exportId) {
+        addNotice({ type: "error", message: "No session to export" });
+        return { handled: true, error: "No session to export" };
+      }
+      window.location.assign(`/api/sessions/${encodeURIComponent(exportId)}/export`);
+      return { handled: true, action: "exportSession" };
     }
     const sid = sessionIdRef.current ?? await ensureNewSession();
     const complete = (result: BuiltinSlashCommandResult): BuiltinSlashCommandResult => {

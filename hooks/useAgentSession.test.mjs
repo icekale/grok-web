@@ -62,6 +62,8 @@ test("maps TUI slash commands onto session rename, delete, and Grok settings", (
   assert.match(handler, /commandName === "mcp"/);
   assert.match(handler, /commandName === "delete"/);
   assert.match(handler, /action: "confirmDeleteSession"/);
+  assert.match(handler, /commandName === "export"/);
+  assert.match(handler, /\/api\/sessions\/\$\{encodeURIComponent\(exportId\)\}\/export/);
   assert.match(handler, /case "rename":/);
   assert.match(handler, /Usage: \/rename <name>/);
   assert.doesNotMatch(handler, /Usage: \/name <name>/);

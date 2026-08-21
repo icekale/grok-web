@@ -713,7 +713,7 @@ export class AgentRuntime {
   private async listSlashCommands(sessionId: string) {
     const cwd = this.ensureSession(sessionId).cwd || process.cwd();
     const listed = await this.listSkills(cwd);
-    const webBuiltins = new Set(["compact", "reload", "name", "rename", "delete", "session", "copy", "feedback", "recap", "plugins", "marketplace", "skills", "mcp"]);
+    const webBuiltins = new Set(["compact", "reload", "name", "rename", "delete", "export", "session", "copy", "feedback", "recap", "plugins", "marketplace", "skills", "mcp"]);
     const allSkills = listed.skills ?? [];
     const skillNames = new Set(allSkills.map((skill) => skill.name));
     const fromAcp = (this.acp?.availableCommands ?? [])

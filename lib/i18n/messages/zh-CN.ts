@@ -477,6 +477,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.commandName": "设置会话显示名称",
     "chat.commandRename": "重命名这个会话",
     "chat.commandDelete": "从磁盘删除这个会话",
+    "chat.commandExport": "导出这个会话",
     "chat.commandSkills": "打开技能",
     "chat.commandMcp": "打开 MCP",
     "chat.commandSession": "显示会话消息、Token 和费用统计",

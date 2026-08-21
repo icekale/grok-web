@@ -478,6 +478,7 @@ export const enLocale: LocalePlugin = {
     "chat.commandName": "Set the session display name",
     "chat.commandRename": "Rename this session",
     "chat.commandDelete": "Delete this session from disk",
+    "chat.commandExport": "Export this session",
     "chat.commandSkills": "Open skills",
     "chat.commandMcp": "Open MCP servers",
     "chat.commandSession": "Show session message, token, and cost stats",
