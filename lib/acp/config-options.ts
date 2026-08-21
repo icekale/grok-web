@@ -1,4 +1,4 @@
-import { getToolNamesForPreset, isToolPreset, PRESET_FULL, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
+import { isToolPreset, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
 
 export type AcpConfigOption = {
   id: string;
@@ -94,12 +94,8 @@ export function rememberToolsPreset(options: AcpConfigOption[], preset: ToolPres
 }
 
 export function toolEntriesForPreset(preset: ToolPreset): ToolEntry[] {
-  const active = new Set(getToolNamesForPreset(preset));
-  return PRESET_FULL.map((name) => ({
-    name,
-    description: name,
-    active: active.has(name),
-  }));
+  if (preset === "none") return [];
+  return [{ name: preset, description: preset, active: true }];
 }
 
 function isToolsOption(option: AcpConfigOption): boolean {

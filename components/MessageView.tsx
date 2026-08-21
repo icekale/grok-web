@@ -248,7 +248,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (message.role === "bashExecution") {
-    return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} />;
+    return <BashExecutionView message={message as BashExecutionMessage} />;
   }
   return null;
 }, (prev, next) => {
@@ -1647,41 +1647,12 @@ function formatUsage(usage: {
   return parts.join(" · ");
 }
 
-function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {
-  const [fullOutput, setFullOutput] = useState<string | null>(null);
-  const [loadingFull, setLoadingFull] = useState(false);
-  const [fullError, setFullError] = useState<string | null>(null);
-
+function BashExecutionView({ message }: { message: BashExecutionMessage }) {
   const isPending = !message.output && message.exitCode === undefined && !message.cancelled;
   const isError = message.cancelled || (message.exitCode !== undefined && message.exitCode !== 0);
-  const fullOutputUrl = sessionId && message.fullOutputPath
-    ? `/api/agent/${encodeURIComponent(sessionId)}/bash-output?path=${encodeURIComponent(message.fullOutputPath)}`
-    : null;
-  const showFullButton = message.truncated && fullOutputUrl && fullOutput === null;
-  const displayOutput = fullOutput ?? message.output;
+  const displayOutput = message.output;
 
-  async function loadFullOutput() {
-    if (!fullOutputUrl) return;
-    setLoadingFull(true);
-    setFullError(null);
-    try {
-      const res = await fetch(fullOutputUrl);
-      const d = await res.json() as { success?: boolean; data?: { output?: string }; error?: string };
-      if (d.success) {
-        setFullOutput(d.data?.output ?? "");
-      } else {
-        setFullError(d.error ?? "failed");
-      }
-    } catch (e) {
-      setFullError(String(e));
-    } finally {
-      setLoadingFull(false);
-    }
-  }
-
-  // Reuse the existing ToolCallBlock so user-run bash looks identical to an
-  // agent-run bash tool call: same header, collapse behavior, result pane.
-  // Synthesize an equivalent ToolCallContent + ToolResultMessage pair.
+  // Historical bashExecution rows reuse ToolCallBlock. Inline output only.
   const toolName = message.excludeFromContext ? "bash (local)" : "bash";
   const block: ToolCallContent = {
     type: "toolCall",
@@ -1703,26 +1674,6 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
   return (
     <div style={{ margin: "6px 0" }}>
       <ToolCallBlock block={block} result={result} defaultExpanded={false} />
-      {message.truncated && fullOutputUrl && (
-        <div style={{ padding: "4px 10px", fontSize: "var(--text-meta)", marginTop: -1 }}>
-          {showFullButton && (
-            <button
-              onClick={loadFullOutput}
-              disabled={loadingFull}
-              style={{ background: "none", border: "none", color: "var(--accent)", cursor: loadingFull ? "default" : "pointer", fontSize: "var(--text-meta)", padding: 0, textDecoration: "underline" }}
-            >
-              {loadingFull ? "loading…" : "view full output"}
-            </button>
-          )}
-          <a
-            href={`${fullOutputUrl}&download=1`}
-            style={{ marginLeft: showFullButton ? 10 : 0, color: "var(--accent)", fontSize: "var(--text-meta)", textDecoration: "underline" }}
-          >
-            download full output
-          </a>
-          {fullError && <span style={{ marginLeft: 6, color: "var(--text-dim)", fontSize: "var(--text-meta)" }}>({fullError})</span>}
-        </div>
-      )}
     </div>
   );
 }

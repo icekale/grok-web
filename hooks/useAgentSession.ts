@@ -326,7 +326,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
-  const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
   const [modelNames, setModelNames] = useState<Record<string, string>>({});
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -392,7 +391,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     );
   }
   const textDeltaBatcher = textDeltaBatcherRef.current;
-  const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
@@ -1043,7 +1041,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (bashRecoveryIdRef.current !== recoveryId || sessionIdRef.current !== sid) return;
         bashRunningRef.current = false;
         setBashRunning(false);
-        setPendingBash(null);
         return;
       } catch {
         // Keep polling while the page is mounted; network recovery is transparent.
@@ -1438,18 +1435,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
-    const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
-    if (isBashCommand) {
-      const isExcluded = trimmedMessage.startsWith("!!");
-      const bashCmd = (isExcluded ? trimmedMessage.slice(2) : trimmedMessage.slice(1)).trim();
-      if (!bashCmd) {
-        restoreSubmission(message, images, composerDraftKey);
-        return;
-      }
-      await executeBashRef.current?.(bashCmd, isExcluded);
-      return;
-    }
-
     const promptRunId = promptRunIdRef.current + 1;
     cancelEventStreamGrace();
     rpcPromptPendingRef.current = true;
@@ -1554,34 +1539,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       dispatch({ type: "end" });
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, clearConversationPlanWidget, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
-
-  const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
-    if (agentRunningRef.current || bashRunningRef.current) return;
-    const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
-    bashRunningRef.current = true;
-    setPendingBash({ command, excludeFromContext });
-    setBashRunning(true);
-    try {
-      const sid = sessionIdRef.current ?? session?.id ?? await ensureNewSession();
-      if (!sid) throw new Error("Unable to create a session for the shell command");
-      await sendAgentCommand(sid, {
-        type: "bash",
-        command,
-        excludeFromContext,
-      });
-      await loadSession(sid);
-      promoteNewSession(1, inputText);
-    } catch (e) {
-      console.error("Failed to execute shell command:", e);
-      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
-      restoreSubmission(inputText, undefined, composerDraftKey);
-    } finally {
-      bashRunningRef.current = false;
-      setPendingBash(null);
-      setBashRunning(false);
-    }
-  }, [addNotice, composerDraftKey, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session]);
-  executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -2263,7 +2220,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
-    bashRunning, pendingBash,
+    bashRunning,
     // Subscriptions
     handleAgentEventRef,
   };

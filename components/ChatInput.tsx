@@ -712,9 +712,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
-  const trimmedValue = value.trimStart();
-  const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
-  const bashExcluded = bashMode && trimmedValue.startsWith("!!");
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [slashMenuMaxHeight, setSlashMenuMaxHeight] = useState<number | null>(null);
@@ -2204,7 +2201,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               flexDirection: "column",
               gap: isMobile ? 8 : 10,
               background: "var(--bg)",
-              border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 80%, transparent)"}`,
+              border: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
               borderRadius: 8,
               padding: isMobile ? "10px 12px 8px" : "12px 14px 9px",
               boxShadow: "none",
@@ -2276,13 +2273,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             }}
           />
 
-
-        {/* Bash mode status label */}
-        {bashMode && (
-          <div className="text-xs px-2 py-1" style={{ color: bashExcluded ? "var(--text-muted)" : "var(--accent)", marginTop: 4 }}>
-             {t("chat.shell")} · {bashExcluded ? t("chat.outputLocal") : t("chat.outputModel")}
-          </div>
-        )}
 
         {/* Toolbar: + | model | chips | send */}
         <div style={{

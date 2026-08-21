@@ -13,6 +13,13 @@ const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMess
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
 
+test("composer bang is not a local bash escape", async () => {
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /bashMode/);
+  assert.doesNotMatch(source, /trimmedValue\.startsWith\("!"\)/);
+  assert.doesNotMatch(source, /t\("chat\.shell"\)/);
+});
+
 test("lists feedback and recap as builtin slash commands", async () => {
   const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /name: "feedback"/);

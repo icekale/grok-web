@@ -6,6 +6,14 @@ const source = await readFile(new URL("./useAgentSession.ts", import.meta.url), 
 const chatWindowSource = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
 const chatInputSource = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
 const appShellSource = await readFile(new URL("../components/AppShell.tsx", import.meta.url), "utf8");
+const sessionSource = source;
+
+test("composer bang is not a local bash escape", () => {
+  assert.doesNotMatch(sessionSource, /isBashCommand/);
+  assert.doesNotMatch(sessionSource, /trimmedMessage\.startsWith\("!"\)/);
+  assert.doesNotMatch(sessionSource, /const executeBash = useCallback/);
+  assert.doesNotMatch(chatWindowSource, /pendingBash/);
+});
 
 test("handles feedback and recap as builtin slash commands", () => {
   const builtin = source.slice(source.indexOf('case "feedback":'), source.indexOf("const handleToolPresetChange"));
@@ -42,7 +50,7 @@ test("keeps the session event stream open through the idle grace window", () => 
   );
   const sendSource = source.slice(
     source.indexOf("  const handleSend = useCallback"),
-    source.indexOf("  const executeBash = useCallback"),
+    source.indexOf("  const handleAbort = useCallback"),
   );
 
   assert.match(source, /const EVENT_STREAM_IDLE_GRACE_MS = 30_000/);
@@ -85,7 +93,7 @@ test("terminal SSE events are gated by the prompt generation captured at send", 
   );
   const sendSource = source.slice(
     source.indexOf("  const handleSend = useCallback"),
-    source.indexOf("  const executeBash = useCallback"),
+    source.indexOf("  const handleAbort = useCallback"),
   );
 
   assert.match(refsSource, /lastPromptGenerationRef = useRef\(0\)/);
@@ -470,7 +478,7 @@ test("drops stale Todo widgets at both run lifecycle boundaries", () => {
   );
   const sendSource = source.slice(
     source.indexOf("  const handleSend = useCallback"),
-    source.indexOf("  const executeBash = useCallback"),
+    source.indexOf("  const handleAbort = useCallback"),
   );
 
   const agentEndSource = source.slice(

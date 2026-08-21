@@ -26,7 +26,7 @@ A single-operator, local Grok workspace in the browser, wired through official A
 
 - Runs on the user’s machine (default `127.0.0.1:30142`). `npm run dev` / `npm run dev:lan` or `bin/grok-web.js`.
 - Sessions, auth, config, skills, and MCP live under `~/.grok` (overridable with `GROK_HOME`). App-only metadata lives in `~/.grok/grok-web/`.
-- Browser talks HTTP/SSE to the local Node gateway only. The gateway owns ACP. The browser never spawns Grok and never speaks ACP.
+- Browser talks HTTP/SSE to the local Node gateway only. The gateway owns ACP. The browser never spawns Grok, never speaks ACP, and does not implement Pi coding-agent RPC.
 - Typical loop: pick project → open or resume session → prompt → approve tools → inspect files/Git → adjust models, skills, MCP, or remote password in Settings.
 - TUI may be open on the same home. If a session is busy or `session/load` fails, the web stays read-only or offers a new session rather than overwriting the TUI.
 
@@ -39,8 +39,10 @@ Confirmed:
 - No multi-tenant cloud, no sandbox farm, no browser-direct ACP, no rewrite of Grok itself.
 - Node `>= 22.19.0`. Stack already in repo: Vite, TanStack Start, local Node gateway. Env prefix `GROK_WEB_`.
 - Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history.
+- Conversation protocol is Grok ACP. grok-web HTTP/SSE is the browser wire for this app, not a pi-web SSE compatibility contract.
+- Composer `!` is a normal prompt. Users run shell commands through the agent's terminal tool, same as the TUI.
 - Missing ACP methods surface as explicit errors. Local git/fs fallback is read-only.
-- Prompt images are rejected (`promptCapabilities.image` is false). Tool presets and extension custom UI are unsupported.
+- Prompt images are rejected (`promptCapabilities.image` is false). Tool presets (`none|read-only|default|full`) are ACP `configOptions` ids. Extension custom UI is unsupported.
 - Custom providers in Settings can import and test models against an OpenAI-compatible base URL; the live chat model list still comes from Grok ACP.
 
 Undecided (do not invent):
@@ -66,7 +68,7 @@ Undecided (do not invent):
 
 1. One Grok home. Web never forks a second session universe.
 2. Local by default, LAN only with a password; never pretend to be a cloud.
-3. The gateway adapts ACP; the browser keeps one HTTP/SSE contract.
+3. The gateway adapts Grok ACP; the browser uses grok-web HTTP/SSE. Do not promise compatibility with pi-web SSE.
 4. Prefer an explicit error over a silent no-op when Grok cannot do the thing.
 5. Publish as a tool others can run, but do not grow multi-tenant scope to look “ready for the internet.”
 

@@ -51,7 +51,6 @@ import { Route as ApiSkillsSearchRouteImport } from './routes/api/skills/search'
 import { Route as ApiSkillsUpdateRouteImport } from './routes/api/skills/update'
 import { Route as ApiVisionToolkitHealthRouteImport } from './routes/api/vision-toolkit/health'
 import { Route as ApiVisionToolkitRevealRouteImport } from './routes/api/vision-toolkit/reveal'
-import { Route as ApiAgentIdBashOutputRouteImport } from './routes/api/agent/$id/bash-output'
 import { Route as ApiAgentIdEventsRouteImport } from './routes/api/agent/$id/events'
 import { Route as ApiAgentIdSubagentsRouteImport } from './routes/api/agent/$id/subagents'
 import { Route as ApiAgentRunningEventsRouteImport } from './routes/api/agent/running/events'
@@ -275,11 +274,6 @@ const ApiVisionToolkitRevealRoute = ApiVisionToolkitRevealRouteImport.update({
   path: '/reveal',
   getParentRoute: () => ApiVisionToolkitRoute,
 } as any)
-const ApiAgentIdBashOutputRoute = ApiAgentIdBashOutputRouteImport.update({
-  id: '/bash-output',
-  path: '/bash-output',
-  getParentRoute: () => ApiAgentIdRoute,
-} as any)
 const ApiAgentIdEventsRoute = ApiAgentIdEventsRouteImport.update({
   id: '/events',
   path: '/events',
@@ -386,7 +380,6 @@ export interface FileRoutesByFullPath {
   '/api/skills/update': typeof ApiSkillsUpdateRoute
   '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
   '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
-  '/api/agent/$id/bash-output': typeof ApiAgentIdBashOutputRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -443,7 +436,6 @@ export interface FileRoutesByTo {
   '/api/skills/update': typeof ApiSkillsUpdateRoute
   '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
   '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
-  '/api/agent/$id/bash-output': typeof ApiAgentIdBashOutputRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -501,7 +493,6 @@ export interface FileRoutesById {
   '/api/skills/update': typeof ApiSkillsUpdateRoute
   '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
   '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
-  '/api/agent/$id/bash-output': typeof ApiAgentIdBashOutputRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -560,7 +551,6 @@ export interface FileRouteTypes {
     | '/api/skills/update'
     | '/api/vision-toolkit/health'
     | '/api/vision-toolkit/reveal'
-    | '/api/agent/$id/bash-output'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -617,7 +607,6 @@ export interface FileRouteTypes {
     | '/api/skills/update'
     | '/api/vision-toolkit/health'
     | '/api/vision-toolkit/reveal'
-    | '/api/agent/$id/bash-output'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -674,7 +663,6 @@ export interface FileRouteTypes {
     | '/api/skills/update'
     | '/api/vision-toolkit/health'
     | '/api/vision-toolkit/reveal'
-    | '/api/agent/$id/bash-output'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -1023,13 +1011,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVisionToolkitRevealRouteImport
       parentRoute: typeof ApiVisionToolkitRoute
     }
-    '/api/agent/$id/bash-output': {
-      id: '/api/agent/$id/bash-output'
-      path: '/bash-output'
-      fullPath: '/api/agent/$id/bash-output'
-      preLoaderRoute: typeof ApiAgentIdBashOutputRouteImport
-      parentRoute: typeof ApiAgentIdRoute
-    }
     '/api/agent/$id/events': {
       id: '/api/agent/$id/events'
       path: '/events'
@@ -1201,13 +1182,11 @@ const ApiVisionToolkitRouteWithChildren =
   ApiVisionToolkitRoute._addFileChildren(ApiVisionToolkitRouteChildren)
 
 interface ApiAgentIdRouteChildren {
-  ApiAgentIdBashOutputRoute: typeof ApiAgentIdBashOutputRoute
   ApiAgentIdEventsRoute: typeof ApiAgentIdEventsRoute
   ApiAgentIdSubagentsRoute: typeof ApiAgentIdSubagentsRoute
 }
 
 const ApiAgentIdRouteChildren: ApiAgentIdRouteChildren = {
-  ApiAgentIdBashOutputRoute: ApiAgentIdBashOutputRoute,
   ApiAgentIdEventsRoute: ApiAgentIdEventsRoute,
   ApiAgentIdSubagentsRoute: ApiAgentIdSubagentsRoute,
 }

@@ -12,7 +12,9 @@ type ThemeState = {
 
 type ToggleOrigin = { x: number; y: number };
 
-const STORAGE_KEY = "pi-theme";
+const STORAGE_KEY = "grok-theme";
+/** One-time migration from the former pi-web localStorage key. */
+const LEGACY_STORAGE_KEY = "pi-theme";
 const PREFERENCE_CYCLE: ThemePreference[] = ["light", "dark", "auto"];
 const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light" };
 
@@ -29,10 +31,25 @@ function getSystemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function readThemeValue(): string | null {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored != null && stored !== "") return stored;
+  // One-time compatibility: former pi-web key.
+  return localStorage.getItem(LEGACY_STORAGE_KEY);
+}
+
+function persistPreference(preference: ThemePreference): void {
+  localStorage.setItem(STORAGE_KEY, preference);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+}
+
 function readStoredPreference(): ThemePreference {
   try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (value === "light" || value === "dark" || value === "auto") return value;
+    const value = readThemeValue();
+    if (value === "light" || value === "dark" || value === "auto") {
+      if (localStorage.getItem(STORAGE_KEY) !== value) persistPreference(value);
+      return value;
+    }
   } catch {
     // ignore storage errors (private mode, quota, etc.)
   }
@@ -63,7 +80,7 @@ function setThemeState(preference: ThemePreference, theme: ResolvedTheme, persis
   applyDomTheme(theme);
   if (persist) {
     try {
-      localStorage.setItem(STORAGE_KEY, preference);
+      persistPreference(preference);
     } catch {
       // ignore storage errors (private mode, quota, etc.)
     }

@@ -125,7 +125,6 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ childSessionId: "nope", action: "interrupt" }),
     });
-    await probe("GET", `/api/agent/${FAKE_ID}/bash-output`, [200, 400]);
     await probe("POST", "/api/agent/new", [400], {
       headers: { "content-type": "application/json" },
       body: "{}",

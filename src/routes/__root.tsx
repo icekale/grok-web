@@ -50,7 +50,8 @@ export const Route = createRootRoute({
     ],
     scripts: [
       {
-        children: `(function(){try{var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark")}catch(e){}})();`,
+        // grok-theme is canonical. Read leftover pi-theme once if unset.
+        children: `(function(){try{var t=localStorage.getItem("grok-theme");if(t==null||t==="")t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark")}catch(e){}})();`,
       },
     ],
   }),
