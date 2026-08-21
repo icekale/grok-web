@@ -15,6 +15,7 @@ export const zhCNLocale: LocalePlugin = {
     "common.vision": "视觉工具",
     "common.settings": "设置",
     "settings.categories": "设置分类",
+    "settings.grokTools": "技能、插件和 MCP",
     "settings.general": "通用",
     "settings.project": "项目",
     "settings.generalDescription": "适用于所有项目的偏好设置。",

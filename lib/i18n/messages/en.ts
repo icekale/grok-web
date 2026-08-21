@@ -15,6 +15,7 @@ export const enLocale: LocalePlugin = {
     "common.vision": "Vision",
     "common.settings": "Settings",
     "settings.categories": "Settings categories",
+    "settings.grokTools": "Skills, plugins, and MCP",
     "settings.general": "General",
     "settings.project": "Project",
     "settings.generalDescription": "Preferences shared across every project.",

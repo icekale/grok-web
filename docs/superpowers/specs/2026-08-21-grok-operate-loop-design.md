@@ -143,7 +143,7 @@
 
 **Worktrees。** 选中项目是 git 仓库且 `worktrees` 拉回来后，侧栏区块默认展开（含创建行）。创建/删除行为不变。
 
-**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。Composer `/skills` `/plugins` `/mcp` 进同一页。设置页仍可进，项目 `⋯` 不再重复这三项。页内编辑器不重写。
+**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。Composer `/skills` `/plugins` `/mcp` 进同一页。从这条路径打开时，对话框是 Grok 工具面板（只含 Skills / Plugins / MCP），标题不是 Settings。完整设置页仍可从页脚进入。项目 `⋯` 不再重复这三项。页内编辑器不重写。
 
 **子代理。** 打开的是根会话时，顶栏子代理控件就要在，不必等 `count > 0`。桌面顶栏写出 Subagents / 子代理，不要只剩图标。count 为 0 时控件仍可打开，空状态用现有 `subagents.empty`。用户文案不要出现 Codex。
 

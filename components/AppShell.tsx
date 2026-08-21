@@ -32,7 +32,7 @@ import type { SubagentTreeNode } from "@/lib/api-types";
 import { ChatWindow } from "./ChatWindow";
 import { TabBar, type Tab } from "./TabBar";
 import { nextActiveFileTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
-import type { SettingsSection } from "./SettingsPage";
+import type { SettingsSection, SettingsVariant } from "./SettingsPage";
 const SettingsPage = lazy(() => import("./SettingsPage").then((module) => ({
   default: module.SettingsPage,
 })));
@@ -136,9 +136,15 @@ export function AppShell() {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
+  const [settingsVariant, setSettingsVariant] = useState<SettingsVariant>("settings");
   const [grokSignedOut, setGrokSignedOut] = useState(false);
   const openSettings = useCallback((section: SettingsSection = "general") => {
     setSettingsSection(section);
+    setSettingsVariant(
+      section === "skills" || section === "plugins" || section === "marketplace" || section === "mcp"
+        ? "tools"
+        : "settings",
+    );
     setSettingsOpen(true);
   }, []);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
@@ -2626,6 +2632,8 @@ export function AppShell() {
     {settingsOpen && (
       <Suspense fallback={null}>
         <SettingsPage
+        key={`${settingsVariant}:${settingsSection}`}
+        variant={settingsVariant}
         initialSection={settingsSection}
         cwd={projectTrustCwd}
         sessionId={selectedSession?.id ?? null}

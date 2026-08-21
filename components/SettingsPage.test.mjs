@@ -6,6 +6,16 @@ const shell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8")
 const settings = await readFile(new URL("./SettingsPage.tsx", import.meta.url), "utf8");
 const picker = await readFile(new URL("./DirectoryPicker.tsx", import.meta.url), "utf8");
 
+test("daily Grok tools open a tools panel instead of Settings chrome", () => {
+  assert.match(shell, /setSettingsVariant\(/);
+  assert.match(shell, /section === "skills" \|\| section === "plugins" \|\| section === "marketplace" \|\| section === "mcp"/);
+  assert.match(shell, /variant=\{settingsVariant\}/);
+  assert.match(settings, /variant === "tools"/);
+  assert.match(settings, /TOOL_NAV_SECTIONS/);
+  assert.match(settings, /settings\.grokTools/);
+  assert.doesNotMatch(settings.slice(settings.indexOf("variant === \"tools\"")), /id: "general"/);
+});
+
 test("AppShell exposes one unified settings entry", () => {
   assert.match(shell, /<SettingsPage/);
   assert.equal((shell.match(/setSettingsOpen\(true\)/g) ?? []).length, 1);

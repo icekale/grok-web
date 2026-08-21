@@ -37,6 +37,9 @@ import { RemoteAccessConfig, type RemoteDraftController } from "./RemoteAccessCo
 import { DialogShell } from "./DialogShell";
 
 export type SettingsSection = "general" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp";
+export type SettingsVariant = "settings" | "tools";
+
+const TOOL_NAV_SECTIONS: SettingsSection[] = ["skills", "plugins", "mcp"];
 
 interface Props {
   cwd: string | null;
@@ -56,6 +59,7 @@ interface Props {
   onProjectsChanged: () => void;
   onRegisterSettingsBack: (handler: () => boolean) => void;
   initialSection?: SettingsSection;
+  variant?: SettingsVariant;
 }
 
 function SectionIcon({ section }: { section: SettingsSection }) {
@@ -91,6 +95,7 @@ export function SettingsPage({
   onProjectsChanged,
   onRegisterSettingsBack,
   initialSection = "general",
+  variant = "settings",
 }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -271,7 +276,7 @@ export function SettingsPage({
     onProjectsChanged();
   }, [onProjectsChanged]);
 
-  const sections: { id: SettingsSection; label: string; disabled: boolean }[] = [
+  const allSections: { id: SettingsSection; label: string; disabled: boolean }[] = [
     { id: "general", label: t("settings.general"), disabled: false },
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
@@ -280,6 +285,12 @@ export function SettingsPage({
     { id: "remote", label: t("remote.nav"), disabled: false },
     { id: "archived", label: t("sidebar.archived"), disabled: false },
   ];
+  const sections = variant === "tools"
+    ? allSections.filter((item) => TOOL_NAV_SECTIONS.includes(item.id))
+    : allSections;
+  const dialogTitle = variant === "tools"
+    ? (section === "skills" ? t("common.skills") : section === "mcp" ? t("common.mcp") : t("common.plugins"))
+    : t("common.settings");
 
   let content: ReactNode;
   if (section === "general") {
@@ -433,7 +444,7 @@ export function SettingsPage({
   return createPortal(
     <DialogShell
       size="page"
-      title={t("common.settings")}
+      title={dialogTitle}
       ariaLabel={t("i18n.close")}
       showClose
       closeButtonRef={closeButtonRef}
@@ -445,7 +456,7 @@ export function SettingsPage({
       <div className="settings-page-layout">
         <nav
           className="settings-page-nav"
-          aria-label={t("settings.categories")}
+          aria-label={variant === "tools" ? t("settings.grokTools") : t("settings.categories")}
           data-hidden-mobile={activeController?.mobileDetailOpen ? "true" : undefined}
         >
           {sections.map((item) => (
