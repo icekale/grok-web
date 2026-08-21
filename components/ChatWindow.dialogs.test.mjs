@@ -66,4 +66,10 @@ test("streaming tool cards receive toolResults", () => {
     source.indexOf('agentRunning && agentPhase?.kind === "stopping"'),
   );
   assert.match(streamView, /toolResults=\{/);
+  assert.match(source, /const persisted = useMemo\(/);
+  assert.match(source, /\[entryIds, messages\]/);
+  assert.match(source, /if \(liveToolResults\.size === 0\) return persisted/);
+  assert.match(source, /if \(!map\.has\(id\)\) map\.set\(id, result\)/);
+  assert.match(source, /\[persisted, liveToolResults\]/);
+  assert.doesNotMatch(source, /\[entryIds, liveToolResults, messages\]/);
 });

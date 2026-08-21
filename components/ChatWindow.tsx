@@ -435,15 +435,23 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   // (the streaming message lives in streamState), so memoized MessageViews
   // skip re-rendering on every message_update event. An inline `new Map()`
   // here used to defeat MessageView's memo() on each streamed chunk.
-  const toolResultsMap = useMemo(() => {
-    const map = new Map<string, ToolResultMessage>(liveToolResults);
+  const persisted = useMemo(() => {
+    const map = new Map<string, ToolResultMessage>();
     messages.forEach((msg, index) => {
       if (msg.role === "toolResult") {
         map.set((msg as ToolResultMessage).toolCallId, { ...(msg as ToolResultMessage), entryId: entryIds[index] });
       }
     });
     return map;
-  }, [entryIds, liveToolResults, messages]);
+  }, [entryIds, messages]);
+  const toolResultsMap = useMemo(() => {
+    if (liveToolResults.size === 0) return persisted;
+    const map = new Map(persisted);
+    for (const [id, result] of liveToolResults) {
+      if (!map.has(id)) map.set(id, result);
+    }
+    return map;
+  }, [persisted, liveToolResults]);
   const [acpHistory, setAcpHistory] = useState<string[]>([]);
   useEffect(() => {
     const sid = session?.id;

@@ -358,6 +358,36 @@ test("clears live tool results after merging them on message_end", () => {
   assert.ok(clearStateAt > mergeAt, "message_end must clear liveToolResults after merging");
 });
 
+test("does not clear live tool results on user message_end", () => {
+  const messageEndSource = source.slice(
+    source.indexOf('case "message_end"'),
+    source.indexOf('case "tool_execution_start"'),
+  );
+  const userBranch = messageEndSource.slice(
+    messageEndSource.indexOf('completed.role === "user"'),
+    messageEndSource.indexOf("} else if (completed)"),
+  );
+  const assistantStart = messageEndSource.indexOf("} else if (completed) {");
+  assert.notEqual(assistantStart, -1);
+  let index = assistantStart + "} else if (completed) {".length;
+  let depth = 1;
+  while (index < messageEndSource.length && depth > 0) {
+    const ch = messageEndSource[index];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+    index += 1;
+  }
+  const assistantBranch = messageEndSource.slice(assistantStart, index);
+  const afterAssistant = messageEndSource.slice(index);
+  assert.doesNotMatch(userBranch, /setLiveToolResults\(/);
+  assert.doesNotMatch(userBranch, /liveToolOutputsRef\.current = new Map\(\)/);
+  assert.match(assistantBranch, /mergeLiveToolResults/);
+  assert.match(assistantBranch, /setLiveToolResults\(/);
+  assert.match(assistantBranch, /liveToolOutputsRef\.current = new Map\(\)/);
+  assert.doesNotMatch(afterAssistant, /setLiveToolResults\(/);
+  assert.doesNotMatch(afterAssistant, /liveToolOutputsRef\.current = new Map\(\)/);
+});
+
 test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", () => {
   const connectedSource = source.slice(
     source.indexOf('case "connected"'),

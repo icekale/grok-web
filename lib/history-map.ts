@@ -112,8 +112,15 @@ export function mapUpdatesJsonl(text: string): {
       }
       const lastUser = lastUserMessage(messages, current);
       // Grok sometimes replays the same prompt when a turn restarts, before
-      // turn_completed. That is not a second user send.
-      if (current?.role === "assistant" && images.length === 0 && lastUser === chunk) {
+      // turn_completed. That is not a second user send. Image-only follow-up
+      // chunks have empty text, so treat those as the same prompt too.
+      const replayedText = lastUser === chunk;
+      const replayedImageOnly = chunk === "" && images.length > 0 && lastFlushedUser(messages) != null;
+      if (current?.role === "assistant" && (replayedText || replayedImageOnly)) {
+        if (images.length > 0) {
+          const flushed = lastFlushedUser(messages);
+          if (flushed) appendNewUserImages(flushed, images);
+        }
         continue;
       }
       const user: HistoryMessage = images.length > 0
@@ -209,11 +216,42 @@ function lastUserMessage(
   current: HistoryMessage | null,
 ): string | undefined {
   if (current?.role === "user") return historyUserText(current.content);
+  const flushed = lastFlushedUser(messages);
+  return flushed ? historyUserText(flushed.content) : undefined;
+}
+
+function lastFlushedUser(messages: HistoryMessage[]): Extract<HistoryMessage, { role: "user" }> | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
-    if (message.role === "user") return historyUserText(message.content);
+    if (message.role === "user") return message;
   }
   return undefined;
+}
+
+function imageKey(image: HistoryUserImage): string {
+  if (image.source.type === "base64") {
+    return `data:${image.source.media_type ?? ""}:${image.source.data ?? ""}`;
+  }
+  return `url:${image.source.url ?? ""}`;
+}
+
+function userImageKeys(message: Extract<HistoryMessage, { role: "user" }>): Set<string> {
+  const keys = new Set<string>();
+  if (typeof message.content === "string") return keys;
+  for (const block of message.content) {
+    if (block.type === "image") keys.add(imageKey(block));
+  }
+  return keys;
+}
+
+function appendNewUserImages(
+  message: Extract<HistoryMessage, { role: "user" }>,
+  images: HistoryUserImage[],
+): void {
+  const existing = userImageKeys(message);
+  const fresh = images.filter((image) => !existing.has(imageKey(image)));
+  if (fresh.length === 0) return;
+  appendUserContent(message, "", fresh);
 }
 
 function userChunkParts(content: unknown): { text: string; images: HistoryUserImage[] } {
