@@ -40,13 +40,20 @@ export function retainUnpersistedUserMessages(
   persisted: AgentMessage[],
   live: AgentMessage[],
 ): AgentMessage[] {
-  const lastLive = live.at(-1);
-  if (!lastLive || lastLive.role !== "user") return persisted;
-  const lastKey = userMessageKey(lastLive);
+  let lastUserIndex = -1;
+  for (let i = live.length - 1; i >= 0; i--) {
+    if (live[i]?.role === "user") {
+      lastUserIndex = i;
+      break;
+    }
+  }
+  if (lastUserIndex === -1) return persisted;
+  const lastUser = live[lastUserIndex];
+  const lastKey = userMessageKey(lastUser);
   if (persisted.some((message) => message.role === "user" && userMessageKey(message) === lastKey)) {
     return persisted;
   }
-  return [...persisted, lastLive];
+  return [...persisted, ...live.slice(lastUserIndex)];
 }
 
 export function userMessageKey(message: Partial<AgentMessage>): string {

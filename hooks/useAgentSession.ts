@@ -568,7 +568,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       textDeltaBatcher.flush();
       setData(d);
       setActiveLeafId(d.leafId);
-      setMessages((prev) => retainUnpersistedUserMessages(persistedMessages, prev));
+      setMessages((prev) => (
+        showLoading ? persistedMessages : retainUnpersistedUserMessages(persistedMessages, prev)
+      ));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride((current) => {
         if (!current) return null;
