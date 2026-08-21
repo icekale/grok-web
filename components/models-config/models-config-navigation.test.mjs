@@ -7,6 +7,7 @@ const {
   applySavedModelsConfig,
   filterModelsNavigation,
   resolveModelsSelection,
+  preferredModelsSelection,
   modelsSelectionLabel,
   isModelsConfigDirty,
 } = await jiti.import("./models-config-navigation.ts");
@@ -175,4 +176,13 @@ test("dirty comparison ignores object key order but keeps array order", () => {
   assert.equal(isModelsConfigDirty(baseline, reorderedKeys), false);
   assert.equal(isModelsConfigDirty(baseline, changed), true);
   assert.equal(isModelsConfigDirty(baseline, reorderedModels), true);
+});
+
+test("preferred models selection is the Grok account, not the first custom provider", () => {
+  const selected = preferredModelsSelection(
+    { providers: { local: { models: [] } } },
+    [{ id: "grok.com", name: "Grok", usesCallbackServer: false, loggedIn: false }],
+    [],
+  );
+  assert.deepEqual(selected, { type: "oauth", providerId: "grok.com" });
 });

@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArrowDown, ArrowUp, ChevronRight, Ellipsis, Folder, FolderPlus, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, ChevronRight, Download, Ellipsis, Folder, FolderPlus, Layers3, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plug, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import type { SettingsSection } from "./SettingsPage";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
@@ -38,6 +39,7 @@ interface Props {
   onBackgroundTaskDone?: () => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onToggleSidebar?: () => void;
+  onOpenSettings?: (section: SettingsSection) => void;
 }
 
 interface ProjectView extends ProjectPreference {
@@ -140,6 +142,7 @@ export function CodexSidebar({
   onBackgroundTaskDone,
   onRunningSessionIdsChange,
   onToggleSidebar,
+  onOpenSettings,
 }: Props) {
   const { t, locale } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -165,6 +168,7 @@ export function CodexSidebar({
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([]);
   const [worktreeProjectRoot, setWorktreeProjectRoot] = useState<string | null>(null);
   const [worktreeOpen, setWorktreeOpen] = useState(false);
+  const worktreeAutoOpenedRef = useRef(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
@@ -557,6 +561,13 @@ export function CodexSidebar({
   }, [selectedCwd, selectedProject]);
 
   useEffect(() => {
+    if (worktreeAutoOpenedRef.current) return;
+    if (!worktrees.some((worktree) => !worktree.isMain)) return;
+    worktreeAutoOpenedRef.current = true;
+    setWorktreeOpen(true);
+  }, [worktrees]);
+
+  useEffect(() => {
     const close = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuProject(null);
     };
@@ -927,6 +938,13 @@ export function CodexSidebar({
             <button type="button" role="menuitem" onClick={() => { moveProject(project.path, -1); setMenuProject(null); }}><ArrowUp size={14} aria-hidden="true" />{t("sidebar.moveUp")}</button>
             <button type="button" role="menuitem" onClick={() => { moveProject(project.path, 1); setMenuProject(null); }}><ArrowDown size={14} aria-hidden="true" />{t("sidebar.moveDown")}</button>
             <button type="button" role="menuitem" onClick={() => { setRenameValue(project.name ?? projectName(project.path)); setRenamingProject(project.path); setMenuProject(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.renameProject")}</button>
+            {onOpenSettings ? (
+              <>
+                <button type="button" role="menuitem" onClick={() => { onOpenSettings("skills"); setMenuProject(null); }}><Layers3 size={14} aria-hidden="true" />{t("common.skills")}</button>
+                <button type="button" role="menuitem" onClick={() => { onOpenSettings("plugins"); setMenuProject(null); }}><Plug size={14} aria-hidden="true" />{t("common.plugins")}</button>
+                <button type="button" role="menuitem" onClick={() => { onOpenSettings("mcp"); setMenuProject(null); }}><Plug size={14} aria-hidden="true" />{t("common.mcp")}</button>
+              </>
+            ) : null}
             <button type="button" role="menuitem" onClick={() => { updateProject(project.path, { archived: true }); setMenuProject(null); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveProject")}</button>
             <button type="button" role="menuitem" className="danger" onClick={() => { setPendingConfirmation({ type: "project", path: project.path, name: project.name ?? projectName(project.path) }); setMenuProject(null); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.removeProject")}</button>
           </div>
@@ -1192,6 +1210,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
           {menuPos && createPortal(
             <div ref={menuRef} className="codex-project-menu codex-project-menu-portal" role="menu" style={{ left: menuPos.left, top: menuPos.top }}>
               <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.rename")}</button>
+              <button type="button" role="menuitem" onClick={() => { setMenuPos(null); window.location.assign(`/api/sessions/${encodeURIComponent(session.id)}/export`); }}><Download size={14} aria-hidden="true" />{t("sidebar.exportSession")}</button>
               <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveSession")}</button>
               <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
             </div>,

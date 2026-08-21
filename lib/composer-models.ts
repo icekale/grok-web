@@ -44,6 +44,10 @@ export function defaultSettingsPickerId(row: SettingsComposerModel): string {
   return `${row.providerId}/${row.id}`;
 }
 
+export function grokLiveChatModels<T extends { provider: string }>(modelList: readonly T[]): T[] {
+  return modelList.filter((model) => model.provider === "grok");
+}
+
 export {
   GROK_EFFORT_LEVELS,
   defaultGrokEffortLevel,

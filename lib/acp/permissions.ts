@@ -12,26 +12,67 @@ export type PermissionResult =
   | { outcome: { outcome: "selected"; optionId: string } }
   | { outcome: { outcome: "rejected" } };
 
+const SUMMARY_KEYS = ["description", "query", "pattern", "url", "glob"] as const;
+const PATH_KEYS = ["path", "file_path", "filePath", "target"] as const;
+
 export function translatePermissionRequest(params: unknown, rpcId: number | string): PermissionUiRequest {
   const toolCall = isRecord(params) && isRecord(params.toolCall) ? params.toolCall : {};
-  const title = firstString(toolCall.title, toolCall.kind, "tool");
+  const rawTitle = firstString(toolCall.title);
   const kind = typeof toolCall.kind === "string" ? toolCall.kind : "";
   const input = sanitizeGrokToolInput(asRecord(toolCall.rawInput ?? toolCall.input));
   return {
     type: "extension_ui_request",
     id: String(rpcId),
     method: "confirm",
-    title: "Allow tool",
-    message: permissionMessage(title, kind, input),
+    title: permissionTitle(rawTitle, kind, input),
+    message: permissionMessage(rawTitle, kind, input),
   };
 }
 
-function permissionMessage(title: string, kind: string, input: Record<string, unknown>): string {
-  const name = grokCanonicalToolName(title, kind);
-  if (typeof input.command === "string" && input.command) {
-    return `${name}\n${input.command}`;
+function permissionTitle(title: string, kind: string, input: Record<string, unknown>): string {
+  if (isHumanToolTitle(title)) return title;
+  const command = commandValue(input);
+  if (command && (grokCanonicalToolName(title, kind) === "bash" || !title)) {
+    return `Execute \`${firstLine(command)}\``;
   }
-  return `${name} ${JSON.stringify(input)}`;
+  const path = pathValue(input);
+  if (path) {
+    const verb = writeVerb(title, kind);
+    return `${verb} \`${path}\``;
+  }
+  return firstString(title, kind, grokCanonicalToolName(title, kind), "tool");
+}
+
+function permissionMessage(title: string, kind: string, input: Record<string, unknown>): string {
+  const command = commandValue(input);
+  if (command) return command;
+  const path = pathValue(input);
+  if (path) return path;
+  const extra = firstString(...SUMMARY_KEYS.map((key) => input[key]));
+  const name = grokCanonicalToolName(title, kind) || "tool";
+  return extra ? `${name} ${extra}` : name;
+}
+
+function isHumanToolTitle(title: string): boolean {
+  return title.includes("`") || /^(execute|read|write|edit|search|list)\s/i.test(title);
+}
+
+function commandValue(input: Record<string, unknown>): string {
+  return firstString(input.command, input.cmd);
+}
+
+function pathValue(input: Record<string, unknown>): string {
+  return firstString(...PATH_KEYS.map((key) => input[key]));
+}
+
+function writeVerb(title: string, kind: string): string {
+  const blob = `${title} ${kind}`.toLowerCase();
+  if (/\b(write|edit|create)\b/.test(blob)) return "Write";
+  return "Read";
+}
+
+function firstLine(value: string): string {
+  return value.split(/\r?\n/, 1)[0] ?? value;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -80,7 +121,7 @@ function firstString(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === "string" && value) return value;
   }
-  return "tool";
+  return "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

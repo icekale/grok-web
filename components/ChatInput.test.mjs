@@ -176,35 +176,38 @@ test("shows the workspace hint inside the composer on the new-session home", () 
   );
 });
 
-test("lays out attach, access, model, and reasoning like the reference composer", () => {
+test("lays out attach, model, and effort; tool access only when ACP advertised it", () => {
   assert.equal(composerThinkingBadgeLevel("auto"), null);
   assert.equal(composerThinkingBadgeLevel("high"), "high");
 
-  const html = renderToStaticMarkup(
-    React.createElement(
-      I18nProvider,
-      null,
-      React.createElement(ChatInput, {
-        onSend() {},
-        onAbort() {},
-        onModelChange() {},
-        onThinkingLevelChange() {},
-        onToolPresetChange() {},
-        onCompact() {},
-        isStreaming: false,
-        model: { provider: "xai", modelId: "grok-4.6" },
-        modelList: [{ provider: "xai", id: "grok-4.6", name: "grok-4.6" }],
-        thinkingLevel: "high",
-        toolPreset: "full",
-      }),
-    ),
-  );
+  const props = {
+    onSend() {},
+    onAbort() {},
+    onModelChange() {},
+    onThinkingLevelChange() {},
+    onToolPresetChange() {},
+    onCompact() {},
+    isStreaming: false,
+    model: { provider: "xai", modelId: "grok-4.6" },
+    modelList: [{ provider: "xai", id: "grok-4.6", name: "grok-4.6" }],
+    thinkingLevel: "high",
+    toolPreset: "full",
+  };
 
-  assert.match(html, />Full access</);
-  assert.match(html, />grok-4\.6</);
-  assert.match(html, /data-thinking-badge="high"/);
-  assert.doesNotMatch(html, />Compact context</);
-  assert.doesNotMatch(html, /aria-label="More controls"/);
+  const hidden = renderToStaticMarkup(
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, props)),
+  );
+  assert.doesNotMatch(hidden, />Full access</);
+  assert.match(hidden, />grok-4\.6</);
+  assert.match(hidden, /data-thinking-badge="high"/);
+  assert.match(hidden, /Change effort/);
+  assert.doesNotMatch(hidden, />Compact context</);
+  assert.doesNotMatch(hidden, /aria-label="More controls"/);
+
+  const shown = renderToStaticMarkup(
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, { ...props, toolsAdvertised: true })),
+  );
+  assert.match(shown, />Full access</);
 });
 
 test("shows and locks the optimistic model while a switch is pending", () => {

@@ -1,0 +1,11 @@
+{
+  "sessionId": "s",
+  "toolCall": {
+    "title": "read_file",
+    "kind": "read",
+    "rawInput": { "path": "/tmp/a.ts" }
+  },
+  "options": [
+    { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" }
+  ]
+}

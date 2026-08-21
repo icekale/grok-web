@@ -273,12 +273,12 @@ export function SettingsPage({
 
   const sections: { id: SettingsSection; label: string; disabled: boolean }[] = [
     { id: "general", label: t("settings.general"), disabled: false },
-    { id: "archived", label: t("sidebar.archived"), disabled: false },
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
     { id: "plugins", label: t("common.plugins"), disabled: !cwd },
     { id: "mcp", label: t("common.mcp"), disabled: !cwd },
     { id: "remote", label: t("remote.nav"), disabled: false },
+    { id: "archived", label: t("sidebar.archived"), disabled: false },
   ];
 
   let content: ReactNode;
@@ -394,7 +394,7 @@ export function SettingsPage({
       </div>
     );
   } else if (section === "models") {
-    content = <ModelsConfig onControllerChange={setModelsController} />;
+    content = <ModelsConfig cwd={cwd} onControllerChange={setModelsController} />;
   } else if (section === "remote") {
     content = <RemoteAccessConfig onControllerChange={setRemoteController} />;
   } else if (!cwd) {

@@ -50,7 +50,7 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
-import type { ToolPreset } from "@/lib/tool-presets";
+import { composerShowsToolPreset, type ToolPreset } from "@/lib/tool-presets";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -95,6 +95,7 @@ interface Props {
   compactError?: string | null;
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
+  toolsAdvertised?: boolean;
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
@@ -683,7 +684,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
-  onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = false, onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [],
   onSteerAllQueued, onQueueRemoveItem, onQueueEditItem, onQueueSteerItem,
@@ -2319,7 +2320,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               the right group stays in column three instead of wrapping to row two. */}
           <div className="composer-middle" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: "1 1 auto" }}>
 
-          {onToolPresetChange && (
+          {onToolPresetChange && composerShowsToolPreset(toolsAdvertised) && (
             <div
               ref={moreMenuRef}
               className="composer-access"

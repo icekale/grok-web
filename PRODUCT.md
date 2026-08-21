@@ -27,7 +27,7 @@ A single-operator, local Grok workspace in the browser, wired through official A
 - Runs on the user’s machine (default `127.0.0.1:30142`). `npm run dev` / `npm run dev:lan` or `bin/grok-web.js`.
 - Sessions, auth, config, skills, and MCP live under `~/.grok` (overridable with `GROK_HOME`). App-only metadata lives in `~/.grok/grok-web/`.
 - Browser talks HTTP/SSE to the local Node gateway only. The gateway owns ACP. The browser never spawns Grok, never speaks ACP, and does not implement Pi coding-agent RPC.
-- Typical loop: pick project → open or resume session → prompt → approve tools → inspect files/Git → adjust models, skills, MCP, or remote password in Settings.
+- Typical loop: pick project → continue or start a Grok session → prompt → approve tools → inspect files/Git → adjust Grok login, ACP models, skills, MCP, or remote password in Settings. The empty workspace asks for a project and a session; it does not send the operator to add custom models.
 - TUI may be open on the same home. If a session is busy or `session/load` fails, the web stays read-only or offers a new session rather than overwriting the TUI.
 
 ## Capabilities and Constraints
@@ -38,7 +38,7 @@ Confirmed:
 - Loopback needs no login. Non-loopback bind requires a remote password; Basic username is `grok`.
 - No multi-tenant cloud, no sandbox farm, no browser-direct ACP, no rewrite of Grok itself.
 - Node `>= 22.19.0`. Stack already in repo: Vite, TanStack Start, local Node gateway. Env prefix `GROK_WEB_`.
-- Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history.
+- Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history. Settings → Models leads with Grok login and the ACP model list; custom OpenAI-compatible providers stay secondary and do not change live chat. Permission dialogs use the ACP tool title (for example `Execute \`ls\``) and the command or path, not a JSON dump.
 - Conversation protocol is Grok ACP. grok-web HTTP/SSE is the browser wire for this app, not a pi-web SSE compatibility contract.
 - Composer `!` is a normal prompt. Users run shell commands through the agent's terminal tool, same as the TUI.
 - Missing ACP methods surface as explicit errors. Local git/fs fallback is read-only.

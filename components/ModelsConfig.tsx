@@ -24,8 +24,12 @@ import {
   filterModelsNavigation,
   isModelsConfigDirty,
   modelsSelectionLabel,
+  preferredModelsSelection,
   resolveModelsSelection,
 } from "./models-config/models-config-navigation";
+import { grokLiveChatModels } from "@/lib/composer-models";
+import { visibleGrokEffortLevels } from "@/lib/grok-effort-levels";
+import type { ModelsData } from "@/lib/models-cache";
 import type {
   ApiKeyProvider,
   ModelEntry,
@@ -1766,10 +1770,11 @@ function AddProviderPicker({
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface ModelsConfigProps {
+  cwd?: string | null;
   onControllerChange(controller: ModelsDraftController): void;
 }
 
-export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
+export function ModelsConfig({ cwd, onControllerChange }: ModelsConfigProps) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
@@ -1785,6 +1790,8 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; efforts: string[] }>>([]);
+  const [customOpen, setCustomOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
@@ -1833,8 +1840,7 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
       setConfig(normalized);
       setSelection((current) => {
         if (current) return resolveModelsSelection(current, normalized, oauthProviders, apiKeyProviders);
-        const keys = Object.keys(normalized.providers ?? {});
-        return keys.length > 0 ? { type: "provider", name: keys[0] } : null;
+        return preferredModelsSelection(normalized, oauthProviders, apiKeyProviders);
       });
     } catch (error) {
       setConfigError(error instanceof Error ? error.message : String(error));
@@ -1849,6 +1855,29 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
     // Initial load only; auth refresh handles later re-syncs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const url = cwd ? `/api/models?cwd=${encodeURIComponent(cwd)}` : "/api/models";
+    let cancelled = false;
+    void fetch(url)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: ModelsData | null) => {
+        if (cancelled || !data) return;
+        setLiveModels(grokLiveChatModels(data.modelList).map((model) => ({
+          id: model.id,
+          name: model.name,
+          efforts: visibleGrokEffortLevels(
+            data.thinkingLevels[`grok:${model.id}`] ?? data.thinkingLevels[`${model.provider}:${model.id}`],
+          ),
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
 
   useEffect(() => {
     setSelection((current) => {
@@ -2167,7 +2196,7 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
         ) : (
           <div className="models-settings-header-title">
             <span>{t("common.models")}</span>
-            <code>~/.pi/agent/models.json</code>
+            <span className="models-settings-header-sub">{t("models.pageSubtitle")}</span>
           </div>
         )}
         <div className="models-settings-header-actions">
@@ -2191,12 +2220,16 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
           expandedProviders={filtered.expandedProviders}
           accounts={filtered.accounts}
           providers={filtered.providers}
+          liveModels={liveModels}
+          customOpen={customOpen || query.trim().length > 0}
           loading={loading}
           errors={{ accounts: oauthError ?? apiKeyError ?? undefined, config: configError ?? undefined }}
           onQueryChange={setQuery}
           onToggleProvider={toggleProvider}
+          onToggleCustom={() => setCustomOpen((open) => !open)}
           onSelect={handleSelect}
           onAddProvider={() => setPickerOpen(true)}
+          onSignInGrok={() => handleSelect({ type: "oauth", providerId: "grok.com" })}
           onAddModel={handleAddModel}
           onRetryAccounts={refreshAuthProviders}
           onRetryConfig={() => { if (!dirty) void loadConfig(); }}
@@ -2204,7 +2237,7 @@ export function ModelsConfig({ onControllerChange }: ModelsConfigProps) {
         <div className="models-settings-detail">
           {loading ? null : detailContent ?? (
             <div className="models-settings-detail-empty">
-              {t("i18n.selectProviderModel")}
+              {t("models.liveChatHint")}
             </div>
           )}
         </div>
