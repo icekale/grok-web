@@ -154,7 +154,7 @@ test("recent session rows preserve activity, selection, and session management",
   assert.match(sidebar, /dispatchSessionRowContextMenu/);
   assert.match(sidebar, /sidebar\.archiveSession/);
   assert.match(sidebar, /method: "DELETE"/);
-  assert.match(sidebar, /const \[recentOpen, setRecentOpen\] = useState\(false\)/);
+  assert.match(sidebar, /const \[recentOpen, setRecentOpen\] = useState\(true\)/);
   assert.match(sidebar, /data-open=\{recentOpen\}/);
   assert.match(sidebar, /setRecentOpen\(\(open\) => !open\)/);
   assert.match(sidebar, /aria-expanded=\{recentOpen\}/);
