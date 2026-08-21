@@ -734,7 +734,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, toolPreset]);
+  }, [isNew, newSessionCwd, loadTools, toolPreset]);
 
   const loadSlashCommands = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
