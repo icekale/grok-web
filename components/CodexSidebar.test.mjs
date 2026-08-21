@@ -130,13 +130,13 @@ test("session overflow menu portals, dismisses, and archives locally", () => {
   assert.match(settings, /writeArchivedSessionIds\(next\)/);
 });
 
-test("desktop sidebar exposes new task and projects, not a second session library", () => {
+test("desktop sidebar exposes new task, projects, and recent sessions", () => {
   assert.match(sidebar, /className="codex-sidebar-new-task"/);
   assert.match(sidebar, /sidebar\.newTask/);
   assert.match(sidebar, /sidebar\.projects/);
-  assert.doesNotMatch(sidebar, /codex-sidebar-recent/);
-  assert.doesNotMatch(sidebar, /buildRecentSessions/);
-  assert.doesNotMatch(sidebar, /sidebar\.recent/);
+  assert.match(sidebar, /sidebar\.recent/);
+  assert.match(sidebar, /buildRecentSessions\(visibleSessions, activeProjects, archivedIds\)/);
+  assert.match(sidebar, /recentSessions\.map/);
 });
 
 test("project rows expand to list their sessions", () => {
@@ -146,16 +146,21 @@ test("project rows expand to list their sessions", () => {
   assert.match(sidebar, /<Chevron open=\{open\} \/>/);
 });
 
-test("project session rows keep selection and session management", () => {
-  assert.match(sidebar, /<SessionRow[\s\S]*?onSelect=\{\(\) => selectSession\(session\)\}/);
+test("recent session rows preserve activity, selection, and session management", () => {
+  assert.match(sidebar, /<SessionRow[\s\S]*?variant="recent"/);
+  assert.match(sidebar, /projectLabel=\{projectLabel\}/);
+  assert.match(sidebar, /relativeTime=\{formatRelativeTime\(session\.modified, locale\)\}/);
   assert.match(sidebar, /data-selected=\{selected\}/);
   assert.match(sidebar, /dispatchSessionRowContextMenu/);
   assert.match(sidebar, /sidebar\.archiveSession/);
   assert.match(sidebar, /method: "DELETE"/);
-  assert.doesNotMatch(sidebar, /variant="recent"/);
+  assert.match(sidebar, /const \[recentOpen, setRecentOpen\] = useState\(false\)/);
+  assert.match(sidebar, /data-open=\{recentOpen\}/);
+  assert.match(sidebar, /setRecentOpen\(\(open\) => !open\)/);
+  assert.match(sidebar, /aria-expanded=\{recentOpen\}/);
 });
 
-test("sidebar buttons inherit family only so Projects type stays consistent", () => {
+test("sidebar buttons inherit family only so Recent matches Projects type", () => {
   assert.match(styles, /\.codex-sidebar button,\s*\n\.codex-sidebar input \{\s*\n  font-family: inherit;/);
   assert.doesNotMatch(styles, /\.codex-sidebar button,\s*\n\.codex-sidebar input \{[^}]*font:\s*inherit/);
   assert.match(styles, /\.codex-sidebar-workspace-title \{[\s\S]*?font-size: var\(--text-meta\)/);
@@ -174,8 +179,8 @@ test("sidebar recomposition preserves worktree switching and creation", () => {
   assert.doesNotMatch(sidebar, /worktreeAutoOpenedRef/);
 });
 
-test("project daily tools sit after the project list", () => {
-  const projectsEnd = sidebar.indexOf("codex-project-menu-portal");
+test("project daily tools sit between projects and recent sessions", () => {
+  const projectsEnd = sidebar.indexOf("codex-sidebar-recent");
   const toolsAt = sidebar.indexOf("codex-sidebar-project-tools");
   const skillsAt = sidebar.indexOf('onOpenSettings("skills")');
   const pluginsAt = sidebar.indexOf('onOpenSettings("plugins")');

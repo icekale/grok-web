@@ -14,9 +14,11 @@ import { createPortal } from "react-dom";
 import { Archive, ArrowDown, ArrowUp, ChevronRight, Download, Ellipsis, Folder, FolderPlus, Layers3, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plug, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import type { SettingsSection } from "./SettingsPage";
 import { useI18n } from "@/hooks/useI18n";
+import { formatRelativeTime } from "@/lib/i18n/format";
 import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
 import { filterProjectSessions, matchesSidebarQuery, sidebarProjectName, sidebarSessionTitle } from "@/lib/codex-sidebar-search";
 import type { ProjectPreference } from "@/lib/project-registry";
+import { buildRecentSessions } from "@/lib/recent-sessions";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { activeSessionRoots } from "@/lib/session-relations";
 import type { SessionInfo } from "@/lib/types";
@@ -142,7 +144,7 @@ export function CodexSidebar({
   onToggleSidebar,
   onOpenSettings,
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [preferences, setPreferences] = useState<ProjectPreference[]>([]);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
@@ -166,6 +168,7 @@ export function CodexSidebar({
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([]);
   const [worktreeProjectRoot, setWorktreeProjectRoot] = useState<string | null>(null);
   const [worktreeOpen, setWorktreeOpen] = useState(true);
+  const [recentOpen, setRecentOpen] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<
@@ -309,6 +312,10 @@ export function CodexSidebar({
   const activeProjects = useMemo(
     () => projects.filter((project) => !project.removed && !project.archived),
     [projects],
+  );
+  const recentSessions = useMemo(
+    () => buildRecentSessions(visibleSessions, activeProjects, archivedIds),
+    [activeProjects, archivedIds, visibleSessions],
   );
   const quickSearch = quickQuery.trim().toLowerCase();
   const quickProjectResults = useMemo(() => activeProjects
@@ -892,6 +899,42 @@ export function CodexSidebar({
         </div>
       )}
 
+      <section className="codex-sidebar-section codex-sidebar-recent" data-open={recentOpen}>
+        <button type="button" className="codex-sidebar-tool-heading codex-sidebar-section-heading" onClick={() => setRecentOpen((open) => !open)} aria-expanded={recentOpen}>
+          <Chevron open={recentOpen} />
+          <span>{t("sidebar.recent")}</span>
+        </button>
+        {recentOpen && (
+        <div role="list">
+          {recentSessions.map(({ session, projectLabel }) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              selected={session.id === selectedSessionId}
+              running={activeRootIds.has(session.id)}
+              runningSubagentCount={(subagentsByRoot.get(session.id) ?? []).filter((child) => runningIds.has(child.id)).length}
+              unread={unreadIds.has(session.id)}
+              variant="recent"
+              projectLabel={projectLabel}
+              relativeTime={formatRelativeTime(session.modified, locale)}
+              onSelect={() => selectSession(session)}
+              onChanged={() => void loadData(false)}
+              onDeleted={() => { onSessionDeleted?.(session.id); void loadData(false); }}
+              onArchive={() => {
+                setArchivedIds((current) => new Set(current).add(session.id));
+                setUnreadIds((current) => {
+                  if (!current.has(session.id)) return current;
+                  const next = new Set(current);
+                  next.delete(session.id);
+                  return next;
+                });
+              }}
+            />
+          ))}
+        </div>
+        )}
+      </section>
+
       {menuProject && createPortal((() => {
         const project = projects.find((candidate) => candidate.path === menuProject.path);
         if (!project) return null;
@@ -1014,12 +1057,15 @@ export function CodexSidebar({
   );
 }
 
-function SessionRow({ session, selected, running, runningSubagentCount, unread, onSelect, onChanged, onDeleted, onArchive }: {
+function SessionRow({ session, selected, running, runningSubagentCount, unread, variant = "nested", projectLabel, relativeTime, onSelect, onChanged, onDeleted, onArchive }: {
   session: SessionInfo;
   selected: boolean;
   running: boolean;
   runningSubagentCount: number;
   unread: boolean;
+  variant?: "nested" | "recent";
+  projectLabel?: string;
+  relativeTime?: string;
   onSelect: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -1035,6 +1081,8 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const title = sessionTitle(session);
+  const isRecent = variant === "recent";
+  const rowTitle = isRecent && projectLabel ? `${projectLabel} · ${title}` : title;
 
   useEffect(() => {
     if (!menuPos) return;
@@ -1109,7 +1157,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
 
   return (
     <>
-    <div className="codex-session-row" data-selected={selected} onContextMenu={renaming ? undefined : openContextMenu}>
+    <div className={`codex-session-row${isRecent ? " codex-recent-session-row" : ""}`} data-selected={selected} onContextMenu={renaming ? undefined : openContextMenu}>
       <div
         className="codex-session-main"
         onClick={onSelect}
@@ -1120,7 +1168,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
         }}
         role="button"
         tabIndex={0}
-        title={title}
+        title={rowTitle}
       >
         {running ? (
           <LoaderCircle
@@ -1143,7 +1191,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
             onBlur={() => void commitRename()}
             onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setRenaming(false); }}
           />
-        ) : <span className="codex-session-title">{title}</span>}
+        ) : <span className={`codex-session-title${isRecent ? " codex-recent-session-title" : ""}`}>{title}</span>}
         {runningSubagentCount > 0 && (
           <span className="codex-session-subagents" title={t("sidebar.runningSubagents", { count: runningSubagentCount })}>
             <LoaderCircle size={11} strokeWidth={1.8} style={{ animation: "spin 0.8s linear infinite" }} aria-hidden="true" />
@@ -1151,6 +1199,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
           </span>
         )}
       </div>
+      {isRecent && relativeTime ? <span className="codex-recent-session-time">{relativeTime}</span> : null}
       {!session.transient && (
         <div className="codex-session-menu-wrap">
           <IconButton ref={menuButtonRef} label={t("sidebar.sessionActions")} onClick={(event) => {

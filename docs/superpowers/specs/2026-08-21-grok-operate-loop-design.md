@@ -135,7 +135,7 @@
 - **导出** — 走已有 `GET /api/sessions/:id/export`，打包该会话目录。
 - **从侧栏隐藏** — grok-web 元数据，不是 TUI 命令。分隔线以下，不要写成 `/archive`，也不要做成另一套会话库。
 
-顺序：Rename / Delete / Export，然后才是隐藏。Composer `/` 同样露出 `/rename` `/delete` `/export`（`/name` 仍可当别名）。`/delete` 走同一套磁盘删除确认。侧栏不另做 Recent 会话库；跨项目跳转走 quick switcher。
+顺序：Rename / Delete / Export，然后才是隐藏。Composer `/` 同样露出 `/rename` `/delete` `/export`（`/name` 仍可当别名）。`/delete` 走同一套磁盘删除确认。Recent 留下，当作同一批 `~/.grok` 会话的跳转，不是另一套会话库。
 
 ### 5.7 Worktrees / Skills / Plugins / MCP / 子代理
 
