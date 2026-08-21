@@ -1,4 +1,4 @@
-import { isToolPreset, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
+import { isToolPreset, TOOL_PRESET_VALUES, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
 
 export type AcpConfigOption = {
   id: string;
@@ -71,6 +71,20 @@ export function hasToolsConfig(options: AcpConfigOption[]): boolean {
   return options.some(isToolsOption);
 }
 
+/** ACP-declared `none|read-only|default|full` ids only. Empty means no Shield chip. */
+export function advertisedToolPresets(options: AcpConfigOption[]): ToolPreset[] {
+  const found = new Set<ToolPreset>();
+  for (const option of options) {
+    if (option.category === "tools" && isToolPreset(option.id)) found.add(option.id);
+    if (!isToolsSelect(option)) continue;
+    for (const entry of option.options ?? []) {
+      const value = entry.value ?? entry.id;
+      if (isToolPreset(value)) found.add(value);
+    }
+  }
+  return TOOL_PRESET_VALUES.filter((preset) => found.has(preset));
+}
+
 export function selectedToolsPreset(options: AcpConfigOption[]): ToolPreset | undefined {
   const select = options.find((option) => option.id === "tools" || option.name?.toLowerCase() === "tools");
   if (select && isToolPreset(select.currentValue)) return select.currentValue;
@@ -98,8 +112,12 @@ export function toolEntriesForPreset(preset: ToolPreset): ToolEntry[] {
   return [{ name: preset, description: preset, active: true }];
 }
 
+function isToolsSelect(option: AcpConfigOption): boolean {
+  return option.id === "tools" || option.name?.toLowerCase() === "tools";
+}
+
 function isToolsOption(option: AcpConfigOption): boolean {
-  return option.id === "tools" || option.category === "tools" || option.name?.toLowerCase() === "tools";
+  return isToolsSelect(option) || option.category === "tools";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

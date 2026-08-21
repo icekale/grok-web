@@ -1420,6 +1420,40 @@ html.dark .codex-project-menu button.danger { color: #f87171; }
   overflow: hidden;
   border-top: 1px solid var(--border);
 }
+.codex-project-daily-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+.codex-project-daily-links button {
+  height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: var(--bg);
+  font-size: var(--text-meta);
+  cursor: pointer;
+}
+.codex-project-daily-links button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.codex-menu-command {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+.codex-project-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
 .codex-sidebar-tool-heading {
   width: 100%;
   height: 32px;

@@ -95,7 +95,7 @@ interface Props {
   compactError?: string | null;
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
-  toolsAdvertised?: boolean;
+  toolsAdvertised?: readonly ToolPreset[];
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
@@ -684,7 +684,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
-  onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = false, onToolPresetChange,
+  onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = [], onToolPresetChange,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [],
   onSteerAllQueued, onQueueRemoveItem, onQueueEditItem, onQueueSteerItem,
@@ -2353,7 +2353,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </button>
               {moreMenuOpen && (
                 <div className="composer-menu" style={{ left: 0 }}>
-                  {TOOL_PRESETS.map((lvl) => {
+                  {TOOL_PRESETS.filter((lvl) => toolsAdvertised.includes(TOOL_PRESET_MAP[lvl])).map((lvl) => {
                     const preset = TOOL_PRESET_MAP[lvl];
                     const isActive = (toolPreset ?? "default") === preset;
                     return (

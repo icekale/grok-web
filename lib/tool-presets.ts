@@ -11,8 +11,8 @@ export function isToolPreset(value: unknown): value is ToolPreset {
   return typeof value === "string" && (TOOL_PRESET_VALUES as readonly string[]).includes(value);
 }
 
-export function composerShowsToolPreset(advertised: boolean): boolean {
-  return advertised === true;
+export function composerShowsToolPreset(advertised: readonly ToolPreset[]): boolean {
+  return advertised.length > 0;
 }
 
 export function getPresetFromTools(tools: ToolEntry[]): ToolPreset {

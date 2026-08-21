@@ -205,7 +205,7 @@ test("lays out attach, model, and effort; tool access only when ACP advertised i
   assert.doesNotMatch(hidden, /aria-label="More controls"/);
 
   const shown = renderToStaticMarkup(
-    React.createElement(I18nProvider, null, React.createElement(ChatInput, { ...props, toolsAdvertised: true })),
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, { ...props, toolsAdvertised: ["none", "read-only", "default", "full"] })),
   );
   assert.match(shown, />Full access</);
 });

@@ -175,6 +175,33 @@ test("sidebar recomposition preserves worktree switching and creation", () => {
   assert.match(sidebar, /createWorktree/);
   assert.match(sidebar, /removeWorktree/);
   assert.match(sidebar, /sidebar\.forceRemoveCheckout/);
+  assert.match(sidebar, /\[worktreeOpen, setWorktreeOpen\] = useState\(true\)/);
+  assert.doesNotMatch(sidebar, /worktreeAutoOpenedRef/);
+});
+
+test("project daily tools sit between projects and recent sessions", () => {
+  const projectsEnd = sidebar.indexOf("codex-sidebar-recent");
+  const toolsAt = sidebar.indexOf("codex-sidebar-project-tools");
+  const skillsAt = sidebar.indexOf('onOpenSettings("skills")');
+  const pluginsAt = sidebar.indexOf('onOpenSettings("plugins")');
+  const mcpAt = sidebar.indexOf('onOpenSettings("mcp")');
+  assert.ok(toolsAt > 0 && toolsAt < projectsEnd);
+  assert.ok(skillsAt > toolsAt && skillsAt < projectsEnd);
+  assert.ok(pluginsAt > toolsAt && pluginsAt < projectsEnd);
+  assert.ok(mcpAt > toolsAt && mcpAt < projectsEnd);
+  assert.match(sidebar, /className="codex-project-daily-links"/);
+  const projectMenu = sidebar.slice(
+    sidebar.indexOf("codex-project-menu-portal"),
+    sidebar.indexOf("pendingConfirmation?.type === \"project\""),
+  );
+  assert.doesNotMatch(projectMenu, /onOpenSettings/);
+});
+
+test("session overflow menu aligns rename and delete with TUI commands", () => {
+  const menu = sidebar.slice(sidebar.indexOf("sidebar.renameCommand"));
+  assert.match(menu, /sidebar\.renameCommand[\s\S]*?sidebar\.deleteCommand[\s\S]*?sidebar\.exportSession[\s\S]*?sidebar\.archiveSession/);
+  assert.match(sidebar, /codex-menu-command/);
+  assert.match(sidebar, /codex-project-menu-sep/);
 });
 
 test("searches sessions and exposes a Codex-style quick switcher", () => {

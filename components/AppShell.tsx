@@ -1395,9 +1395,10 @@ export function AppShell() {
               alignItems: "center",
               justifyContent: "center",
               gap: 4,
-              width: mobile ? TOP_BAR_ICON_BUTTON_SIZE_MOBILE : TOP_BAR_ICON_BUTTON_SIZE,
+              width: mobile ? TOP_BAR_ICON_BUTTON_SIZE_MOBILE : "auto",
+              minWidth: mobile ? TOP_BAR_ICON_BUTTON_SIZE_MOBILE : TOP_BAR_ICON_BUTTON_SIZE,
               height: "100%",
-              padding: 0,
+              padding: mobile ? 0 : "0 8px",
               background: activeTopPanel === "subagents" ? "var(--bg-selected)" : "none",
               border: "none",
               borderTop: "2px solid transparent",
@@ -1411,6 +1412,7 @@ export function AppShell() {
             }}
           >
             <Network size={14} strokeWidth={1.8} aria-hidden="true" />
+            {mobile ? null : <span>{translate("subagents.title")}</span>}
             <span style={{ fontSize: "var(--text-meta)" }}>{subagentCount}</span>
             {hasActiveDescendant(subagents.data?.nodes) ? (
               <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />

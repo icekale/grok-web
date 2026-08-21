@@ -27,6 +27,7 @@ import { grokAgentArgs, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
 import {
+  advertisedToolPresets,
   applyConfigOptionUpdate,
   hasToolsConfig,
   readAcpConfigOptions,
@@ -35,7 +36,7 @@ import {
   toolEntriesForPreset,
   type AcpConfigOption,
 } from "./config-options.ts";
-import { getPresetFromTools, type ToolEntry } from "../tool-presets.ts";
+import { getPresetFromTools, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
 import { validateAgentImages } from "../image-attachments.ts";
 
 export type AgentCommand =
@@ -565,6 +566,7 @@ export class AgentRuntime {
     model: { provider: "grok"; id: string };
     thinkingLevel: string;
     queuedMessages: QueueSnapshot;
+    toolPresets: ToolPreset[];
     contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null };
   }> {
     const session = this.sessions.get(sessionId);
@@ -577,6 +579,7 @@ export class AgentRuntime {
       model: { provider: "grok", id: session?.modelId ?? "grok-4.6" },
       thinkingLevel: session?.thinkingLevel ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]),
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
+      toolPresets: advertisedToolPresets(session?.configOptions ?? []),
       ...(contextUsage ? { contextUsage } : {}),
     };
   }

@@ -130,28 +130,33 @@
 
 会话 `⋯` 菜单：
 
-- **重命名** — 有 ACP / `x.ai` 方法走协议，否则只改该会话 `summary.json` 标题（等同 `/rename`，自动标题不再覆盖）。现有路径保留，文案写清是会话标题。
-- **删除** — 二次确认后删会话目录（等同 `/delete`）。确认文案保持「从磁盘删掉，不能撤销」。
-- **导出** — 新菜单项，走已有 `GET /api/sessions/:id/export`，打包该会话目录。这是第一版规格第 4 节已写、菜单漏掉的能力。
-- **归档** — 仍是 grok-web 元数据，不是 TUI 命令。菜单里留下，不要写成 `/archive`。
+- **重命名** — 有 ACP / `x.ai` 方法走协议，否则只改该会话 `summary.json` 标题（等同 `/rename`，自动标题不再覆盖）。菜单标 `/rename`。
+- **删除** — 二次确认后删会话目录（等同 `/delete`）。菜单标 `/delete`。确认文案保持「从磁盘删掉，不能撤销」。
+- **导出** — 走已有 `GET /api/sessions/:id/export`，打包该会话目录。
+- **从侧栏隐藏** — grok-web 元数据，不是 TUI 命令。分隔线以下，不要写成 `/archive`，也不要做成另一套会话库。
+
+顺序：Rename / Delete / Export，然后才是隐藏。
 
 ### 5.7 Worktrees / Skills / Plugins / MCP / 子代理
 
-**Worktrees。** 选中项目是 git 仓库且 `worktrees` 拉回来后，侧栏区块就在。`worktreeOpen` 默认：存在非 main 的 linked worktree 时展开，否则仍显示区块（含创建行），不要只在「已经有一堆 worktree」时才让人知道有这功能。创建/删除行为不变。
+这些是 TUI 日常能力，放在项目列表和 Recent 之间，不要埋在设置或项目 `⋯` 里。
 
-**Skills / Plugins / MCP。** 不新开面板。项目 `⋯` 菜单增加三项，分别 `openSettings("skills"|"plugins"|"mcp")`。设置导航按 5.1 排在 Models 后面。页内编辑器不重写。
+**Worktrees。** 选中项目是 git 仓库且 `worktrees` 拉回来后，侧栏区块默认展开（含创建行）。创建/删除行为不变。
 
-**子代理。** 打开的是根会话时，顶栏子代理控件就要在，不必等 `count > 0`。count 为 0 时控件仍可打开，空状态用现有 `subagents.empty`。有子代理时数字徽章照旧。用户文案继续用 Subagents / 子代理，不要出现 Codex。
+**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。设置页仍可进，项目 `⋯` 不再重复这三项。页内编辑器不重写。
+
+**子代理。** 打开的是根会话时，顶栏子代理控件就要在，不必等 `count > 0`。桌面顶栏写出 Subagents / 子代理，不要只剩图标。count 为 0 时控件仍可打开，空状态用现有 `subagents.empty`。用户文案不要出现 Codex。
 
 ### 5.8 工具档位芯片
 
-Composer Shield 芯片只在 ACP 对该会话声明了 tools `configOptions`（`hasToolsConfig`）时渲染。
+Composer Shield 芯片只列出 ACP 枚举过的 `none | read-only | default | full`。
 
-- 有：现有 `none | read-only | default | full`，通过现有 `session/set_config_option` 路径
-- 无：不渲染芯片；会话按 Grok 默认工具集工作
-- 禁止在没有 ACP 声明时本地伪造档位并画芯片
+- 有枚举：只画声明过的档位，走现有 `session/set_config_option`
+- `id: "tools"` 但没有 options / category 列表：不画芯片
+- 无 tools 配置：不画芯片；会话按 Grok 默认工具集工作
+- 禁止在没有 ACP 声明时本地伪造档位并画芯片；新会话在尚未得知声明前不要带 `toolNames`
 
-`useAgentSession` 需要把「ACP 是否声明了 tools」传给 `ChatInput`，不能只传 `onToolPresetChange`。
+`useAgentSession` 需要把「ACP 声明了哪些档位」传给 `ChatInput`，不能只传 `onToolPresetChange`。
 
 ## 6. 测试
 
@@ -159,7 +164,7 @@ Composer Shield 芯片只在 ACP 对该会话声明了 tools `configOptions`（`
 
 - `translatePermissionRequest`：终端命令、`read_file` 路径、无已知字段时的一行摘要；期望标题不是 `Allow tool`
 - `visibleGrokEffortLevels` + composer 可见档位：菜单不含 auto/off/minimal/max
-- `hasToolsConfig` 为假时不把工具芯片当作必有 UI（单元测 session/config，不必上浏览器）
+- `hasToolsConfig` 为假或 `advertisedToolPresets` 为空时不把工具芯片当作必有 UI（单元测 session/config，不必上浏览器）
 - 会话导出仍走现有 `getSessionExport` 测试；如有菜单/i18n 键，parity 覆盖
 - en / zh-CN key parity
 

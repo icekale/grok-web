@@ -19,7 +19,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
-import { getPresetFromTools, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
+import { getPresetFromTools, getToolNamesForPreset, isToolPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { retainUnpersistedUserMessages, userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -76,6 +76,7 @@ type AgentStateResponse = {
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
+  toolPresets?: ToolPreset[];
 };
 
 export interface QueuedMessages {
@@ -354,7 +355,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
-  const [toolsAdvertised, setToolsAdvertised] = useState(false);
+  const [toolsAdvertised, setToolsAdvertised] = useState<ToolPreset[]>([]);
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
@@ -604,6 +605,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+          if (liveState.toolPresets !== undefined) {
+            setToolsAdvertised(liveState.toolPresets.filter(isToolPreset));
+          }
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -641,20 +645,32 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
+  const applyAdvertisedToolPresets = useCallback((value: unknown) => {
+    const presets = Array.isArray(value) ? value.filter(isToolPreset) : [];
+    setToolsAdvertised(presets);
+  }, []);
+
   const loadTools = useCallback(async (sid: string) => {
     try {
       const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
       if (tools) {
         const { getPresetFromTools } = await import("@/lib/tool-presets");
         setToolPresetState(getPresetFromTools(tools));
-        setToolsAdvertised(true);
       } else {
-        setToolsAdvertised(false);
+        setToolsAdvertised([]);
+        return;
       }
     } catch {
-      setToolsAdvertised(false);
+      setToolsAdvertised([]);
+      return;
     }
-  }, [setToolPresetState]);
+    try {
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+      applyAdvertisedToolPresets(state?.toolPresets);
+    } catch {
+      setToolsAdvertised([]);
+    }
+  }, [applyAdvertisedToolPresets, setToolPresetState]);
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage = "(no messages)") => {
     const sid = sessionIdRef.current;
@@ -692,14 +708,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const selectedModel = newSessionModelOverrideRef.current;
       const selectedThinkingLevel = thinkingLevelOverrideRef.current;
       if (selectedModel) setPendingModel(selectedModel);
-      const toolNames = getToolNamesForPreset(toolPreset);
+      const toolNames = toolsAdvertised.includes(toolPreset)
+        ? getToolNamesForPreset(toolPreset)
+        : undefined;
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cwd: newSessionCwd,
           type: "ensure_session",
-          toolNames,
+          ...(toolNames ? { toolNames } : {}),
           ...(selectedModel ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
           ...(selectedThinkingLevel
             ? { thinkingLevel: selectedThinkingLevel }
@@ -734,7 +752,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, loadTools, toolPreset]);
+  }, [isNew, newSessionCwd, loadTools, toolPreset, toolsAdvertised]);
 
   const loadSlashCommands = useCallback(async () => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
@@ -2123,7 +2141,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionHookMountedRef.current = true;
     if (session) {
       sessionIdRef.current = session.id;
-      setToolsAdvertised(false);
+      setToolsAdvertised([]);
       loadSession(session.id, true, !opts.readOnlyHistory).then((agentState) => {
         void loadTools(session.id);
         if (agentState?.running) {
@@ -2153,6 +2171,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
+          if (agentState.state.toolPresets !== undefined) {
+            setToolsAdvertised(agentState.state.toolPresets.filter(isToolPreset));
+          }
         }
       });
     }

@@ -38,11 +38,11 @@ Confirmed:
 - Loopback needs no login. Non-loopback bind requires a remote password; Basic username is `grok`.
 - No multi-tenant cloud, no sandbox farm, no browser-direct ACP, no rewrite of Grok itself.
 - Node `>= 22.19.0`. Stack already in repo: Vite, TanStack Start, local Node gateway. Env prefix `GROK_WEB_`.
-- Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history. Settings → Models leads with Grok login and the ACP model list; custom OpenAI-compatible providers stay secondary and do not change live chat. Permission dialogs use the ACP tool title (for example `Execute \`ls\``) and the command or path, not a JSON dump.
+- Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history. Worktrees, skills, plugins, MCP, and subagents sit on the daily project path, not as settings-only extras. Sidebar rename / delete / export match TUI `/rename` and `/delete`; hiding a session from the sidebar is grok-web metadata, not a second session store. Settings → Models leads with Grok login and the ACP model list; custom OpenAI-compatible providers stay secondary and do not change live chat. Permission dialogs use the ACP tool title (for example `Execute \`ls\``) and the command or path, not a JSON dump.
 - Conversation protocol is Grok ACP. grok-web HTTP/SSE is the browser wire for this app, not a pi-web SSE compatibility contract.
 - Composer `!` is a normal prompt. Users run shell commands through the agent's terminal tool, same as the TUI.
 - Missing ACP methods surface as explicit errors. Local git/fs fallback is read-only.
-- Prompt images are sent as ACP `image` content blocks on `session/prompt`. Tool presets (`none|read-only|default|full`) are ACP `configOptions` ids. Extension custom UI is unsupported.
+- Prompt images are sent as ACP `image` content blocks on `session/prompt`. Tool presets (`none|read-only|default|full`) appear only when ACP enumerates those `configOptions` ids. Extension custom UI is unsupported.
 - Custom providers in Settings can import and test models against an OpenAI-compatible base URL; the live chat model list still comes from Grok ACP.
 
 Distribution (0.x preview):

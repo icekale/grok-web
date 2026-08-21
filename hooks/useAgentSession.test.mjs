@@ -213,6 +213,15 @@ test("new-session promotion rekeys drafts before publishing the real session", (
   assert.match(chatWindowSource, /draftKey=\{session\?\.id \?\? newSessionDraftKey \?\? undefined\}/);
 });
 
+test("new sessions omit toolNames until ACP advertises presets", () => {
+  const ensureSource = source.slice(
+    source.indexOf("  const ensureNewSession = useCallback"),
+    source.indexOf("  const loadSlashCommands"),
+  );
+  assert.match(ensureSource, /toolsAdvertised\.includes\(toolPreset\)/);
+  assert.match(ensureSource, /\.\.\.\(toolNames \? \{ toolNames \} : \{\}\)/);
+});
+
 test("fresh sessions restore the preferred tool preset without overriding existing sessions", () => {
   const preferenceSource = source.slice(
     source.indexOf("  const setToolPresetState"),
