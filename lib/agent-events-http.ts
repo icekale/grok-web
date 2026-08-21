@@ -13,7 +13,7 @@ export async function GET(
   const runtime = getAgentRuntime();
   const sessionPromise = Promise.resolve({
     isStreaming: runtime.isBusy(id),
-    streamingMessage: runtime.getStreamingMessage(id),
+    streamingMessage: null,
     contextUsage: readSessionContextUsage(id),
     onEvent: (listener: (event: Record<string, unknown>) => void) => runtime.subscribe(id, listener),
   });

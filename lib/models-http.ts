@@ -1,7 +1,7 @@
 import { stat } from "fs/promises";
 import { resolve } from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime";
-import { mergeComposerModels } from "@/lib/composer-models";
+import { collectSettingsComposerModels, mergeComposerModels } from "@/lib/composer-models";
 import { settingsPickerIdResolver, syncSettingsModelsToGrokConfig } from "@/lib/grok-model-table";
 import { readModelsConfig } from "@/lib/models-config-store";
 import {
@@ -24,9 +24,18 @@ const EMPTY_MODELS: ModelsData = {
 async function loadModels(): Promise<ModelsData> {
   const settings = readModelsConfig();
   try {
-    syncSettingsModelsToGrokConfig(settings);
+    const wrote = syncSettingsModelsToGrokConfig(settings);
+    if (wrote.length > 0) await getAgentRuntime().recycleProcess();
     const pickerId = settingsPickerIdResolver();
-    const listed = await getAgentRuntime().listModels();
+    let listed = await getAgentRuntime().listModels();
+    const needed = collectSettingsComposerModels(settings)
+      .filter((row) => row.baseUrl)
+      .map((row) => pickerId(row));
+    const have = new Set(listed.modelList.map((model) => model.id));
+    if (needed.some((id) => !have.has(id))) {
+      await getAgentRuntime().recycleProcess();
+      listed = await getAgentRuntime().listModels();
+    }
     return mergeComposerModels(listed, settings, pickerId);
   } catch {
     return withSafeModelLoadFailure(mergeComposerModels(EMPTY_MODELS, settings, settingsPickerIdResolver()));
