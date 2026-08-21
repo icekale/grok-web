@@ -146,6 +146,7 @@ export class AgentEventConnection {
         return;
       }
 
+      if (!event || typeof event !== "object" || typeof event.type !== "string") return;
       if (event.type === "connected") {
         attempt.ready = true;
         attempt.succeed();

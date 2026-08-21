@@ -46,6 +46,7 @@ function toolCallMetadata(
 export function toClientAgentEvent(
   event: AgentEventLike,
 ): GrokWireEvent | null {
+  if (!event || typeof event.type !== "string") return null;
   if (OMITTED_EVENT_TYPES.has(event.type)) return null;
 
   if (event.type === "message_update") {
@@ -90,6 +91,7 @@ export function isEventIncludedInSnapshot(
   snapshot: unknown,
 ): boolean {
   return snapshot !== undefined
+    && Boolean(event)
     && (event.type === "message_start" || event.type === "message_update")
     && event.message === snapshot;
 }

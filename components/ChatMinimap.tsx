@@ -45,7 +45,7 @@ interface NodeInfo {
 function getUserPreview(message: UserMessage): string {
   if (typeof message.content === "string") return message.content.trim();
   return message.content
-    .filter((block): block is TextContent => block.type === "text")
+    .filter((block): block is TextContent => block?.type === "text")
     .map((block) => block.text)
     .join("\n")
     .trim();
@@ -101,7 +101,7 @@ function remarkPreviewOutline() {
   return (tree: { children?: PreviewAstNode[] }) => {
     if (!Array.isArray(tree.children)) return;
     const headings = tree.children.filter((node) => (
-      node.type === "heading" && typeof node.depth === "number" && node.depth <= 3
+      node?.type === "heading" && typeof node.depth === "number" && node.depth <= 3
     ));
     if (headings.length > 0) {
       headings.forEach((node, headingIndex) => {
@@ -116,7 +116,7 @@ function remarkPreviewOutline() {
       tree.children = headings;
       return;
     }
-    const firstParagraph = tree.children.find((node) => node.type === "paragraph");
+    const firstParagraph = tree.children.find((node) => node?.type === "paragraph");
     tree.children = firstParagraph ? [firstParagraph] : [];
   };
 }

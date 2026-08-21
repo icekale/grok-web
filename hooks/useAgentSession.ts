@@ -14,6 +14,7 @@ import type {
 } from "@/lib/types";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { applyToolOutputUpdate, toolResultText, type ToolOutputState } from "@/lib/history-map";
+import { countToolCallBlocks, getDisplayableAssistantBlocks } from "@/lib/message-display";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
@@ -519,7 +520,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (msg.role !== "assistant") continue;
       assistantMessages += 1;
       const u = (msg as import("@/lib/types").AssistantMessage).usage;
-      toolCalls += (msg as import("@/lib/types").AssistantMessage).content.filter((c) => c.type === "toolCall").length;
+      toolCalls += countToolCallBlocks(getDisplayableAssistantBlocks(msg as import("@/lib/types").AssistantMessage));
       if (!u) continue;
       tokens.input += u.input ?? 0;
       tokens.output += u.output ?? 0;
@@ -1150,6 +1151,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     };
 
+    if (!event || typeof event.type !== "string") break;
     switch (event.type) {
       case "connected": {
         if (event.isStreaming === true) {

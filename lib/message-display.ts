@@ -4,15 +4,21 @@ interface DisplayOptions {
   isStreaming?: boolean;
 }
 
+export function isAssistantContentBlock(block: unknown): block is AssistantContentBlock {
+  return block != null && typeof block === "object" && typeof (block as { type?: unknown }).type === "string";
+}
+
 export function isEmptyThinkingBlock(block: AssistantContentBlock, options: DisplayOptions = {}): block is ThinkingContent {
-  return block.type === "thinking" && !block.deferred && !options.isStreaming && block.thinking.trim() === "";
+  return block.type === "thinking" && !block.deferred && !options.isStreaming && (block.thinking ?? "").trim() === "";
 }
 
 export function getDisplayableAssistantBlocks(
   message: AssistantMessage,
   options: DisplayOptions = {},
 ): AssistantContentBlock[] {
-  return (message.content ?? []).filter((block) => !isEmptyThinkingBlock(block, options));
+  return (message.content ?? []).filter((block): block is AssistantContentBlock => (
+    isAssistantContentBlock(block) && !isEmptyThinkingBlock(block, options)
+  ));
 }
 
 export function getAssistantErrorMessage(

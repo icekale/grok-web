@@ -7,7 +7,7 @@ import { ImagePreview } from "./ImagePreview";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantAbortDetail, getAssistantErrorMessage, isAbortedAssistantMessage, isEmptyThinkingBlock } from "@/lib/message-display";
+import { getAssistantAbortDetail, getAssistantErrorMessage, isAbortedAssistantMessage, isAssistantContentBlock, isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { grokCanonicalToolName, grokToolPreviewValue } from "@/lib/grok-tool-input";
 import { isBashToolName, isEditToolName } from "@/lib/tool-names";
@@ -206,7 +206,7 @@ function haveSameRelevantToolResults(
 ): boolean {
   if (previous === next || message.role !== "assistant") return true;
   for (const block of (message as AssistantMessage).content ?? []) {
-    if (block.type === "toolCall" && previous?.get(block.toolCallId) !== next?.get(block.toolCallId)) {
+    if (block?.type === "toolCall" && previous?.get(block.toolCallId) !== next?.get(block.toolCallId)) {
       return false;
     }
   }
@@ -274,14 +274,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     typeof message.content === "string"
       ? message.content
       : message.content
-          .filter((b): b is TextContent => b.type === "text")
+          .filter((b): b is TextContent => b?.type === "text")
           .map((b) => b.text)
           .join("\n");
 
   const imageBlocks: ImageContent[] =
     typeof message.content === "string"
       ? []
-      : message.content.filter((b): b is ImageContent => b.type === "image");
+      : message.content.filter((b): b is ImageContent => b?.type === "image");
 
   const commandText = skillExpansionToCommand(content);
   const commandSeparator = commandText?.search(/\s/) ?? -1;
@@ -524,7 +524,9 @@ function AssistantMessageView({
   const time = showTimestamp ? formatTime(message.timestamp) : null;
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
-    .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
+    .filter(({ block }): block is { block: typeof block; originalIndex: number } => (
+      isAssistantContentBlock(block) && !isEmptyThinkingBlock(block, { isStreaming })
+    )), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   const visibleBlockItems = useMemo(() => {
     if (!isStreaming) return blockItems;

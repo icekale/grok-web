@@ -15,6 +15,15 @@ test("composer bang is not a local bash escape", () => {
   assert.doesNotMatch(chatWindowSource, /pendingBash/);
 });
 
+test("session stats do not read .type off missing assistant content", () => {
+  const statsSource = source.slice(
+    source.indexOf("  const sessionStats = useMemo"),
+    source.indexOf("  const loadSession = useCallback"),
+  );
+  assert.match(statsSource, /content\?\.filter|getDisplayableAssistantBlocks|countToolCallBlocks/);
+  assert.doesNotMatch(statsSource, /\.content\.filter\(\(c\) => c\.type === "toolCall"\)/);
+});
+
 test("applies streamed context usage from Grok session signals", () => {
   const usageSource = source.slice(
     source.indexOf('case "context_usage"'),

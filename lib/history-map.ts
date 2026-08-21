@@ -445,7 +445,7 @@ function toolInMessage(message: HistoryMessage, id: string): ToolCallPart | unde
   if (message.role !== "assistant") return undefined;
   for (let i = message.content.length - 1; i >= 0; i--) {
     const part = message.content[i];
-    if (part.type === "toolCall" && part.toolCallId === id) return part;
+    if (part?.type === "toolCall" && part.toolCallId === id) return part;
   }
   return undefined;
 }

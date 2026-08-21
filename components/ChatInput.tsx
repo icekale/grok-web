@@ -324,7 +324,7 @@ export function canRestoreUserMessage(
 export function getUserMessageText(message: UserMessage): string {
   if (typeof message.content === "string") return message.content;
   return message.content
-    .filter((block): block is TextContent => block.type === "text")
+    .filter((block): block is TextContent => block?.type === "text")
     .map((block) => block.text)
     .join("\n");
 }
@@ -332,7 +332,7 @@ export function getUserMessageText(message: UserMessage): string {
 export function getUserMessageDraftImages(message: UserMessage): ChatDraftImage[] {
   if (typeof message.content === "string") return [];
   return message.content.flatMap((block) => {
-    if (block.type !== "image") return [];
+    if (!block || block.type !== "image") return [];
 
     // Support both the current nested image format and older flat pi-ai entries.
     const flat = block as unknown as { data?: unknown; mimeType?: unknown };

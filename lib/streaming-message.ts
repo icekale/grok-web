@@ -44,8 +44,9 @@ function updateContentBlock(
 
 function applyDelta(
   state: StreamingState,
-  event: ClientAssistantMessageEvent,
+  event: ClientAssistantMessageEvent | undefined,
 ): StreamingState {
+  if (!event || typeof event.type !== "string") return state;
   switch (event.type) {
     case "text_start":
       return updateContentBlock(state, event.contentIndex, (current) => (
