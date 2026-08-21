@@ -324,6 +324,25 @@ test("shows the latest streamed tool execution progress in the running phase", (
   assert.match(chatWindowSource, /chat\.runningNamedTool[\s\S]*latest\.progress/);
 });
 
+test("maintains live tool results from tool_execution_update using applyToolOutputUpdate", () => {
+  const updateSource = source.slice(
+    source.indexOf('case "tool_execution_update"'),
+    source.indexOf('case "tool_execution_end"'),
+  );
+  const startSource = source.slice(
+    source.indexOf('case "agent_start"'),
+    source.indexOf('case "agent_end"'),
+  );
+
+  assert.match(source, /applyToolOutputUpdate/);
+  assert.match(source, /toolResultText/);
+  assert.match(source, /liveToolResults/);
+  assert.match(updateSource, /applyToolOutputUpdate/);
+  assert.match(startSource, /setLiveToolResults\(/);
+  assert.match(chatWindowSource, /liveToolResults/);
+  assert.match(chatWindowSource, /toolResults=\{toolResultsMap\}/);
+});
+
 test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", () => {
   const connectedSource = source.slice(
     source.indexOf('case "connected"'),

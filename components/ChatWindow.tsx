@@ -285,7 +285,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   }, [chatInputRef]);
 
   const {
-    data, loading, error, messages, entryIds, streamState,
+    data, loading, error, messages, entryIds, liveToolResults, streamState,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -436,14 +436,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   // skip re-rendering on every message_update event. An inline `new Map()`
   // here used to defeat MessageView's memo() on each streamed chunk.
   const toolResultsMap = useMemo(() => {
-    const map = new Map<string, ToolResultMessage>();
+    const map = new Map<string, ToolResultMessage>(liveToolResults);
     messages.forEach((msg, index) => {
       if (msg.role === "toolResult") {
         map.set((msg as ToolResultMessage).toolCallId, { ...(msg as ToolResultMessage), entryId: entryIds[index] });
       }
     });
     return map;
-  }, [entryIds, messages]);
+  }, [entryIds, liveToolResults, messages]);
   const [acpHistory, setAcpHistory] = useState<string[]>([]);
   useEffect(() => {
     const sid = session?.id;
@@ -968,7 +968,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               );
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} tokenSpeedEnabled={tokenSpeedEnabled} />
+              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming toolResults={toolResultsMap} modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} tokenSpeedEnabled={tokenSpeedEnabled} />
             )}
 
             {agentRunning && agentPhase?.kind === "stopping" && (

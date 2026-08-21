@@ -58,3 +58,12 @@ test("custom terminal UI uses the terminal shell and preserves Ctrl+C close", ()
   assert.match(source, /toTerminalKeyData\(event\)/);
   assert.match(source, /asBracketedPaste\(text\)/);
 });
+
+test("streaming tool cards receive toolResults", () => {
+  assert.match(source, /streamState\.streamingMessage/);
+  const streamView = source.slice(
+    source.indexOf("streamState.isStreaming && hasStreamingContent && streamState.streamingMessage"),
+    source.indexOf('agentRunning && agentPhase?.kind === "stopping"'),
+  );
+  assert.match(streamView, /toolResults=\{/);
+});

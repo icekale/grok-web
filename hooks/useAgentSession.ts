@@ -9,9 +9,11 @@ import type {
   ExtensionWidgetItem,
   SessionInfo,
   SessionTreeNode,
+  ToolResultMessage,
   UserMessage,
 } from "@/lib/types";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
+import { applyToolOutputUpdate, toolResultText, type ToolOutputState } from "@/lib/history-map";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
@@ -180,6 +182,44 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function liveToolResultMessage(toolCallId: string, output: ToolOutputState): ToolResultMessage {
+  const result: ToolResultMessage = {
+    role: "toolResult",
+    toolCallId,
+    content: output.text ? [{ type: "text", text: output.text }] : [],
+  };
+  if (output.toolName) result.toolName = output.toolName;
+  if (output.isError) result.isError = true;
+  return result;
+}
+
+function liveResultsFromOutputs(outputs: Map<string, ToolOutputState>): Map<string, ToolResultMessage> {
+  const map = new Map<string, ToolResultMessage>();
+  for (const [id, output] of outputs) {
+    if (!output.text && !output.isError) continue;
+    map.set(id, liveToolResultMessage(id, output));
+  }
+  return map;
+}
+
+function mergeLiveToolResults(
+  messages: AgentMessage[],
+  live: Map<string, ToolResultMessage>,
+): AgentMessage[] {
+  if (live.size === 0) return messages;
+  let next = messages;
+  for (const result of live.values()) {
+    if (next.some((msg) => msg.role === "toolResult" && msg.toolCallId === result.toolCallId)) continue;
+    if (next === messages) next = [...messages];
+    next.push(result);
+  }
+  return next;
+}
+
 function markOldestNoticeExiting(notices: NoticeItem[]): NoticeItem[] {
   const index = notices.findIndex((notice) => !notice.exiting);
   if (index === -1) return notices;
@@ -281,6 +321,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const navGenerationRef = useRef(0);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [entryIds, setEntryIds] = useState<string[]>([]);
+  const [liveToolResults, setLiveToolResults] = useState(() => new Map<string, ToolResultMessage>());
+  const liveToolOutputsRef = useRef(new Map<string, ToolOutputState>());
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -1106,6 +1148,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       case "agent_start":
         cancelEventStreamGrace();
+        liveToolOutputsRef.current = new Map();
+        setLiveToolResults((prev) => (prev.size === 0 ? prev : new Map()));
         agentLifecycleGenerationRef.current += 1;
         clearConversationPlanWidget();
         sdkAgentActiveRef.current = true;
@@ -1123,6 +1167,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setAgentPhase(null);
         setRetryInfo(null);
         dispatch({ type: "end" });
+        setMessages((prev) => mergeLiveToolResults(prev, liveResultsFromOutputs(liveToolOutputsRef.current)));
+        liveToolOutputsRef.current = new Map();
+        setLiveToolResults((prev) => (prev.size === 0 ? prev : new Map()));
         const finishingRunId = promptRunIdRef.current;
         const finishingLifecycleGeneration = agentLifecycleGenerationRef.current;
         const sid = sessionIdRef.current;
@@ -1211,6 +1258,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else {
           const delta = event.assistantMessageEvent as ClientAssistantMessageEvent | undefined;
           if (delta) {
+            if (delta.type === "toolcall_end") {
+              const toolCall = (delta as { toolCall?: { id?: string; name?: string; arguments?: unknown } }).toolCall;
+              const id = typeof toolCall?.id === "string" ? toolCall.id : "";
+              if (id) {
+                const current = liveToolOutputsRef.current.get(id) ?? { text: "" };
+                liveToolOutputsRef.current.set(
+                  id,
+                  applyToolOutputUpdate(
+                    current,
+                    { rawInput: isRecord(toolCall?.arguments) ? toolCall.arguments : {} },
+                    toolCall?.name,
+                  ),
+                );
+              }
+            }
             if (delta.type === "text_delta") {
               textDeltaBatcher.push(delta);
             } else {
@@ -1260,7 +1322,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             return [...prev, delivered];
           });
         } else if (completed) {
-          setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
+          const next = normalizeToolCalls(completed);
+          const live = liveResultsFromOutputs(liveToolOutputsRef.current);
+          setMessages((prev) => mergeLiveToolResults([...prev, next], live));
         }
         dispatch({ type: "end" });
         setAgentPhase({ kind: "waiting_model" });
@@ -1280,6 +1344,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const id = event.toolCallId as string;
         const name = event.toolName as string;
         const progress = getToolExecutionProgress(event.partialResult);
+        const partial = event.partialResult;
+        const update: Record<string, unknown> = isRecord(partial) ? { ...partial } : {};
+        if (update.content == null && update.rawOutput == null) {
+          const text = toolResultText(partial);
+          if (text) update.content = text;
+        }
+        if (id) {
+          const next = applyToolOutputUpdate(
+            liveToolOutputsRef.current.get(id) ?? { text: "" },
+            update,
+            name,
+          );
+          liveToolOutputsRef.current.set(id, next);
+          if (next.text || next.isError) {
+            const result = liveToolResultMessage(id, next);
+            setLiveToolResults((prev) => {
+              const map = new Map(prev);
+              map.set(id, result);
+              return map;
+            });
+          }
+        }
         setAgentPhase((prev) => {
           const tools = prev?.kind === "running_tools" ? [...prev.tools] : [];
           const existing = tools.find((tool) => tool.id === id);
@@ -2151,7 +2237,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, entryIds, streamState,
+    data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
