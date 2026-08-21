@@ -105,12 +105,12 @@ function serversFromPlugin(plugin: GrokPluginInfo): McpServer[] {
   return servers;
 }
 
-async function pluginMcpServers(cwd: string): Promise<McpServer[]> {
+async function pluginMcpServers(cwd: string): Promise<{ servers: McpServer[]; error?: string }> {
   try {
     const listed = await getAgentRuntime().listPlugins(cwd);
-    return (listed.plugins ?? []).flatMap(serversFromPlugin);
-  } catch {
-    return [];
+    return { servers: (listed.plugins ?? []).flatMap(serversFromPlugin) };
+  } catch (error) {
+    return { servers: [], error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -154,21 +154,33 @@ function parseTransport(body: {
   return { command, ...(args.length ? { args } : {}) };
 }
 
+function pluginOverlayDiagnostic(error: string): PluginDiagnostic {
+  return { type: "error", message: `Plugin MCP overlay failed: ${error}` };
+}
+
 async function readMcp(cwd: string): Promise<PluginsResponse> {
-  const pluginServers = await pluginMcpServers(cwd);
+  const plugin = await pluginMcpServers(cwd);
+  const overlayDiagnostics = plugin.error ? [pluginOverlayDiagnostic(plugin.error)] : [];
   try {
     const listed = await getAgentRuntime().listMcp(cwd);
-    return toPluginsResponse(mergeMcpServers(listed.servers ?? [], pluginServers), cwd);
+    return toPluginsResponse(
+      mergeMcpServers(listed.servers ?? [], plugin.servers),
+      cwd,
+      overlayDiagnostics.length ? overlayDiagnostics : undefined,
+    );
   } catch (error) {
-    const diagnostics: PluginDiagnostic[] = [{
-      type: "error",
-      message: error instanceof Error ? error.message : String(error),
-    }];
+    const diagnostics: PluginDiagnostic[] = [
+      ...overlayDiagnostics,
+      {
+        type: "error",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
     const servers = listMcpServers(readGrokConfig()).map((server) => ({
       name: server.name,
       session: server.enabled === false ? { enabled: false } : undefined,
     }));
-    return toPluginsResponse(mergeMcpServers(servers, pluginServers), cwd, diagnostics);
+    return toPluginsResponse(mergeMcpServers(servers, plugin.servers), cwd, diagnostics);
   }
 }
 
@@ -234,8 +246,11 @@ export async function POST(req: Request) {
       await runtime.toggleMcp(body.cwd, source, body.action === "enable");
     } else if (body.action === "remove") {
       if (!source) return Response.json({ error: "source required" }, { status: 400 });
-      const listed = await readMcp(body.cwd);
-      if (listed.packages.find((pkg) => pkg.source === source)?.origin === "plugin") {
+      const plugin = await pluginMcpServers(body.cwd);
+      if (plugin.error) {
+        return Response.json({ error: "Cannot verify MCP origin because plugin list failed." }, { status: 503 });
+      }
+      if (plugin.servers.some((server) => server.name === source)) {
         return Response.json({ error: "Plugin MCP servers are removed by disabling or uninstalling the plugin." }, { status: 400 });
       }
       await runtime.deleteMcp(body.cwd, source);
