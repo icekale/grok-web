@@ -52,6 +52,21 @@ test("handles feedback and recap as builtin slash commands", () => {
   assert.match(builtin, /type: "recap"/);
 });
 
+test("maps TUI slash commands onto session rename, delete, and Grok settings", () => {
+  const handler = source.slice(
+    source.indexOf("  const handleBuiltinSlashCommand = useCallback"),
+    source.indexOf("  const sendStreamingPrompt"),
+  );
+  assert.match(handler, /commandName === "skills"/);
+  assert.match(handler, /onOpenSettings\?\.\("skills"\)/);
+  assert.match(handler, /commandName === "mcp"/);
+  assert.match(handler, /commandName === "delete"/);
+  assert.match(handler, /action: "confirmDeleteSession"/);
+  assert.match(handler, /case "rename":/);
+  assert.match(handler, /Usage: \/rename <name>/);
+  assert.doesNotMatch(handler, /Usage: \/name <name>/);
+});
+
 test("keeps the session event stream open through the idle grace window", () => {
   const finishSource = source.slice(
     source.indexOf("const finishPromptWithoutStream"),

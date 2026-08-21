@@ -135,7 +135,7 @@
 - **导出** — 走已有 `GET /api/sessions/:id/export`，打包该会话目录。
 - **从侧栏隐藏** — grok-web 元数据，不是 TUI 命令。分隔线以下，不要写成 `/archive`，也不要做成另一套会话库。
 
-顺序：Rename / Delete / Export，然后才是隐藏。
+顺序：Rename / Delete / Export，然后才是隐藏。Composer `/` 同样露出 `/rename` `/delete`（`/name` 仍可当别名）。`/delete` 走同一套磁盘删除确认。
 
 ### 5.7 Worktrees / Skills / Plugins / MCP / 子代理
 
@@ -143,7 +143,7 @@
 
 **Worktrees。** 选中项目是 git 仓库且 `worktrees` 拉回来后，侧栏区块默认展开（含创建行）。创建/删除行为不变。
 
-**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。设置页仍可进，项目 `⋯` 不再重复这三项。页内编辑器不重写。
+**Skills / Plugins / MCP。** 选中项目时以日常按钮露出，分别 `openSettings("skills"|"plugins"|"mcp")`。Composer `/skills` `/plugins` `/mcp` 进同一页。设置页仍可进，项目 `⋯` 不再重复这三项。页内编辑器不重写。
 
 **子代理。** 打开的是根会话时，顶栏子代理控件就要在，不必等 `count > 0`。桌面顶栏写出 Subagents / 子代理，不要只剩图标。count 为 0 时控件仍可打开，空状态用现有 `subagents.empty`。用户文案不要出现 Codex。
 

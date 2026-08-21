@@ -137,7 +137,12 @@ export interface SlashCommandInfo {
 
 export type BuiltinSlashCommandResult =
   | { handled: false }
-  | { handled: true; message?: string; error?: string; action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" };
+  | {
+    handled: true;
+    message?: string;
+    error?: string;
+    action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" | "openSkills" | "openMcp" | "confirmDeleteSession";
+  };
 
 export interface UseAgentSessionOptions {
   session: SessionInfo | null;
@@ -153,7 +158,7 @@ export interface UseAgentSessionOptions {
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsPanelOpen?: () => void;
-  onOpenSettings?: (section: "plugins" | "marketplace") => void;
+  onOpenSettings?: (section: import("@/components/SettingsPage").SettingsSection) => void;
   setToolPreset?: (preset: ToolPreset) => void;
   /** Read-only history mode: never fetch the live agent state for this session. */
   readOnlyHistory?: boolean;
@@ -1828,6 +1833,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       onOpenSettings?.("marketplace");
       return { handled: true, action: "openMarketplace" };
     }
+    if (commandName === "skills") {
+      onOpenSettings?.("skills");
+      return { handled: true, action: "openSkills" };
+    }
+    if (commandName === "mcp") {
+      onOpenSettings?.("mcp");
+      return { handled: true, action: "openMcp" };
+    }
+    if (commandName === "delete") {
+      if (!sessionIdRef.current) {
+        addNotice({ type: "error", message: "No session to delete" });
+        return { handled: true, error: "No session to delete" };
+      }
+      return { handled: true, action: "confirmDeleteSession" };
+    }
     const sid = sessionIdRef.current ?? await ensureNewSession();
     const complete = (result: BuiltinSlashCommandResult): BuiltinSlashCommandResult => {
       if (!result.handled) return result;
@@ -1867,9 +1887,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           return complete({ handled: true, message: "Reloaded session resources" });
         }
 
+        case "rename":
         case "name": {
-          if (!sid) return complete({ handled: true, error: "No active session to name" });
-          if (!args) return complete({ handled: true, error: "Usage: /name <name>" });
+          if (!sid) return complete({ handled: true, error: "No active session to rename" });
+          if (!args) return complete({ handled: true, error: "Usage: /rename <name>" });
           await sendAgentCommand(sid, { type: "set_session_name", name: args });
           if (await loadSession(sid)) promoteNewSession();
           return complete({ handled: true, message: `Session renamed to ${args}` });

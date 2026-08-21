@@ -221,14 +221,17 @@ type SlashCommandPaletteItem = SlashCommandInfo | {
 type SlashCommandSource = SlashCommandPaletteItem["source"];
 
 const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
+  { name: "rename", description: "chat.commandRename", source: "builtin" },
+  { name: "delete", description: "chat.commandDelete", source: "builtin" },
+  { name: "skills", description: "chat.commandSkills", source: "builtin" },
+  { name: "plugins", description: "chat.commandPlugins", source: "builtin" },
+  { name: "mcp", description: "chat.commandMcp", source: "builtin" },
   { name: "compact", description: "chat.commandCompact", source: "builtin" },
   { name: "reload", description: "chat.commandReload", source: "builtin" },
-  { name: "name", description: "chat.commandName", source: "builtin" },
   { name: "session", description: "chat.commandSession", source: "builtin" },
   { name: "copy", description: "chat.commandCopy", source: "builtin" },
   { name: "feedback", description: "chat.commandFeedback", source: "builtin" },
   { name: "recap", description: "chat.commandRecap", source: "builtin" },
-  { name: "plugins", description: "chat.commandPlugins", source: "builtin" },
   { name: "marketplace", description: "chat.commandMarketplace", source: "builtin" },
 ];
 

@@ -20,12 +20,17 @@ test("composer bang is not a local bash escape", async () => {
   assert.doesNotMatch(source, /t\("chat\.shell"\)/);
 });
 
-test("lists feedback, recap, plugins, and marketplace as builtin slash commands", async () => {
+test("lists TUI session and project commands as builtin slash commands", async () => {
   const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /name: "rename"/);
+  assert.match(source, /name: "delete"/);
+  assert.match(source, /name: "skills"/);
+  assert.match(source, /name: "plugins"/);
+  assert.match(source, /name: "mcp"/);
   assert.match(source, /name: "feedback"/);
   assert.match(source, /name: "recap"/);
-  assert.match(source, /name: "plugins"/);
   assert.match(source, /name: "marketplace"/);
+  assert.doesNotMatch(source, /name: "name"/);
   assert.match(source, /action === "openFeedback"/);
 });
 

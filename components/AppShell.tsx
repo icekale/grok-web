@@ -2384,6 +2384,7 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onOpenSettings={openSettings}
+              onSessionDeleted={handleSessionDeleted}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
               subagentTreeVisible={subagentCount > 0}

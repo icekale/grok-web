@@ -22,6 +22,7 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile, useIsWideDesktop } from "@/hooks/useIsMobile";
+import type { SettingsSection } from "./SettingsPage";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import {
@@ -48,7 +49,8 @@ interface Props {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
-  onOpenSettings?: (section: "plugins" | "marketplace") => void;
+  onOpenSettings?: (section: SettingsSection) => void;
+  onSessionDeleted?: (sessionId: string) => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
   /** Optional right-side slot rendered only inside the session workspace. */
@@ -272,13 +274,16 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, de
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, desktopAside, playDoneSound = () => {}, unlockAudio, subagentMode, subagentTreeVisible = false, tokenSpeedEnabled = true }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onSessionDeleted, onContextUsageChange, onOpenFile, desktopAside, playDoneSound = () => {}, unlockAudio, subagentMode, subagentTreeVisible = false, tokenSpeedEnabled = true }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const isWideDesktop = useIsWideDesktop();
   const playDoneSoundRef = useRef(playDoneSound);
   playDoneSoundRef.current = playDoneSound;
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
+  const [pendingSlashDelete, setPendingSlashDelete] = useState(false);
+  const [slashDeleting, setSlashDeleting] = useState(false);
+  const [slashDeleteError, setSlashDeleteError] = useState<string | null>(null);
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
   const handleEditContent = useCallback((message: UserMessage) => {
@@ -310,6 +315,30 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     readOnlyHistory: Boolean(subagentMode),
     historyRefreshGeneration: subagentMode?.transcriptRefreshGeneration,
   });
+  const handleComposerBuiltin = useCallback(async (text: string) => {
+    const result = await handleBuiltinSlashCommand(text);
+    if (result.handled && result.action === "confirmDeleteSession") {
+      setSlashDeleteError(null);
+      setPendingSlashDelete(true);
+    }
+    return result;
+  }, [handleBuiltinSlashCommand]);
+  const confirmSlashDelete = useCallback(async () => {
+    const id = session?.id;
+    if (!id || slashDeleting) return;
+    setSlashDeleting(true);
+    setSlashDeleteError(null);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setPendingSlashDelete(false);
+      onSessionDeleted?.(id);
+    } catch (cause) {
+      setSlashDeleteError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSlashDeleting(false);
+    }
+  }, [onSessionDeleted, session?.id, slashDeleting]);
   const sessionBusy = agentRunning || bashRunning;
   const goalModel = resolveGoalPanelModel({
     widgets: extensionWidgets,
@@ -649,7 +678,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       slashCommands={slashCommands}
       slashCommandsLoading={slashCommandsLoading}
       onLoadSlashCommands={loadSlashCommands}
-      onBuiltinCommand={handleBuiltinSlashCommand}
+      onBuiltinCommand={handleComposerBuiltin}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
       cwd={session?.cwd ?? newSessionCwd}
@@ -1079,6 +1108,24 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
           </div>
         ) : null}
       </div>
+      )}
+      {pendingSlashDelete && (
+        <DialogShell
+          size="confirm"
+          title={t("sidebar.confirmDeleteSession")}
+          onClose={() => { if (!slashDeleting) setPendingSlashDelete(false); }}
+          dismissible={!slashDeleting}
+          backdropDismissible={false}
+          footer={(
+            <>
+              <button type="button" className="codex-dialog-button" onClick={() => setPendingSlashDelete(false)} disabled={slashDeleting}>{t("sidebar.cancel")}</button>
+              <button type="button" className="codex-dialog-button" data-variant="danger" disabled={slashDeleting} onClick={() => void confirmSlashDelete()}>{t("sidebar.deleteSession")}</button>
+            </>
+          )}
+        >
+          <p className="codex-dialog-copy">{t("sidebar.confirmDeleteSessionCopy")}</p>
+          {slashDeleteError ? <p className="codex-row-error" role="alert">{slashDeleteError}</p> : null}
+        </DialogShell>
       )}
     </div>
   );
