@@ -42,7 +42,7 @@ Confirmed:
 - Conversation protocol is Grok ACP. grok-web HTTP/SSE is the browser wire for this app, not a pi-web SSE compatibility contract.
 - Composer `!` is a normal prompt. Users run shell commands through the agent's terminal tool, same as the TUI.
 - Missing ACP methods surface as explicit errors. Local git/fs fallback is read-only.
-- Prompt images are rejected (`promptCapabilities.image` is false). Tool presets (`none|read-only|default|full`) are ACP `configOptions` ids. Extension custom UI is unsupported.
+- Prompt images are sent as ACP `image` content blocks on `session/prompt`. Tool presets (`none|read-only|default|full`) are ACP `configOptions` ids. Extension custom UI is unsupported.
 - Custom providers in Settings can import and test models against an OpenAI-compatible base URL; the live chat model list still comes from Grok ACP.
 
 Undecided (do not invent):

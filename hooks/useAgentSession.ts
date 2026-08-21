@@ -338,7 +338,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("high");
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("xhigh");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -1727,7 +1727,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Like pi, apply it to the model a new session starts with.
       const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.id}`];
       if (thinkingLevelOverrideRef.current === null) {
-        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "high");
+        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "xhigh");
       }
     }
   }, [isNew, newSessionCwd, session?.cwd]);

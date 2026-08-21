@@ -73,7 +73,7 @@ grok agent stdio
 
 ## 5. 数据流
 
-**适配器保 UI 不动。** 路由与命令形状对齐 pi-web：`/api/sessions`、`/api/agent/:id`、SSE 事件名与载荷尽量兼容现有 hooks。Pi 专有字段在适配器里填默认或从 Grok 等价物映射，禁止为 Grok 改一版不兼容的前端协议。
+**HTTP 路径与壳保留；内部合同是 Grok ACP。** 路由外形仍是 `/api/sessions`、`/api/agent/:id`。SSE 事件名可以沿用现有 hooks，但视为 grok-web 自己的 wire，不再承诺兼容 pi-web，也不再把 Pi 专有字段填默认值来假装是 Pi。ACP 与 `updates.jsonl` 是对话真相。见 `docs/superpowers/specs/2026-08-21-grok-native-core-design.md`。
 
 ### 读（不拉起回合）
 
