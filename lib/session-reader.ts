@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { grokHome } from "./grok-home.ts";
 import { mapUpdatesJsonl, toolResultText, type HistoryMessage } from "./history-map.ts";
 import { findGrokSession, listGrokSessions } from "./session-index.ts";
 import type { AgentMessage, SessionContext, SessionEntry, SessionHeader, SessionInfo } from "./types";
 
 export function getAgentDir(): string {
-  throw new Error("not implemented in foundation");
+  return grokHome();
 }
 
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
