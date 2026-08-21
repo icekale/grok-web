@@ -14,6 +14,7 @@ function fileContentBlock() {
 
 test("only the active file tab mounts a FileViewer", () => {
   const block = fileContentBlock();
+  assert.match(block, /rightPanelOpen \? \(/);
   assert.match(block, /activeFileTab\?\.filePath \? \(/);
   assert.doesNotMatch(block, /fileTabs\.map\(/);
   assert.equal(block.match(/<FileViewer/g)?.length, 1);

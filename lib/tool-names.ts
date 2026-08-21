@@ -14,12 +14,23 @@ export function isWriteToolName(toolName: string): boolean {
     name.endsWith("_write");
 }
 
+export function isBashToolName(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === "bash"
+    || name === "shell"
+    || name === "terminal"
+    || name === "run_terminal_command"
+    || name === "execute";
+}
+
 export function isEditToolName(toolName: string): boolean {
   const name = toolName.toLowerCase();
   return name === "edit" ||
+    name === "search_replace" ||
     name.startsWith("edit_") ||
     name.endsWith(".edit") ||
     name.endsWith("_edit") ||
     name.includes("str_replace") ||
+    name.includes("search_replace") ||
     name.includes("replace_editor");
 }

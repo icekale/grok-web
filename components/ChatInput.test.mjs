@@ -20,10 +20,12 @@ test("composer bang is not a local bash escape", async () => {
   assert.doesNotMatch(source, /t\("chat\.shell"\)/);
 });
 
-test("lists feedback and recap as builtin slash commands", async () => {
+test("lists feedback, recap, plugins, and marketplace as builtin slash commands", async () => {
   const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /name: "feedback"/);
   assert.match(source, /name: "recap"/);
+  assert.match(source, /name: "plugins"/);
+  assert.match(source, /name: "marketplace"/);
   assert.match(source, /action === "openFeedback"/);
 });
 
@@ -42,7 +44,7 @@ test("model chip matches Settings models by id when the provider label differs",
   assert.match(source, /modelOptions\.find\(\(o\) => o\.modelId === model\.modelId\)\?\.name/);
 });
 
-test("disables image attach because Grok ACP has no image prompt capability", () => {
+test("disables image attach when imagesEnabled is false", () => {
   const html = renderToStaticMarkup(
     React.createElement(
       I18nProvider,
@@ -56,6 +58,23 @@ test("disables image attach because Grok ACP has no image prompt capability", ()
   );
   assert.match(html, /disabled=""/);
   assert.match(html, /Grok cannot attach images|不能附加图片|chat\.imagesNotSupported/);
+});
+
+test("enables image attach when imagesEnabled is true", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {},
+        onAbort() {},
+        isStreaming: false,
+        imagesEnabled: true,
+      }),
+    ),
+  );
+  assert.match(html, /Attach image|附加图片/);
+  assert.doesNotMatch(html, /Grok cannot attach images|不能附加图片/);
 });
 
 test("renders the upstream model error", () => {

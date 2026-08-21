@@ -72,6 +72,15 @@ export default defineConfig(({ command }) => {
       host: "127.0.0.1",
       port: 30142,
     },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "lucide-react",
+        "@tanstack/react-router",
+      ],
+    },
     ssr: { external: EXTERNAL_PACKAGES, noExternal: ["@lobehub/icons"] },
     plugins: [
       tanstackStart({ srcDirectory: "src" }),

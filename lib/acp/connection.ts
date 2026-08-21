@@ -1,4 +1,6 @@
-import { JsonRpcConn } from "./jsonrpc.ts";
+import { readAcpTextFile, writeAcpTextFile } from "./client-fs.ts";
+import { isJsonRpcId, JsonRpcConn, type JsonRpcId } from "./jsonrpc.ts";
+import { buildAcpPrompt, parsePromptImages } from "./prompt-images.ts";
 import {
   resolvePermission,
   translatePermissionRequest,
@@ -7,24 +9,103 @@ import {
 
 type PendingPermission = {
   request: unknown;
-  requestId: string;
+  requestId: JsonRpcId;
   startedAt: number;
   timer: ReturnType<typeof setTimeout>;
+};
+
+export type AcpFsContext = {
+  cwd?: string;
+  roots: Iterable<string>;
+  readRoots?: Iterable<string>;
+};
+
+export type GrokPluginInfo = {
+  name: string;
+  id?: string;
+  root?: string;
+  scope?: string;
+  trusted?: boolean;
+  enabled?: boolean;
+  version?: string;
+  description?: string;
+  skillCount?: number;
+  skillNames?: string[];
+  agentCount?: number;
+  agentNames?: string[];
+  hookStatus?: string;
+  hookCount?: number;
+  mcpServerCount?: number;
+  mcpStatus?: string;
+  marketplaceSource?: string;
+  origin?: { type?: string };
+};
+
+export type GrokPluginsAction =
+  | { type: "reload" }
+  | { type: "install"; source: string }
+  | { type: "uninstall"; plugin_id: string }
+  | { type: "update"; plugin_id?: string }
+  | { type: "add"; path: string }
+  | { type: "remove"; path: string }
+  | { type: "enable"; plugin_id: string }
+  | { type: "disable"; plugin_id: string };
+
+export type GrokMarketplacePlugin = {
+  name: string;
+  version?: string | null;
+  description?: string | null;
+  relativePath?: string;
+  skillCount?: number;
+  hasHooks?: boolean;
+  hasAgents?: boolean;
+  hasMcp?: boolean;
+  installStatus?: string;
+  installedVersion?: string | null;
+};
+
+export type GrokMarketplaceSource = {
+  sourceName: string;
+  sourceKind?: string;
+  sourceUrlOrPath: string;
+  plugins?: GrokMarketplacePlugin[];
+  error?: string | null;
+};
+
+export type GrokMarketplaceAction =
+  | { type: "refresh" }
+  | { type: "add_source"; url: string }
+  | { type: "remove_source"; source_url_or_path: string }
+  | { type: "install"; source_url_or_path: string; plugin_relative_path: string }
+  | { type: "uninstall"; source_url_or_path: string; plugin_relative_path?: string }
+  | { type: "update"; source_url_or_path: string };
+
+export type GrokActionOutcome = {
+  status?: string;
+  message?: string;
+  requiresReload?: boolean;
+  requiresRestart?: boolean;
 };
 
 export class AcpConnection {
   private readonly rpc: JsonRpcConn;
   private readonly permissionTimeoutMs: number;
   private readonly now: () => number;
+  private readonly fsContext: (sessionId: string | undefined) => AcpFsContext;
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
   private readonly fuzzyWaiters = new Map<string, (matches: Array<{ path: string; type?: string; name?: string }>) => void>();
   availableCommands: Array<{ name: string; description?: string }> = [];
 
-  constructor(rpc: JsonRpcConn, options: { permissionTimeoutMs?: number; now?: () => number } = {}) {
+  constructor(rpc: JsonRpcConn, options: {
+    permissionTimeoutMs?: number;
+    now?: () => number;
+    fsContext?: (sessionId: string | undefined) => AcpFsContext;
+  } = {}) {
     this.rpc = rpc;
     this.permissionTimeoutMs = options.permissionTimeoutMs ?? 60_000;
     this.now = options.now ?? Date.now;
+    this.fsContext = options.fsContext ?? (() => ({ roots: [] }));
     this.rpc.onNotification((method, params, id) => {
       if (method === "_x.ai/search/fuzzy/status" && isRecord(params) && typeof params.searchId === "string") {
         const waiter = this.fuzzyWaiters.get(params.searchId);
@@ -34,7 +115,28 @@ export class AcpConnection {
         }
         return;
       }
-      if (method !== "session/request_permission" || typeof id !== "number") return;
+      if (isJsonRpcId(id) && (method === "fs/read_text_file" || method === "fs/write_text_file")) {
+        try {
+          const context = this.fsContext(validSessionId(params));
+          const writeRoots = context.roots instanceof Set ? context.roots : new Set(context.roots);
+          const readRoots = context.readRoots
+            ? context.readRoots instanceof Set ? context.readRoots : new Set(context.readRoots)
+            : writeRoots;
+          this.rpc.respond(
+            id,
+            method === "fs/read_text_file"
+              ? readAcpTextFile(params, readRoots, context.cwd)
+              : writeAcpTextFile(params, writeRoots, context.cwd),
+          );
+        } catch (error) {
+          this.rpc.respond(id, undefined, {
+            code: -32603,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+      if (method !== "session/request_permission" || !isJsonRpcId(id)) return;
       const sessionId = validSessionId(params);
       if (!sessionId) {
         const startedAt = this.now();
@@ -51,7 +153,7 @@ export class AcpConnection {
       if (existing) clearTimeout(existing.timer);
       const startedAt = this.now();
       const timer = setTimeout(() => this.expirePermission(key), this.permissionTimeoutMs);
-      this.pendingPermissions.set(key, { request: params, requestId, startedAt, timer });
+      this.pendingPermissions.set(key, { request: params, requestId: id, startedAt, timer });
       const event = translatePermissionRequest(params, id);
       const uiRequest = sessionId ? { ...event, sessionId } : event;
       for (const handler of this.permissionHandlers) handler(uiRequest);
@@ -79,7 +181,7 @@ export class AcpConnection {
     if (!pending) return;
     clearTimeout(pending.timer);
     this.pendingPermissions.delete(key);
-    this.rpc.respond(Number(id), resolvePermission(ui, pending.request, {
+    this.rpc.respond(pending.requestId, resolvePermission(ui, pending.request, {
       startedAt: pending.startedAt,
       now: this.now(),
       timeoutMs: this.permissionTimeoutMs,
@@ -90,7 +192,7 @@ export class AcpConnection {
     const pending = this.pendingPermissions.get(id);
     if (!pending) return;
     this.pendingPermissions.delete(id);
-    this.rpc.respond(Number(pending.requestId), resolvePermission({ cancelled: true }, pending.request, {
+    this.rpc.respond(pending.requestId, resolvePermission({ cancelled: true }, pending.request, {
       startedAt: pending.startedAt,
       now: this.now(),
       timeoutMs: this.permissionTimeoutMs,
@@ -110,7 +212,7 @@ export class AcpConnection {
       protocolVersion: 1,
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
-        terminal: true,
+        terminal: false,
       },
     });
     this.availableCommands = readAvailableCommands(raw);
@@ -125,11 +227,12 @@ export class AcpConnection {
     }) as Promise<{ sessionId: string }>;
   }
 
-  sessionLoad(sessionId: string, cwd?: string): Promise<{ sessionId: string }> {
+  sessionLoad(sessionId: string, cwd?: string, meta: Record<string, unknown> = {}): Promise<{ sessionId: string }> {
     return this.rpc.request("session/load", {
       sessionId,
       cwd,
       mcpServers: [],
+      _meta: meta,
     }) as Promise<{ sessionId: string }>;
   }
 
@@ -148,10 +251,14 @@ export class AcpConnection {
     }>;
   }
 
-  sessionPrompt(sessionId: string, text: string): Promise<unknown> {
+  sessionPrompt(
+    sessionId: string,
+    text: string,
+    images: unknown[] = [],
+  ): Promise<unknown> {
     return this.rpc.request("session/prompt", {
       sessionId,
-      prompt: [{ type: "text", text }],
+      prompt: buildAcpPrompt(text, parsePromptImages(images)),
     });
   }
 
@@ -324,6 +431,22 @@ export class AcpConnection {
       session_id: sessionId,
       server_name: serverName,
     }).then(unwrapResult);
+  }
+
+  pluginsList(sessionId: string): Promise<{ plugins: GrokPluginInfo[] }> {
+    return this.rpc.request("_x.ai/plugins/list", { sessionId }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  pluginsAction(sessionId: string, action: GrokPluginsAction): Promise<GrokActionOutcome> {
+    return this.rpc.request("_x.ai/plugins/action", { sessionId, action }).then((raw) => unwrapResult(raw) as never);
+  }
+
+  marketplaceList(): Promise<{ sources: GrokMarketplaceSource[] }> {
+    return this.rpc.request("_x.ai/marketplace/list", {}).then((raw) => unwrapResult(raw) as never);
+  }
+
+  marketplaceAction(sessionId: string, action: GrokMarketplaceAction): Promise<GrokActionOutcome> {
+    return this.rpc.request("_x.ai/marketplace/action", { sessionId, action }).then((raw) => unwrapResult(raw) as never);
   }
 
   skillsList(cwd: string): Promise<{ skills: Array<{

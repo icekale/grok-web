@@ -15,6 +15,17 @@ test("composer bang is not a local bash escape", () => {
   assert.doesNotMatch(chatWindowSource, /pendingBash/);
 });
 
+test("applies streamed context usage from Grok session signals", () => {
+  const usageSource = source.slice(
+    source.indexOf('case "context_usage"'),
+    source.indexOf('case "agent_start"'),
+  );
+  assert.match(usageSource, /setContextUsage\(/);
+  assert.match(usageSource, /contextWindow > 0/);
+  assert.match(usageSource, /userMessages/);
+  assert.match(usageSource, /toolCalls/);
+});
+
 test("handles feedback and recap as builtin slash commands", () => {
   const builtin = source.slice(source.indexOf('case "feedback":'), source.indexOf("const handleToolPresetChange"));
   assert.match(builtin, /action: "openFeedback"/);
@@ -412,9 +423,13 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
 
   assert.match(source, /streamReducer,[\s\S]*type ClientAssistantMessageEvent/);
   assert.doesNotMatch(source, /streamingMessageRef/);
-  assert.match(connectedSource, /dispatch\(\{ type: "end" \}\)/);
+  assert.doesNotMatch(connectedSource, /dispatch\(\{ type: "end" \}\)/);
   assert.match(connectedSource, /event\.isStreaming === true/);
+  assert.match(connectedSource, /if \(!alreadyLive\) dispatch\(\{ type: "start" \}\)/);
   assert.match(connectedSource, /agentRunningRef\.current = true/);
+  assert.match(source, /function isSameAssistantTurn/);
+  assert.match(source, /ignoreStreamSnapshotRef\.current = true/);
+  assert.match(source, /if \(ignoreStreamSnapshotRef\.current\) break/);
   assert.match(streamSource, /msg\?\.role === "assistant"[\s\S]*dispatch\(\{ type: "snapshot", message: msg \}\)/);
   assert.match(streamSource, /event\.assistantMessageEvent as ClientAssistantMessageEvent/);
   assert.match(streamSource, /dispatch\(\{ type: "delta", event: delta \}\)/);

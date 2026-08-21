@@ -8,7 +8,8 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MessageView, getToolCallInputText, replaceUserMessageText } = await jiti.import("./MessageView.tsx");
+const { MessageView } = await jiti.import("./MessageView.tsx");
+const { replaceUserMessageText } = await jiti.import("../lib/replace-user-message.ts");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
 
 const source = await import("node:fs").then((fs) => fs.readFileSync(new URL("./MessageView.tsx", import.meta.url), "utf8"));
@@ -120,6 +121,46 @@ test("keeps partial aborted content and a stopped status", () => {
   assert.match(html, /Stopped/);
 });
 
+test("keeps only the current tool card while streaming earlier green rows", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "grok",
+    model: "grok-4.6",
+    content: [
+      { type: "text", text: "working" },
+      { type: "toolCall", toolCallId: "c1", toolName: "read_file", input: { target_file: "a.ts" } },
+      { type: "toolCall", toolCallId: "c2", toolName: "grep", input: { pattern: "foo" } },
+      { type: "toolCall", toolCallId: "c3", toolName: "search_replace", input: { file_path: "a.ts" } },
+    ],
+  }, { isStreaming: true });
+
+  assert.match(html, /working/);
+  assert.match(html, /search_replace/);
+  assert.match(html, /a\.ts/);
+  assert.doesNotMatch(html, />read_file</);
+  assert.doesNotMatch(html, />grep</);
+  assert.match(html, /\+2/);
+});
+
+test("shows a Grok tool preview instead of generating-parameters once arguments exist", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "grok",
+    model: "grok-4.6",
+    content: [{
+      type: "toolCall",
+      toolCallId: "call-1",
+      toolName: "grep",
+      input: { pattern: "marketplace", glob: "*.ts" },
+      rawInput: "",
+    }],
+  }, { isStreaming: true });
+
+  assert.match(html, /grep/);
+  assert.match(html, /marketplace/);
+  assert.doesNotMatch(html, /Generating parameters/);
+});
+
 test("keeps streamed tool input out of collapsed markup while counting it", () => {
   const block = {
     type: "toolCall",
@@ -138,7 +179,7 @@ test("keeps streamed tool input out of collapsed markup while counting it", () =
   assert.match(html, /write/);
   assert.match(html, /Generating parameters/);
   assert.doesNotMatch(html, /secret-stream-fragment/);
-  assert.equal(getToolCallInputText(block), block.rawInput);
+  assert.equal(block.rawInput ?? JSON.stringify(block.input, null, 2), block.rawInput);
 });
 
 test("renders thinking content through the shared Markdown renderer", async () => {
@@ -180,8 +221,28 @@ test("expands thinking and tool inputs for a live message", () => {
 
   assert.match(html, /<h2>Plan<\/h2>/);
   assert.match(html, /<li>inspect<\/li>/);
-  // Expanded input now renders pretty JSON (rawInput approach).
-  assert.match(html, /&quot;command&quot;: &quot;printf \\&quot;hello\\&quot;\\nnext line&quot;/);
+  assert.match(html, /printf &quot;hello&quot;/);
+  assert.doesNotMatch(html, /&quot;command&quot;/);
+});
+
+test("renders Grok run_terminal_command cards as bash with the command, not JSON", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "grok",
+    model: "grok-4.6",
+    content: [{
+      type: "toolCall",
+      toolCallId: "call-1",
+      toolName: "run_terminal_command",
+      input: { command: "ls -la", description: "List files" },
+    }],
+  }, { defaultDetailsExpanded: true });
+
+  assert.match(html, />bash</);
+  assert.match(html, /ls -la/);
+  assert.doesNotMatch(html, /run_terminal_command/);
+  assert.doesNotMatch(html, /&quot;command&quot;/);
+  assert.doesNotMatch(html, /List files/);
 });
 
 test("keeps streaming thinking and tool inputs collapsed by default", () => {

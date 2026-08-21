@@ -113,7 +113,7 @@ interface Props {
   cwd?: string | null;
   /** Basename shown inside the composer on the empty new-session home. */
   workspaceHint?: string | null;
-  /** Grok ACP promptCapabilities.image is false. */
+  /** Composer paste/attach; grok-web sends ACP `image` content blocks. */
   imagesEnabled?: boolean;
 }
 
@@ -227,6 +227,8 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
   { name: "copy", description: "chat.commandCopy", source: "builtin" },
   { name: "feedback", description: "chat.commandFeedback", source: "builtin" },
   { name: "recap", description: "chat.commandRecap", source: "builtin" },
+  { name: "plugins", description: "chat.commandPlugins", source: "builtin" },
+  { name: "marketplace", description: "chat.commandMarketplace", source: "builtin" },
 ];
 
 const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];

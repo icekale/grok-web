@@ -31,8 +31,14 @@ export function DesktopConversationContext({ model, onOpenDetails }: Props) {
       </button>
       <section className="desktop-context-capacity">
         <div className="desktop-context-capacity-copy">
-          <strong>{formatCompact(model.usedTokens ?? 0)} <small>/ {formatCompact(model.contextWindow)}</small></strong>
-          <span>{t("context.available", { tokens: formatCompact(model.availableTokens) })}</span>
+          {model.contextWindow > 0 ? (
+            <>
+              <strong>{formatCompact(model.usedTokens ?? 0)} <small>/ {formatCompact(model.contextWindow)}</small></strong>
+              <span>{t("context.available", { tokens: formatCompact(model.availableTokens) })}</span>
+            </>
+          ) : (
+            <strong>{t("context.unknown")}</strong>
+          )}
         </div>
         <div className="desktop-context-progress" style={progressStyle} aria-label={`${model.percent ?? 0}% ${t("context.used")}`}>
           <span />

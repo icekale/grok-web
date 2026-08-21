@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { grokHome } from "./grok-home.ts";
 import { mapUpdatesJsonl, toolResultText, type HistoryMessage } from "./history-map.ts";
+import { isBashToolName } from "./tool-names.ts";
 import { findGrokSession, listGrokSessions } from "./session-index.ts";
 import type { AgentMessage, SessionContext, SessionEntry, SessionHeader, SessionInfo } from "./types";
 
@@ -157,7 +158,7 @@ function collectBashHints(
     const toolCallId = stringField(value.toolCallId) || stringField(value.id);
     const toolName = stringField(value.title) || stringField(value.toolName) || stringField(value.kind);
     const input = isRecord(value.input) ? value.input : isRecord(value.rawInput) ? value.rawInput : undefined;
-    if (toolCallId && isBashTool(toolName) && input && typeof input.command === "string") {
+    if (toolCallId && isBashToolName(toolName) && input && typeof input.command === "string") {
       commandsByTool.set(toolCallId, input.command);
     }
     if (typeof value.fullOutputPath === "string" && value.fullOutputPath) {
@@ -218,11 +219,6 @@ function isSessionEntry(record: Record<string, unknown>): record is SessionEntry
     && typeof record.id === "string"
     && record.type !== "session"
     && (record.type !== "message" || isRecord(record.message));
-}
-
-function isBashTool(name: string): boolean {
-  const normalized = name.toLowerCase();
-  return normalized === "bash" || normalized === "shell" || normalized === "terminal";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

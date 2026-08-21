@@ -1,16 +1,26 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { grokHome } from "../grok-home.ts";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { historyUserText, mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
+import { readContextUsageFromDir, readSessionContextUsage } from "../session-signals.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
-import { AcpConnection } from "./connection.ts";
+import {
+  AcpConnection,
+  type GrokActionOutcome,
+  type GrokMarketplaceAction,
+  type GrokPluginInfo,
+  type GrokPluginsAction,
+} from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
 import { syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
+import { defaultGrokEffortLevel, GROK_EFFORT_LEVELS } from "../grok-effort-levels.ts";
 import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, resolveGrokBin } from "./process.ts";
@@ -26,6 +36,7 @@ import {
   type AcpConfigOption,
 } from "./config-options.ts";
 import { getPresetFromTools, type ToolEntry } from "../tool-presets.ts";
+import { validateAgentImages } from "../image-attachments.ts";
 
 export type AgentCommand =
   | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
@@ -67,6 +78,10 @@ function canonicalCwd(cwd: string): string {
   } catch {
     return resolved;
   }
+}
+
+function extraAcpReadRoots(): string[] {
+  return [join(homedir(), ".agents"), join(grokHome(), "docs"), join(grokHome(), "skills")].map(canonicalCwd);
 }
 
 export class AgentRuntime {
@@ -116,7 +131,7 @@ export class AgentRuntime {
     session.loaded = true;
     session.cwd = cwd;
     session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
-    session.thinkingLevel = selectedGrokEffort(created) ?? "high";
+    session.thinkingLevel = selectedGrokEffort(created) ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]);
     session.configOptions = readAcpConfigOptions(created);
     return created.sessionId;
   }
@@ -124,7 +139,11 @@ export class AgentRuntime {
   async loadSession(sessionId: string, cwd?: string): Promise<void> {
     await this.ensureProcess();
     const connection = this.captureConnection();
-    const loaded = await connection.acp.sessionLoad(sessionId, cwd);
+    const loaded = await connection.acp.sessionLoad(
+      sessionId,
+      cwd,
+      sessionNewMeta(readPermissionMode()),
+    );
     this.assertCurrentConnection(connection, "session/load");
     const session = this.ensureSession(sessionId);
     session.loaded = true;
@@ -257,6 +276,25 @@ export class AgentRuntime {
     return this.withSession(cwd, (sessionId) => this.requireAcp().mcpDelete(sessionId, name));
   }
 
+  async listPlugins(cwd: string) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().pluginsList(sessionId)) as Promise<{
+      plugins: GrokPluginInfo[];
+    }>;
+  }
+
+  async pluginsAction(cwd: string, action: GrokPluginsAction) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().pluginsAction(sessionId, action)) as Promise<GrokActionOutcome>;
+  }
+
+  async listMarketplace() {
+    await this.ensureProcess();
+    return this.requireAcp().marketplaceList();
+  }
+
+  async marketplaceAction(cwd: string, action: GrokMarketplaceAction) {
+    return this.withSession(cwd, (sessionId) => this.requireAcp().marketplaceAction(sessionId, action)) as Promise<GrokActionOutcome>;
+  }
+
   async listSkills(cwd: string) {
     await this.ensureProcess();
     return this.requireAcp().skillsList(cwd);
@@ -292,14 +330,16 @@ export class AgentRuntime {
       case "get_state":
         return this.getState(sessionId);
       case "prompt":
-        rejectUnsupportedImages(commandImages(command));
-        return this.sendPrompt(sessionId, stringField(command.message), promptBehavior(command));
+        return this.sendPrompt(
+          sessionId,
+          stringField(command.message),
+          promptBehavior(command),
+          commandImages(command),
+        );
       case "steer":
-        rejectUnsupportedImages(commandImages(command));
-        return this.sendPrompt(sessionId, stringField(command.message), "steer");
+        return this.sendPrompt(sessionId, stringField(command.message), "steer", commandImages(command));
       case "follow_up":
-        rejectUnsupportedImages(commandImages(command));
-        return this.sendPrompt(sessionId, stringField(command.message), "followUp");
+        return this.sendPrompt(sessionId, stringField(command.message), "followUp", commandImages(command));
       case "clear_queue":
         return this.clearQueue(sessionId);
       case "queue_remove":
@@ -371,8 +411,17 @@ export class AgentRuntime {
         const modelId = stringField(command.modelId);
         if (!modelId) throw new Error("modelId is required");
         const wrote = syncSettingsModelsToGrokConfig(readModelsConfig());
-        if (wrote.length > 0) await this.recycleProcess();
-        else await this.ensureProcess();
+        const cwd = this.sessions.get(sessionId)?.cwd;
+        let listed = await this.listModels();
+        const known = listed.modelList.some((model) => model.id === modelId);
+        if (wrote.length > 0 || (!known && modelId.includes("/"))) {
+          await this.recycleProcess();
+          if (cwd) await this.loadSession(sessionId, cwd);
+          listed = await this.listModels();
+        }
+        if (!listed.modelList.some((model) => model.id === modelId)) {
+          throw new Error(`Unknown model: ${modelId}`);
+        }
         const set = await this.requireAcp().sessionSetModel(sessionId, modelId);
         const session = this.ensureSession(sessionId);
         session.modelId = set.modelId;
@@ -388,8 +437,17 @@ export class AgentRuntime {
       }
       case "get_commands":
         return this.listSlashCommands(sessionId);
-      case "reload":
+      case "reload": {
+        const cwd = this.ensureSession(sessionId).cwd;
+        if (cwd) {
+          try {
+            await this.pluginsAction(cwd, { type: "reload" });
+          } catch {
+            // Plugin registry rebuild is best-effort; session tools/commands still refresh.
+          }
+        }
         return { success: true };
+      }
       case "bash":
         return this.runBash(sessionId, command);
       case "abort_bash":
@@ -443,6 +501,11 @@ export class AgentRuntime {
     return this.isSessionBusy(this.sessions.get(sessionId));
   }
 
+  getStreamingMessage(sessionId: string): ReturnType<AcpTurnMapper["snapshot"]> {
+    if (!this.isBusy(sessionId)) return null;
+    return this.sessions.get(sessionId)?.mapper.snapshot() ?? null;
+  }
+
   listBusyIds(): string[] {
     const ids: string[] = [];
     for (const [sessionId, session] of this.sessions) {
@@ -479,23 +542,26 @@ export class AgentRuntime {
     return ids.length;
   }
 
-  private getState(sessionId: string): {
+  private async getState(sessionId: string): Promise<{
     isStreaming: boolean;
     isPromptRunning: boolean;
     isBashRunning: boolean;
     model: { provider: "grok"; id: string };
     thinkingLevel: string;
     queuedMessages: QueueSnapshot;
-  } {
+    contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null };
+  }> {
     const session = this.sessions.get(sessionId);
     const promptBusy = session?.busy === true;
+    const contextUsage = await readSessionContextUsage(sessionId);
     return {
       isStreaming: promptBusy,
       isPromptRunning: promptBusy,
       isBashRunning: this.isSessionBashRunning(session),
       model: { provider: "grok", id: session?.modelId ?? "grok-4.6" },
-      thinkingLevel: session?.thinkingLevel ?? "off",
+      thinkingLevel: session?.thinkingLevel ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]),
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
+      ...(contextUsage ? { contextUsage } : {}),
     };
   }
 
@@ -503,7 +569,10 @@ export class AgentRuntime {
     sessionId: string,
     message: string,
     streamingBehavior?: "steer" | "followUp",
+    images?: unknown,
   ): Promise<unknown> {
+    const imageError = validateAgentImages(images);
+    if (imageError) throw new Error(imageError);
     await this.ensureProcess();
     const session = this.ensureSession(sessionId);
     session.hasUserPrompt = true;
@@ -511,6 +580,9 @@ export class AgentRuntime {
       throw new Error("Cannot send a prompt while a shell command is running");
     }
     if (session.busy) {
+      if (hasPromptImages(images)) {
+        throw new Error("Images cannot be sent while a prompt is running");
+      }
       if (streamingBehavior === "steer") {
         return this.requireAcp().sessionInterject(sessionId, message);
       }
@@ -518,15 +590,15 @@ export class AgentRuntime {
       this.emit(sessionId, [{ type: "queue_update", ...snap }]);
       return snap;
     }
-    return this.runPrompt(sessionId, message);
+    return this.runPrompt(sessionId, message, images);
   }
 
-  private async runPrompt(sessionId: string, message: string): Promise<unknown> {
+  private async runPrompt(sessionId: string, message: string, images?: unknown): Promise<unknown> {
     const session = this.ensureSession(sessionId);
     session.busy = true;
     session.mapper.begin();
     try {
-      const result = await this.requireAcp().sessionPrompt(sessionId, message);
+      const result = await this.requireAcp().sessionPrompt(sessionId, message, Array.isArray(images) ? images : []);
       this.emit(sessionId, session.mapper.endTurn());
       const stopReason = result && typeof result === "object" && "stopReason" in result
         && typeof (result as { stopReason?: unknown }).stopReason === "string"
@@ -622,7 +694,7 @@ export class AgentRuntime {
   private async listSlashCommands(sessionId: string) {
     const cwd = this.ensureSession(sessionId).cwd || process.cwd();
     const listed = await this.listSkills(cwd);
-    const webBuiltins = new Set(["compact", "reload", "name", "session", "copy", "feedback", "recap"]);
+    const webBuiltins = new Set(["compact", "reload", "name", "session", "copy", "feedback", "recap", "plugins", "marketplace"]);
     const allSkills = listed.skills ?? [];
     const skillNames = new Set(allSkills.map((skill) => skill.name));
     const fromAcp = (this.acp?.availableCommands ?? [])
@@ -677,6 +749,7 @@ export class AgentRuntime {
     totalMessages: number;
     tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
     cost: number;
+    contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null };
   }> {
     const empty = {
       sessionId,
@@ -689,7 +762,14 @@ export class AgentRuntime {
       cost: 0,
     };
     const found = await findGrokSession(sessionId);
-    if (!found) return empty;
+    const contextUsage = found ? await readContextUsageFromDir(found.path) : null;
+    const withUsage = {
+      ...empty,
+      ...(contextUsage ? { contextUsage } : {}),
+      ...(contextUsage?.userMessages != null ? { userMessages: contextUsage.userMessages } : {}),
+      ...(contextUsage?.toolCalls != null ? { toolCalls: contextUsage.toolCalls, toolResults: contextUsage.toolCalls } : {}),
+    };
+    if (!found) return withUsage;
     try {
       const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
       const { messages } = mapUpdatesJsonl(text);
@@ -701,16 +781,16 @@ export class AgentRuntime {
       const userMessages = messages.filter((message) => message.role === "user").length;
       const assistantMessages = messages.filter((message) => message.role === "assistant").length;
       return {
-        ...empty,
+        ...withUsage,
         sessionName: found.name || undefined,
-        userMessages,
+        userMessages: contextUsage?.userMessages ?? userMessages,
         assistantMessages,
-        toolCalls,
-        toolResults: toolCalls,
+        toolCalls: contextUsage?.toolCalls ?? toolCalls,
+        toolResults: contextUsage?.toolCalls ?? toolCalls,
         totalMessages: messages.length,
       };
     } catch {
-      return { ...empty, sessionName: found.name || undefined };
+      return { ...withUsage, sessionName: found.name || undefined };
     }
   }
 
@@ -780,10 +860,15 @@ export class AgentRuntime {
       });
     }
     this.unsubUpdate = acp.onSessionUpdate((sessionId, update) => {
-      const session = this.sessions.get(sessionId);
-      if (!session) return;
+      const session = this.ensureSession(sessionId);
       session.configOptions = applyConfigOptionUpdate(session.configOptions, update);
       this.emit(sessionId, session.mapper.push(update));
+      if (update && typeof update === "object" && "sessionUpdate" in update
+        && (update as { sessionUpdate?: unknown }).sessionUpdate === "turn_completed") {
+        void readSessionContextUsage(sessionId).then((usage) => {
+          if (usage) this.emit(sessionId, [{ type: "context_usage", contextUsage: usage }]);
+        });
+      }
     });
     this.unsubPermission = acp.onPermission((event) => {
       this.forwardPermission(event);
@@ -803,7 +888,13 @@ export class AgentRuntime {
       this.child = undefined;
       this.dropConnection();
     });
-    const acp = new AcpConnection(new JsonRpcConn({ stdin: child.stdin, stdout: child.stdout }));
+    const acp = new AcpConnection(new JsonRpcConn({ stdin: child.stdin, stdout: child.stdout }), {
+      fsContext: (sessionId) => {
+        const cwd = sessionId ? this.sessions.get(sessionId)?.cwd : undefined;
+        const roots = cwd ? [canonicalCwd(cwd)] : [];
+        return { cwd, roots, readRoots: [...roots, ...extraAcpReadRoots()] };
+      },
+    });
     this.connectionChildren.set(acp, child);
     return acp;
   }
@@ -925,23 +1016,32 @@ export class AgentRuntime {
   }
 }
 
-let singleton: AgentRuntime | undefined;
+const RUNTIME_KEY = "__grokWebAgentRuntime";
+
+type GrokWebGlobals = typeof globalThis & { [RUNTIME_KEY]?: AgentRuntime };
+
+function runtimeStore(): GrokWebGlobals {
+  return globalThis as GrokWebGlobals;
+}
 
 export function getAgentRuntime(): AgentRuntime {
-  singleton ??= new AgentRuntime();
-  return singleton;
+  const g = runtimeStore();
+  g[RUNTIME_KEY] ??= new AgentRuntime();
+  return g[RUNTIME_KEY];
 }
 
 export function peekAgentRuntime(): AgentRuntime | undefined {
-  return singleton;
+  return runtimeStore()[RUNTIME_KEY];
 }
 
 export function setAgentRuntime(runtime: AgentRuntime | undefined): void {
-  singleton = runtime;
+  const g = runtimeStore();
+  if (runtime) g[RUNTIME_KEY] = runtime;
+  else delete g[RUNTIME_KEY];
 }
 
 export function resetAgentRuntime(): void {
-  singleton = undefined;
+  setAgentRuntime(undefined);
 }
 
 function stringField(value: unknown): string {
@@ -962,10 +1062,8 @@ function commandImages(command: AgentCommand): unknown {
   return "images" in command ? command.images : undefined;
 }
 
-function rejectUnsupportedImages(images: unknown): void {
-  if (Array.isArray(images) && images.length > 0) {
-    throw new Error("Images are not supported");
-  }
+function hasPromptImages(images: unknown): boolean {
+  return Array.isArray(images) && images.length > 0;
 }
 
 async function diskHasUserMessages(sessionId: string): Promise<boolean> {

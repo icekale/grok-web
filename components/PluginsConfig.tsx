@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
+import type {
+  MarketplacePluginInfo,
+  MarketplaceSourceInfo,
+  PluginPackageInfo,
+  PluginsResponse,
+} from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { PluginsNavigator } from "./resource-settings/PluginsNavigator";
 import type { SettingsSectionController } from "./resource-settings/resource-settings-types";
@@ -17,6 +22,8 @@ import {
 
 type PluginScope = PluginPackageInfo["scope"];
 type PluginAction = "remove" | "update" | "disable" | "enable";
+type PluginsView = "plugins" | "marketplace";
+type PluginsVariant = "plugins" | "mcp";
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
@@ -29,8 +36,11 @@ function packageKey(pkg: Pick<PluginPackageInfo, "source" | "scope">): string {
 function resourceSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t"]): string {
   if (pkg.disabled) return t("i18n.disabled");
   const parts = [
-    pkg.counts.extensions ? t("i18n.resourceCount", { count: pkg.counts.extensions, label: t("i18n.extensionShort") }) : "",
     pkg.counts.skills ? t("i18n.resourceCount", { count: pkg.counts.skills, label: t("i18n.skillShort") }) : "",
+    pkg.counts.agents ? t("i18n.resourceCount", { count: pkg.counts.agents, label: t("i18n.agentShort") }) : "",
+    pkg.counts.hooks ? t("i18n.resourceCount", { count: pkg.counts.hooks, label: t("i18n.hookShort") }) : "",
+    pkg.counts.mcpServers ? t("i18n.resourceCount", { count: pkg.counts.mcpServers, label: t("i18n.mcpShort") }) : "",
+    pkg.counts.extensions ? t("i18n.resourceCount", { count: pkg.counts.extensions, label: t("i18n.extensionShort") }) : "",
     pkg.counts.prompts ? t("i18n.resourceCount", { count: pkg.counts.prompts, label: t("i18n.promptShort") }) : "",
     pkg.counts.themes ? t("i18n.resourceCount", { count: pkg.counts.themes, label: t("i18n.themeShort") }) : "",
   ].filter(Boolean);
@@ -54,8 +64,11 @@ function statusColor(status: PluginPackageInfo["status"]): string {
 function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
   const { t } = useI18n();
   const groups = ([
-    ["extension", t("i18n.extensions")],
     ["skill", t("i18n.skills")],
+    ["agent", t("i18n.agents")],
+    ["hook", t("i18n.hooks")],
+    ["mcp", t("i18n.mcpServers")],
+    ["extension", t("i18n.extensions")],
     ["prompt", t("i18n.prompts")],
     ["theme", t("i18n.themes")],
   ] as const)
@@ -332,9 +345,17 @@ function PackageDetail({
         }}
       >
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.status")}</div>
-        <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>{pkg.status}</div>
+        <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>
+          {pkg.status}{pkg.trusted === false ? ` · ${t("i18n.untrusted")}` : ""}
+        </div>
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.version")}</div>
          <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{versionSummary(pkg, t)}</div>
+        {pkg.description ? (
+          <>
+            <div style={{ color: "var(--text-dim)" }}>{t("i18n.description")}</div>
+            <div style={{ color: "var(--text-muted)" }}>{pkg.description}</div>
+          </>
+        ) : null}
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.package")}</div>
         <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
           {pkg.packageName ?? t("i18n.unknown")}
@@ -378,19 +399,28 @@ function PackageDetail({
   );
 }
 
+function marketplacePluginKey(source: MarketplaceSourceInfo, plugin: MarketplacePluginInfo): string {
+  return `${source.sourceUrlOrPath}\0${plugin.relativePath}`;
+}
+
 export function PluginsConfig({
   cwd,
   sessionId,
   onReloaded,
   onControllerChange,
+  variant = "plugins",
+  initialView = "plugins",
 }: {
   cwd: string;
   sessionId: string | null;
   onReloaded?: () => void;
   onControllerChange?(controller: SettingsSectionController): void;
+  variant?: PluginsVariant;
+  initialView?: PluginsView;
 }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
+  const apiPath = variant === "mcp" ? "/api/mcp" : "/api/plugins";
   const [data, setData] = useState<PluginsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -400,22 +430,22 @@ export function PluginsConfig({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [view, setView] = useState<PluginsView>(variant === "mcp" ? "plugins" : initialView);
+  const [installSource, setInstallSource] = useState("");
+  const [marketplaceUrl, setMarketplaceUrl] = useState("");
+  const [selectedMarketPlugin, setSelectedMarketPlugin] = useState<string | null>(null);
 
   const packages = useMemo(() => data?.packages ?? [], [data?.packages]);
+  const sources = useMemo(() => data?.marketplace?.sources ?? [], [data?.marketplace?.sources]);
   const selectedPackage = packages.find((pkg) => packageKey(pkg) === selected) ?? null;
   const projectResourcesLoaded = data?.projectResourcesLoaded ?? true;
-
-  const groupedPackages = useMemo(() => {
-    return (["project", "global"] as PluginScope[])
-      .map((scope) => ({ scope, packages: packages.filter((pkg) => pkg.scope === scope) }))
-      .filter((group) => group.packages.length > 0);
-  }, [packages]);
+  const showMarketplace = variant === "plugins";
 
   const loadPlugins = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/plugins?cwd=${encodeURIComponent(cwd)}`);
+      const res = await fetch(`${apiPath}?cwd=${encodeURIComponent(cwd)}`);
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
@@ -433,11 +463,29 @@ export function PluginsConfig({
     } finally {
       setLoading(false);
     }
-  }, [cwd]);
+  }, [apiPath, cwd]);
 
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
+
+  const postPlugins = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch(apiPath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, ...body }),
+    });
+    const next = (await res.json()) as PluginsResponse & { error?: string };
+    if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+    setData(next);
+    return next;
+  }, [apiPath, cwd]);
+
+  const reloadIfNeeded = useCallback(async () => {
+    if (!sessionId) return;
+    await sendAgentCommand(sessionId, { type: "reload" });
+    onReloaded?.();
+  }, [onReloaded, sessionId]);
 
   const runAction = useCallback(async (action: PluginAction, pkg: PluginPackageInfo) => {
     const key = packageKey(pkg);
@@ -445,39 +493,67 @@ export function PluginsConfig({
     setActionError(null);
     setActionMessage(null);
     try {
-      const res = await fetch("/api/plugins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, source: pkg.source, cwd }),
-      });
-      const next = (await res.json()) as PluginsResponse & { error?: string };
-      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
-      setData(next);
+      const next = await postPlugins({ action, source: pkg.source });
       if (action === "remove") {
         const nextId = next.packages[0] ? pluginIdentity(next.packages[0]) : null;
         setSelected(nextId);
         if (!nextId) {
           setMobileView(isMobile ? "list" : mobileView);
         }
-        setActionMessage("Package removed.");
+        setActionMessage(t("i18n.packageRemoved"));
       } else {
         const messages: Record<Exclude<PluginAction, "remove">, string> = {
-          update: "Package updated.",
-          disable: "Package disabled.",
-          enable: "Package enabled.",
+          update: t("i18n.packageUpdated"),
+          disable: t("i18n.packageDisabled"),
+          enable: t("i18n.packageEnabled"),
         };
         setActionMessage(messages[action]);
       }
-      if (sessionId) {
-        await sendAgentCommand(sessionId, { type: "reload" });
-        onReloaded?.();
-      }
+      await reloadIfNeeded();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, isMobile, mobileView, onReloaded, sessionId]);
+  }, [isMobile, mobileView, postPlugins, reloadIfNeeded, t]);
+
+  const runInstall = useCallback(async () => {
+    const source = installSource.trim();
+    if (!source) return;
+    setBusyKey("install");
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await postPlugins({ action: "install", source });
+      setInstallSource("");
+      setActionMessage(t("i18n.packageInstalled"));
+      await reloadIfNeeded();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }, [installSource, postPlugins, reloadIfNeeded, t]);
+
+  const runMarketplaceAction = useCallback(async (
+    action: string,
+    extra: Record<string, unknown>,
+    busy: string,
+    message: string,
+  ) => {
+    setBusyKey(busy);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await postPlugins({ action, ...extra });
+      setActionMessage(message);
+      await reloadIfNeeded();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }, [postPlugins, reloadIfNeeded]);
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -488,15 +564,44 @@ export function PluginsConfig({
       await sendAgentCommand(sessionId, { type: "reload" });
       onReloaded?.();
       await loadPlugins();
-      setActionMessage("Session reloaded.");
+      setActionMessage(t("i18n.sessionReloaded"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [loadPlugins, onReloaded, sessionId]);
+  }, [loadPlugins, onReloaded, sessionId, t]);
 
   const filtered = useMemo(() => filterPluginsNavigation(packages, query), [packages, query]);
+  const filteredSources = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    if (!q) return sources;
+    return sources
+      .map((source) => ({
+        ...source,
+        plugins: source.plugins.filter((plugin) => (
+          [plugin.name, plugin.description ?? "", source.sourceName]
+            .some((value) => value.toLocaleLowerCase().includes(q))
+        )),
+      }))
+      .filter((source) => (
+        source.sourceName.toLocaleLowerCase().includes(q) || source.plugins.length > 0
+      ));
+  }, [query, sources]);
+  const selectedMarket = useMemo(() => {
+    for (const source of sources) {
+      for (const plugin of source.plugins) {
+        const id = pluginIdentity({
+          scope: "global",
+          source: marketplacePluginKey(source, plugin),
+        });
+        if (id === selectedMarketPlugin) {
+          return { source, plugin };
+        }
+      }
+    }
+    return null;
+  }, [selectedMarketPlugin, sources]);
   const headerLabel = pluginsSelectionLabel(selected, packages);
 
   const handleBack = useCallback(() => {
@@ -520,6 +625,8 @@ export function PluginsConfig({
     if (isMobile) setMobileView("detail");
   };
 
+  const title = variant === "mcp" ? t("common.mcp") : t("common.plugins");
+
   return (
     <div className="resource-settings-page">
       <div className="resource-settings-header">
@@ -529,16 +636,27 @@ export function PluginsConfig({
               <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
             </button>
             <div className="resource-settings-header-title">
-              <span>{headerLabel.title}</span>
+              <span>{view === "marketplace" ? (selectedMarket?.plugin.name ?? t("common.marketplace")) : headerLabel.title}</span>
             </div>
           </>
         ) : (
           <div className="resource-settings-header-title">
-            <span>{t("common.plugins")}</span>
+            <span>{title}</span>
             <code>{shortenPath(cwd)}</code>
           </div>
         )}
       </div>
+
+      {showMarketplace && !(isMobile && mobileView === "detail") && (
+        <div className="resource-settings-tabs" role="tablist" aria-label={t("common.plugins")}>
+          <button type="button" role="tab" className="resource-settings-tab" aria-selected={view === "plugins"} data-active={view === "plugins"} onClick={() => { setView("plugins"); setMobileView("list"); }}>
+            {t("common.plugins")}
+          </button>
+          <button type="button" role="tab" className="resource-settings-tab" aria-selected={view === "marketplace"} data-active={view === "marketplace"} onClick={() => { setView("marketplace"); setMobileView("list"); }}>
+            {t("common.marketplace")}
+          </button>
+        </div>
+      )}
 
       {!projectResourcesLoaded && (
         <div className="resource-settings-banner" role="status">{t("trust.pluginsNotLoaded")}</div>
@@ -550,37 +668,168 @@ export function PluginsConfig({
         </div>
       ) : null}
 
-      <div className="resource-settings-layout" data-mobile-view={isMobile ? mobileView : undefined}>
-        <PluginsNavigator
-          query={query}
-          selection={selected}
-          project={filtered.project}
-          global={filtered.global}
-          loading={loading}
-          error={error ?? undefined}
-          busy={Boolean(busyKey)}
-          onQueryChange={setQuery}
-          onSelect={(id) => openDetail(id)}
-          onRetry={() => void loadPlugins()}
-        />
-        <div className="resource-settings-detail">
-          {loading ? null : selectedPackage ? (
-            <PackageDetail
-              key={packageKey(selectedPackage)}
-              pkg={selectedPackage}
-              cwd={cwd}
-              busyKey={busyKey}
-              actionError={actionError}
-              actionMessage={actionMessage}
-              sessionId={sessionId}
-              onAction={runAction}
-              onReloadSession={reloadSession}
+      {view === "marketplace" && showMarketplace ? (
+        <div className="resource-settings-layout" data-mobile-view={isMobile ? mobileView : undefined}>
+            <PluginsNavigator
+              query={query}
+              selection={selectedMarketPlugin}
+              project={[]}
+              global={filteredSources.flatMap((source) => source.plugins.map((plugin) => ({
+                source: marketplacePluginKey(source, plugin),
+                scope: "global" as const,
+                packageName: plugin.name,
+                status: plugin.installStatus === "installed" ? t("i18n.installed") : t("i18n.notInstalled"),
+              })))}
+              loading={loading}
+              error={error ?? undefined}
+              busy={Boolean(busyKey)}
+              searchPlaceholder={t("resources.searchMarketplace")}
+              emptyMessage={query.trim() ? t("resources.noMatchingMarketplace") : t("i18n.noMarketplaces")}
+              leading={(
+                <form
+                  className="resource-settings-install"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const url = marketplaceUrl.trim();
+                    if (!url) return;
+                    setMarketplaceUrl("");
+                    void runMarketplaceAction("add_source", { url }, "add_source", t("i18n.packageInstalled"));
+                  }}
+                >
+                  <input
+                    value={marketplaceUrl}
+                    onChange={(event) => setMarketplaceUrl(event.target.value)}
+                    placeholder={t("i18n.installPluginPlaceholder")}
+                    aria-label={t("i18n.addMarketplace")}
+                  />
+                  <button type="submit" className="resource-settings-header-button" disabled={Boolean(busyKey) || !marketplaceUrl.trim()}>
+                    {t("i18n.addMarketplace")}
+                  </button>
+                </form>
+              )}
+              onQueryChange={setQuery}
+              onSelect={(id) => {
+                setSelectedMarketPlugin(id);
+                setActionError(null);
+                setActionMessage(null);
+                if (isMobile) setMobileView("detail");
+              }}
+              onRetry={() => void loadPlugins()}
             />
-          ) : (
-            <div className="resource-settings-detail-empty">{t("i18n.selectPackage")}</div>
-          )}
+          <div className="resource-settings-detail">
+            {loading ? null : selectedMarket ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 680 }}>
+                <div>
+                  <div style={{ fontSize: "var(--text-title)", fontWeight: 700 }}>{selectedMarket.plugin.name}</div>
+                  <div style={{ color: "var(--text-muted)", marginTop: 4 }}>{selectedMarket.plugin.description}</div>
+                </div>
+                <div style={{ color: "var(--text-dim)", fontSize: "var(--text-meta)", fontFamily: "var(--font-mono)" }}>
+                  {selectedMarket.source.sourceName} · {selectedMarket.plugin.relativePath}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => void runMarketplaceAction(
+                      "marketplace_install",
+                      {
+                        source_url_or_path: selectedMarket.source.sourceUrlOrPath,
+                        plugin_relative_path: selectedMarket.plugin.relativePath,
+                      },
+                      `install:${marketplacePluginKey(selectedMarket.source, selectedMarket.plugin)}`,
+                      t("i18n.packageInstalled"),
+                    )}
+                    disabled={Boolean(busyKey) || selectedMarket.plugin.installStatus === "installed"}
+                    style={buttonStyle(Boolean(busyKey) || selectedMarket.plugin.installStatus === "installed")}
+                  >
+                    {t("i18n.install")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runMarketplaceAction(
+                      "remove_source",
+                      { source_url_or_path: selectedMarket.source.sourceUrlOrPath },
+                      `remove_source:${selectedMarket.source.sourceUrlOrPath}`,
+                      t("i18n.packageRemoved"),
+                    )}
+                    disabled={Boolean(busyKey)}
+                    style={buttonStyle(Boolean(busyKey), true)}
+                  >
+                    {t("i18n.removeSource")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runMarketplaceAction("refresh", {}, "refresh", t("i18n.packageUpdated"))}
+                    disabled={Boolean(busyKey)}
+                    style={buttonStyle(Boolean(busyKey))}
+                  >
+                    {t("i18n.refreshSources")}
+                  </button>
+                </div>
+                {actionMessage && <div style={{ fontSize: "var(--text-meta)", color: "#16a34a" }}>{actionMessage}</div>}
+                {actionError && <div style={{ fontSize: "var(--text-meta)", color: "#ef4444", whiteSpace: "pre-wrap" }}>{actionError}</div>}
+              </div>
+            ) : (
+              <div className="resource-settings-detail-empty">
+                {sources.length ? t("i18n.selectPackage") : t("i18n.noMarketplaces")}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="resource-settings-layout" data-mobile-view={isMobile ? mobileView : undefined}>
+            <PluginsNavigator
+              query={query}
+              selection={selected}
+              project={filtered.project}
+              global={filtered.global}
+              loading={loading}
+              error={error ?? undefined}
+              busy={Boolean(busyKey)}
+              emptyMessage={query.trim()
+                ? t("resources.noMatchingPlugins")
+                : variant === "mcp" ? t("i18n.noMcp") : t("i18n.noPlugins")}
+              leading={variant === "plugins" ? (
+                <form
+                  className="resource-settings-install"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void runInstall();
+                  }}
+                >
+                  <input
+                    value={installSource}
+                    onChange={(event) => setInstallSource(event.target.value)}
+                    placeholder={t("i18n.installPluginPlaceholder")}
+                    aria-label={t("i18n.addPlugin")}
+                  />
+                  <button type="submit" className="resource-settings-header-button" disabled={Boolean(busyKey) || !installSource.trim()}>
+                    {t("i18n.install")}
+                  </button>
+                </form>
+              ) : null}
+              onQueryChange={setQuery}
+              onSelect={(id) => openDetail(id)}
+              onRetry={() => void loadPlugins()}
+            />
+          <div className="resource-settings-detail">
+            {loading ? null : selectedPackage ? (
+              <PackageDetail
+                key={packageKey(selectedPackage)}
+                pkg={selectedPackage}
+                cwd={cwd}
+                busyKey={busyKey}
+                actionError={actionError}
+                actionMessage={actionMessage}
+                sessionId={sessionId}
+                onAction={runAction}
+                onReloadSession={reloadSession}
+              />
+            ) : (
+              <div className="resource-settings-detail-empty">{t("i18n.selectPackage")}</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

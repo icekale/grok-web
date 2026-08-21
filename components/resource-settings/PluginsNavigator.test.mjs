@@ -5,7 +5,7 @@ import test from "node:test";
 const source = await readFile(new URL("./PluginsNavigator.tsx", import.meta.url), "utf8");
 
 test("plugins navigator uses labelled search, clear control, and native button rows", () => {
-  assert.match(source, /aria-label=\{t\("resources\.searchPlugins"\)\}/);
+  assert.match(source, /aria-label=\{searchPlaceholder \?\? t\("resources\.searchPlugins"\)\}/);
   assert.match(source, /\{query && \(/);
   assert.match(source, /<button[\s\S]*?resource-settings-row/);
   assert.doesNotMatch(source, /onMouseEnter/);
@@ -26,4 +26,8 @@ test("plugins navigator stays controlled", () => {
 
 test("plugins navigator has no install entry", () => {
   assert.doesNotMatch(source, /addPlugin|onAdd|resource-settings-add/);
+});
+
+test("empty list without a query is not a search-miss", () => {
+  assert.match(source, /query\.trim\(\) \? t\("resources\.noMatchingPlugins"\) : t\("i18n\.noPlugins"\)/);
 });

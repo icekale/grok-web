@@ -73,13 +73,16 @@ export interface AppUpdateResponse {
 }
 
 export type PluginScope = "global" | "project";
-export type PluginResourceKind = "extension" | "skill" | "prompt" | "theme";
+export type PluginResourceKind = "extension" | "skill" | "prompt" | "theme" | "agent" | "hook" | "mcp";
 
 export interface PluginResourceCounts {
   extensions: number;
   skills: number;
   prompts: number;
   themes: number;
+  agents: number;
+  hooks: number;
+  mcpServers: number;
 }
 
 export interface PluginDiagnostic {
@@ -105,9 +108,32 @@ export interface PluginPackageInfo {
   packageName?: string;
   version?: string;
   configuredVersion?: string;
+  description?: string;
+  trusted?: boolean;
   counts: PluginResourceCounts;
   resources: PluginResourceInfo[];
   status: "loaded" | "installed" | "missing" | "disabled";
+}
+
+export interface MarketplacePluginInfo {
+  name: string;
+  version?: string | null;
+  description?: string | null;
+  relativePath: string;
+  skillCount?: number;
+  hasHooks?: boolean;
+  hasAgents?: boolean;
+  hasMcp?: boolean;
+  installStatus?: string;
+  installedVersion?: string | null;
+}
+
+export interface MarketplaceSourceInfo {
+  sourceName: string;
+  sourceKind?: string;
+  sourceUrlOrPath: string;
+  plugins: MarketplacePluginInfo[];
+  error?: string | null;
 }
 
 export interface PluginsResponse {
@@ -115,6 +141,7 @@ export interface PluginsResponse {
   totals: PluginResourceCounts;
   diagnostics: PluginDiagnostic[];
   projectResourcesLoaded: boolean;
+  marketplace: { sources: MarketplaceSourceInfo[] };
 }
 
 // ============================================================================

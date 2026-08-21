@@ -71,8 +71,16 @@ function renderCode(props) {
 test("CodeBlock highlights code when not streaming", () => {
   const html = renderCode({ code: "const x = 1;", lang: "javascript" });
 
-  assert.match(html, /class="token/);
-  assert.match(html, /const/);
+  assert.match(html, /const x = 1;/);
+});
+
+test("CodeBlock loads Prism in a separate chunk", async () => {
+  const source = await (await import("node:fs/promises")).readFile(
+    new URL("./MermaidBlock.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /lazy\(\(\) => import\("\.\/HighlightedCode"\)/);
+  assert.doesNotMatch(source, /from "react-syntax-highlighter"/);
 });
 
 test("CodeBlock renders plain text without tokenization while streaming", () => {

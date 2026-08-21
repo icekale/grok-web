@@ -4316,6 +4316,52 @@ span.linenumber {
   gap: 8px;
 }
 
+.resource-settings-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.resource-settings-tab {
+  appearance: none;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-ui);
+  cursor: pointer;
+}
+
+.resource-settings-tab[data-active="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.resource-settings-install {
+  display: flex;
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+
+.resource-settings-install input {
+  min-width: 0;
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-meta);
+}
+
 .resource-settings-banner {
   flex: 0 0 auto;
   padding: 8px 14px;

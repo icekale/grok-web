@@ -22,6 +22,8 @@ export interface ContextUsage {
   percent: number | null;
   contextWindow: number;
   tokens: number | null;
+  userMessages?: number;
+  toolCalls?: number;
 }
 
 export interface ModelLike {

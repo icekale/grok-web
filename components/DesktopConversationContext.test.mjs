@@ -51,6 +51,17 @@ test("uses a horizontal context bar with capacity-aware tones", () => {
   assert.match(css, /\.desktop-context-progress\s*\{[^}]*height:\s*6px;[^}]*border-radius:\s*999px;/s);
 });
 
+test("does not render 0 / 0 when the context window is unknown", () => {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(DesktopConversationContext, {
+      model: { ...model, percent: null, usedTokens: null, contextWindow: 0, availableTokens: 0 },
+      onOpenDetails() {},
+    }),
+  ));
+  assert.match(html, /Unknown|未知/);
+  assert.doesNotMatch(html, />0 <small>\/ 0<\/small>/);
+});
+
 test("uses an alert tone near the context limit", () => {
   const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
     React.createElement(DesktopConversationContext, {

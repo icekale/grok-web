@@ -127,7 +127,15 @@ export function streamReducer(
 ): StreamingState {
   switch (action.type) {
     case "start":
-      return { isStreaming: true, streamingMessage: null };
+      return {
+        isStreaming: true,
+        streamingMessage: {
+          role: "assistant",
+          content: [],
+          model: "",
+          provider: "grok",
+        },
+      };
     case "snapshot": {
       const message = normalizeStreamingToolCalls(action.message);
       return message.role === "assistant"

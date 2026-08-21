@@ -1,3 +1,5 @@
+import { toolResultText } from "./history-map.ts";
+
 const MAX_PROGRESS_LENGTH = 500;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -7,13 +9,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 export function getToolExecutionProgress(partialResult: unknown): string | null {
   if (!isObject(partialResult)) return null;
 
-  const content = partialResult.content;
-  if (!Array.isArray(content)) return null;
-
-  const text = content
-    .filter((block) => isObject(block) && block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text as string)
-    .join("\n");
+  const text = toolResultText(partialResult.content ?? partialResult);
   const lines = text.split(/\r?\n/);
   let latest = "";
   for (let index = lines.length - 1; index >= 0; index -= 1) {

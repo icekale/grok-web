@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import type { PluginNavItem } from "./resource-settings-types";
@@ -13,6 +14,9 @@ export interface PluginsNavigatorProps {
   loading: boolean;
   error?: string;
   busy?: boolean;
+  leading?: ReactNode;
+  searchPlaceholder?: string;
+  emptyMessage?: string;
   onQueryChange(query: string): void;
   onSelect(id: string): void;
   onRetry(): void;
@@ -26,6 +30,9 @@ export function PluginsNavigator({
   loading,
   error,
   busy,
+  leading,
+  searchPlaceholder,
+  emptyMessage,
   onQueryChange,
   onSelect,
   onRetry,
@@ -60,13 +67,14 @@ export function PluginsNavigator({
 
   return (
     <div className="resource-settings-navigator">
+      {leading}
       <div className="resource-settings-search">
         <Search size={13} strokeWidth={2} aria-hidden="true" />
         <input
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder={t("resources.searchPlugins")}
-          aria-label={t("resources.searchPlugins")}
+          placeholder={searchPlaceholder ?? t("resources.searchPlugins")}
+          aria-label={searchPlaceholder ?? t("resources.searchPlugins")}
           type="search"
         />
         {query && (
@@ -86,7 +94,9 @@ export function PluginsNavigator({
         {loading ? (
           <div className="resource-settings-nav-status">{t("i18n.loading")}</div>
         ) : noResults ? (
-          <div className="resource-settings-nav-status">{t("resources.noMatchingPlugins")}</div>
+          <div className="resource-settings-nav-status">
+            {emptyMessage ?? (query.trim() ? t("resources.noMatchingPlugins") : t("i18n.noPlugins"))}
+          </div>
         ) : (
           <>
             {renderGroup(t("resources.projectPackages"), project)}

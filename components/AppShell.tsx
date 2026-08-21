@@ -30,12 +30,16 @@ import { hasActiveDescendant, useSubagentTree } from "@/hooks/useSubagentTree";
 import { SessionBreadcrumb, SubagentComposer, SubagentTree, DesktopSubagentCard, buildBreadcrumbItems, countSubagentNodes, findSubagentNode } from "./SubagentSessions";
 import type { SubagentTreeNode } from "@/lib/api-types";
 import { ChatWindow } from "./ChatWindow";
-import { FileViewer } from "./FileViewer";
-import { WorkspaceBrowser } from "./WorkspaceBrowser";
 import { TabBar, type Tab } from "./TabBar";
 import { nextActiveFileTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
 const SettingsPage = lazy(() => import("./SettingsPage").then((module) => ({
   default: module.SettingsPage,
+})));
+const FileViewer = lazy(() => import("./FileViewer").then((module) => ({
+  default: module.FileViewer,
+})));
+const WorkspaceBrowser = lazy(() => import("./WorkspaceBrowser").then((module) => ({
+  default: module.WorkspaceBrowser,
 })));
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
@@ -130,8 +134,8 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"general" | "models">("general");
-  const openSettings = useCallback((section: "general" | "models" = "general") => {
+  const [settingsSection, setSettingsSection] = useState<"general" | "models" | "plugins" | "marketplace">("general");
+  const openSettings = useCallback((section: "general" | "models" | "plugins" | "marketplace" = "general") => {
     setSettingsSection(section);
     setSettingsOpen(true);
   }, []);
@@ -273,7 +277,7 @@ export function AppShell() {
 
   // Context usage — populated by ChatWindow, displayed in top bar
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
-  const conversationContextModel = sessionStats
+  const conversationContextModel = sessionStats || contextUsage
     ? buildConversationContextModel({
         stats: sessionStats,
         contextUsage,
@@ -2358,6 +2362,7 @@ export function AppShell() {
               onSystemPromptChange={handleSystemPromptChange}
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
+              onOpenSettings={openSettings}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
               subagentTreeVisible={subagentCount > 0}
@@ -2551,6 +2556,8 @@ export function AppShell() {
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
         <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {rightPanelOpen ? (
+          <Suspense fallback={null}>
           {activeFileTab?.filePath ? (
             <FileViewer
               key={`${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
@@ -2584,6 +2591,8 @@ export function AppShell() {
               })}
             />
           )}
+          </Suspense>
+          ) : null}
         </div>
       </div>
     </div>

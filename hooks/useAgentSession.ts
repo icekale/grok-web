@@ -135,7 +135,7 @@ export interface SlashCommandInfo {
 
 export type BuiltinSlashCommandResult =
   | { handled: false }
-  | { handled: true; message?: string; error?: string; action?: "openSessionStats" | "openFeedback" };
+  | { handled: true; message?: string; error?: string; action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" };
 
 export interface UseAgentSessionOptions {
   session: SessionInfo | null;
@@ -151,6 +151,7 @@ export interface UseAgentSessionOptions {
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsPanelOpen?: () => void;
+  onOpenSettings?: (section: "plugins" | "marketplace") => void;
   setToolPreset?: (preset: ToolPreset) => void;
   /** Read-only history mode: never fetch the live agent state for this session. */
   readOnlyHistory?: boolean;
@@ -182,6 +183,23 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isSameAssistantTurn(left: AgentMessage, right: AgentMessage): boolean {
+  if (left.role !== "assistant" || right.role !== "assistant") return false;
+  const leftContent = left.content ?? [];
+  const rightContent = right.content ?? [];
+  if (leftContent.length !== rightContent.length) return false;
+  const leftTool = leftContent.find((block) => block.type === "toolCall");
+  const rightTool = rightContent.find((block) => block.type === "toolCall");
+  if (leftTool?.type === "toolCall" || rightTool?.type === "toolCall") {
+    return leftTool?.type === "toolCall" && rightTool?.type === "toolCall"
+      && leftTool.toolCallId === rightTool.toolCallId;
+  }
+  const leftText = leftContent.find((block) => block.type === "text");
+  const rightText = rightContent.find((block) => block.type === "text");
+  return (leftText && leftText.type === "text" ? leftText.text : "")
+    === (rightText && rightText.type === "text" ? rightText.text : "");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
@@ -199,9 +217,9 @@ function liveToolResultMessage(toolCallId: string, output: ToolOutputState): Too
 
 function liveResultsFromOutputs(outputs: Map<string, ToolOutputState>): Map<string, ToolResultMessage> {
   const map = new Map<string, ToolResultMessage>();
-  for (const [id, output] of outputs) {
+  for (const [toolCallId, output] of outputs) {
     if (!output.text && !output.isError) continue;
-    map.set(id, liveToolResultMessage(id, output));
+    map.set(toolCallId, liveToolResultMessage(toolCallId, output));
   }
   return map;
 }
@@ -309,7 +327,7 @@ type SlashCommandsResponse = {
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen, onOpenSettings,
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
@@ -402,6 +420,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // Highest prompt generation seen on the SSE wire; terminal events stamped
   // below this were emitted by a run that ended before a newer prompt started.
   const lastPromptGenerationRef = useRef(0);
+  const ignoreStreamSnapshotRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   const modelSwitchPendingRef = useRef(false);
   const currentModelOverrideSessionRef = useRef<string | null>(null);
@@ -514,9 +533,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       sessionFile: data?.filePath || undefined,
       sessionId: sessionIdRef.current ?? session?.id ?? "",
       sessionName: session?.name,
-      userMessages,
+      userMessages: contextUsage?.userMessages ?? userMessages,
       assistantMessages,
-      toolCalls,
+      toolCalls: contextUsage?.toolCalls ?? toolCalls,
       toolResults,
       totalMessages: messages.length,
       tokens,
@@ -577,7 +596,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (liveState) {
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
+          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "xhigh");
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
@@ -1133,18 +1152,43 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     switch (event.type) {
       case "connected": {
-        dispatch({ type: "end" });
         if (event.isStreaming === true) {
           cancelEventStreamGrace();
+          const alreadyLive = agentRunningRef.current;
           sdkAgentActiveRef.current = true;
           agentRunningRef.current = true;
           setAgentRunning(true);
-          setAgentPhase({ kind: "waiting_model" });
+          setAgentPhase((prev) => prev ?? { kind: "waiting_model" });
+          if (!alreadyLive) dispatch({ type: "start" });
+        }
+        break;
+      }
+      case "context_usage": {
+        const usage = event.contextUsage;
+        if (usage && typeof usage === "object" && !Array.isArray(usage)) {
+          const record = usage as {
+            percent?: unknown;
+            contextWindow?: unknown;
+            tokens?: unknown;
+            userMessages?: unknown;
+            toolCalls?: unknown;
+          };
+          const contextWindow = typeof record.contextWindow === "number" ? record.contextWindow : 0;
+          if (contextWindow > 0) {
+            setContextUsage({
+              percent: typeof record.percent === "number" ? record.percent : null,
+              contextWindow,
+              tokens: typeof record.tokens === "number" ? record.tokens : null,
+              ...(typeof record.userMessages === "number" ? { userMessages: record.userMessages } : {}),
+              ...(typeof record.toolCalls === "number" ? { toolCalls: record.toolCalls } : {}),
+            });
+          }
         }
         break;
       }
       case "agent_start":
         cancelEventStreamGrace();
+        ignoreStreamSnapshotRef.current = false;
         liveToolOutputsRef.current = new Map();
         setLiveToolResults((prev) => (prev.size === 0 ? prev : new Map()));
         agentLifecycleGenerationRef.current += 1;
@@ -1247,6 +1291,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const msg = event.message as AgentMessage | undefined;
           if (msg?.role === "user") break;
           if (msg?.role === "assistant") {
+            if (ignoreStreamSnapshotRef.current) break;
             dispatch({ type: "snapshot", message: msg });
             if (msg.content.length > 0) setAgentPhase(null);
           } else if (msg) {
@@ -1321,7 +1366,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (completed) {
           const next = normalizeToolCalls(completed);
           const live = liveResultsFromOutputs(liveToolOutputsRef.current);
-          setMessages((prev) => mergeLiveToolResults([...prev, next], live));
+          setMessages((prev) => {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              const previous = prev[i];
+              if (previous.role !== "assistant") continue;
+              if (isSameAssistantTurn(previous, next)) return mergeLiveToolResults(prev, live);
+              break;
+            }
+            return mergeLiveToolResults([...prev, next], live);
+          });
           liveToolOutputsRef.current = new Map();
           setLiveToolResults((prev) => (prev.size === 0 ? prev : new Map()));
         }
@@ -1455,6 +1508,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunningRef.current = true;
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
+    ignoreStreamSnapshotRef.current = true;
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
 
@@ -1739,6 +1793,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const [, commandName, rawArgs = ""] = match;
     const args = rawArgs.trim();
+    if (commandName === "plugins") {
+      onOpenSettings?.("plugins");
+      return { handled: true, action: "openPlugins" };
+    }
+    if (commandName === "marketplace") {
+      onOpenSettings?.("marketplace");
+      return { handled: true, action: "openMarketplace" };
+    }
     const sid = sessionIdRef.current ?? await ensureNewSession();
     const complete = (result: BuiltinSlashCommandResult): BuiltinSlashCommandResult => {
       if (!result.handled) return result;
@@ -1829,7 +1891,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (commandName === "compact") setIsCompacting(false);
     }
-  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onOpenSettings, onSessionStatsPanelOpen]);
 
   // Let AgentSession.prompt decide atomically whether to queue against the
   // current run or start a new turn if it settled while the request was in
@@ -2077,7 +2139,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
+          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "xhigh");
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));

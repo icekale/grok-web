@@ -23,8 +23,7 @@ export function configHasModelSection(text: string, modelId: string): boolean {
   return false;
 }
 
-export function grokSettingsPickerId(row: SettingsComposerModel, configText: string): string {
-  if (configHasModelSection(configText, row.id)) return row.id;
+export function grokSettingsPickerId(row: SettingsComposerModel, _configText?: string): string {
   return `${row.providerId}/${row.id}`;
 }
 

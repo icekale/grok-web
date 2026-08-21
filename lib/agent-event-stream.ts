@@ -5,9 +5,16 @@ import {
 } from "./agent-event-wire";
 import { getPromptGeneration } from "./prompt-generation";
 
+export type AgentEventStreamContextUsage = {
+  percent: number | null;
+  contextWindow: number;
+  tokens: number | null;
+};
+
 export interface AgentEventStreamSession {
   readonly isStreaming: boolean;
   readonly streamingMessage: unknown;
+  readonly contextUsage?: AgentEventStreamContextUsage | Promise<AgentEventStreamContextUsage | null> | null;
   onEvent(listener: (event: AgentEventLike) => void): () => void;
 }
 
@@ -92,12 +99,17 @@ export function createAgentEventStream(
           }
           unsubscribe = stopListening;
 
-          const snapshot = session.streamingMessage;
+          const snapshot = session.isStreaming === true ? session.streamingMessage : null;
           encode({
             type: "connected",
             sessionId,
             isStreaming: session.isStreaming,
           });
+          const contextUsage = await session.contextUsage;
+          if (closed) return;
+          if (contextUsage && contextUsage.contextWindow > 0) {
+            encode({ type: "context_usage", contextUsage });
+          }
           for (const event of bufferedEvents) forwardEvent(event, snapshot);
           if (snapshot !== undefined && snapshot !== null) {
             encode({ type: "message_start", message: snapshot });

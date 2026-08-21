@@ -25,6 +25,13 @@ test("process details use a compact result row and stay collapsed", () => {
   assert.doesNotMatch(source, /chat\.processRunning/);
 });
 
+test("a live turn does not unroll persisted tool cards into the transcript", () => {
+  const start = source.indexOf("const isLiveTail");
+  const block = source.slice(start, start + 900);
+  assert.match(block, /rendered\.push\(renderMessage\(userIdx\)\)/);
+  assert.doesNotMatch(block, /for \(let renderIdx = userIdx; renderIdx < endIdx/);
+});
+
 test("notice shelf animation does not lock toast height", () => {
   const start = css.indexOf("@keyframes notice-shelf-in");
   const end = css.indexOf("@keyframes notice-shelf-out");

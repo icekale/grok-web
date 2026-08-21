@@ -14,8 +14,8 @@ import {
   Layers3,
   Monitor,
   Moon,
+  Cable,
   Plug,
-  ScanEye,
   Shield,
   SlidersHorizontal,
   Sun,
@@ -33,11 +33,10 @@ import type { ModelsDraftController } from "./models-config/models-config-types"
 import type { SettingsSectionController } from "./resource-settings/resource-settings-types";
 import { PluginsConfig } from "./PluginsConfig";
 import { SkillsConfig } from "./SkillsConfig";
-import { VisionToolkitConfig, type VisionDraftController } from "./VisionToolkitConfig";
 import { RemoteAccessConfig, type RemoteDraftController } from "./RemoteAccessConfig";
 import { DialogShell } from "./DialogShell";
 
-type SettingsSection = "general" | "remote" | "archived" | "models" | "skills" | "plugins" | "vision";
+export type SettingsSection = "general" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp";
 
 interface Props {
   cwd: string | null;
@@ -67,7 +66,8 @@ function SectionIcon({ section }: { section: SettingsSection }) {
     models: Cpu,
     skills: Layers3,
     plugins: Plug,
-    vision: ScanEye,
+    marketplace: Plug,
+    mcp: Cable,
   };
   const Icon = icons[section];
   return <Icon size={16} strokeWidth={1.8} aria-hidden="true" />;
@@ -104,7 +104,6 @@ export function SettingsPage({
   const [modelsController, setModelsController] = useState<ModelsDraftController | null>(null);
   const [skillsController, setSkillsController] = useState<SettingsSectionController | null>(null);
   const [pluginsController, setPluginsController] = useState<SettingsSectionController | null>(null);
-  const [visionController, setVisionController] = useState<VisionDraftController | null>(null);
   const [remoteController, setRemoteController] = useState<RemoteDraftController | null>(null);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingExit, setPendingExit] = useState<(() => void) | null>(null);
@@ -119,26 +118,24 @@ export function SettingsPage({
   // One exit-request path: every Settings close/navigation action goes through
   // here so unsaved custom model drafts are never lost silently.
   const requestCloseOrNavigate = useCallback((action: () => void) => {
-    if (modelsController?.dirty || visionController?.dirty || remoteController?.dirty) {
+    if (modelsController?.dirty || remoteController?.dirty) {
       setPendingExit(() => action);
       setDiscardDialogOpen(true);
     } else {
       action();
     }
-  }, [modelsController, remoteController, visionController]);
+  }, [modelsController, remoteController]);
 
   const handleDiscardConfirm = useCallback(() => {
     const action = pendingExit;
     setDiscardDialogOpen(false);
     setPendingExit(null);
     setModelsController(null);
-    setVisionController(null);
     setRemoteController(null);
     modelsController?.discard();
-    visionController?.discard();
     remoteController?.discard();
     action?.();
-  }, [modelsController, pendingExit, remoteController, visionController]);
+  }, [modelsController, pendingExit, remoteController]);
 
   const activeController = section === "models"
     ? modelsController
@@ -146,8 +143,6 @@ export function SettingsPage({
       ? skillsController
       : section === "plugins"
         ? pluginsController
-        : section === "vision"
-          ? visionController
           : section === "remote"
             ? remoteController
             : null;
@@ -197,13 +192,13 @@ export function SettingsPage({
 
   const handleSettingsBack = useCallback((): boolean => {
     if (activeController?.handleBack()) return true;
-    if (modelsController?.dirty || visionController?.dirty || remoteController?.dirty) {
+    if (modelsController?.dirty || remoteController?.dirty) {
       setPendingExit(() => close);
       setDiscardDialogOpen(true);
       return true;
     }
     return false;
-  }, [activeController, close, modelsController, remoteController, visionController]);
+  }, [activeController, close, modelsController, remoteController]);
 
   useEffect(() => {
     onRegisterSettingsBack(handleSettingsBack);
@@ -282,7 +277,7 @@ export function SettingsPage({
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
     { id: "plugins", label: t("common.plugins"), disabled: !cwd },
-    { id: "vision", label: t("vision.nav"), disabled: false },
+    { id: "mcp", label: t("common.mcp"), disabled: !cwd },
     { id: "remote", label: t("remote.nav"), disabled: false },
   ];
 
@@ -402,8 +397,6 @@ export function SettingsPage({
     content = <ModelsConfig onControllerChange={setModelsController} />;
   } else if (section === "remote") {
     content = <RemoteAccessConfig onControllerChange={setRemoteController} />;
-  } else if (section === "vision") {
-    content = <VisionToolkitConfig onControllerChange={setVisionController} />;
   } else if (!cwd) {
     content = (
       <div className="settings-page-empty">
@@ -414,11 +407,23 @@ export function SettingsPage({
     );
   } else if (section === "skills") {
     content = <SkillsConfig cwd={cwd} onControllerChange={setSkillsController} />;
-  } else {
+  } else if (section === "mcp") {
     content = (
       <PluginsConfig
         cwd={cwd}
         sessionId={sessionId}
+        variant="mcp"
+        onReloaded={onSessionReloaded}
+        onControllerChange={setPluginsController}
+      />
+    );
+  } else {
+    content = (
+      <PluginsConfig
+        key={section === "marketplace" ? "marketplace" : "plugins"}
+        cwd={cwd}
+        sessionId={sessionId}
+        initialView={section === "marketplace" ? "marketplace" : "plugins"}
         onReloaded={onSessionReloaded}
         onControllerChange={setPluginsController}
       />
@@ -435,15 +440,7 @@ export function SettingsPage({
       onClose={() => requestCloseOrNavigate(close)}
       onEscape={() => Boolean(activeController?.handleBack())}
       bodyClassName="settings-page-dialog-body"
-      headerActions={section === "vision" ? (
-        <button
-          type="button"
-          className="settings-page-header-text"
-          onClick={() => visionController?.reveal()}
-        >
-          {t("vision.openConfig")}
-        </button>
-      ) : null}
+      headerActions={null}
     >
       <div className="settings-page-layout">
         <nav
@@ -455,7 +452,7 @@ export function SettingsPage({
             <button
               key={item.id}
               type="button"
-              data-active={section === item.id}
+              data-active={section === item.id || (item.id === "plugins" && section === "marketplace")}
               disabled={item.disabled}
               title={item.disabled ? t("settings.selectProjectFirst") : item.label}
               onClick={() => requestCloseOrNavigate(() => setSection(item.id))}

@@ -9,9 +9,11 @@ test("PluginsConfig is Settings-only master-detail and keeps POST payloads", () 
   assert.match(source, /onControllerChange\?\.\(controller\)/);
   assert.doesNotMatch(source, /embedded = false/);
   assert.match(source, /<PluginsNavigator/);
-  assert.match(source, /fetch\(`\/api\/plugins\?cwd=\$\{encodeURIComponent\(cwd\)\}`\)/);
-  assert.match(source, /JSON\.stringify\(\{ action, source: pkg\.source, cwd \}\)/);
-  assert.doesNotMatch(source, /action: "install"/);
+  assert.match(source, /fetch\(`\$\{apiPath\}\?cwd=\$\{encodeURIComponent\(cwd\)\}`\)/);
+  assert.match(source, /postPlugins\(\{ action, source: pkg\.source \}\)/);
+  assert.match(source, /action: "install"/);
+  assert.match(source, /runMarketplaceAction\("add_source"/);
+  assert.match(source, /runMarketplaceAction\(\s*"marketplace_install"/);
   assert.doesNotMatch(source, /AddPluginPanel/);
   assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
 });
@@ -25,5 +27,6 @@ test("PluginsConfig repairs selection by scope\\0source and returns to list when
 
 test("PluginsConfig reloads the session after a successful runtime-affecting action", () => {
   assert.match(source, /setActionMessage\(messages\[action\]\);/);
-  assert.match(source, /if \(sessionId\) \{[\s\S]*?sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
+  assert.match(source, /await reloadIfNeeded\(\);/);
+  assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
 });

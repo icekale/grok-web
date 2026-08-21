@@ -48,6 +48,7 @@ interface Props {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
+  onOpenSettings?: (section: "plugins" | "marketplace") => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
   /** Optional right-side slot rendered only inside the session workspace. */
@@ -271,7 +272,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, de
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, desktopAside, playDoneSound = () => {}, unlockAudio, subagentMode, subagentTreeVisible = false, tokenSpeedEnabled = true }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, desktopAside, playDoneSound = () => {}, unlockAudio, subagentMode, subagentTreeVisible = false, tokenSpeedEnabled = true }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const isWideDesktop = useIsWideDesktop();
@@ -305,7 +306,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollToBottom, scrollUserMsgToTop,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSessionStatsPanelOpen, onOpenSettings,
     readOnlyHistory: Boolean(subagentMode),
     historyRefreshGeneration: subagentMode?.transcriptRefreshGeneration,
   });
@@ -404,6 +405,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       sessionStats.tokens.total,
       sessionStats.cost ?? 0,
       sessionStats.totalActiveMs ?? 0,
+      sessionStats.contextUsage?.percent ?? "null",
+      sessionStats.contextUsage?.contextWindow ?? 0,
+      sessionStats.contextUsage?.tokens ?? "null",
+      sessionStats.contextUsage?.userMessages ?? sessionStats.userMessages,
+      sessionStats.contextUsage?.toolCalls ?? sessionStats.toolCalls,
     ].join("|")
     : null;
   const sessionStatsRef = useRef(sessionStats);
@@ -415,7 +421,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   // Push context usage up to AppShell as well.
   const ctxKey = contextUsage
-    ? `${contextUsage.percent ?? "null"}|${contextUsage.contextWindow}|${contextUsage.tokens ?? "null"}`
+    ? `${contextUsage.percent ?? "null"}|${contextUsage.contextWindow}|${contextUsage.tokens ?? "null"}|${contextUsage.userMessages ?? "null"}|${contextUsage.toolCalls ?? "null"}`
     : null;
   const contextUsageRef = useRef(contextUsage);
   contextUsageRef.current = contextUsage;
@@ -647,7 +653,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
       cwd={session?.cwd ?? newSessionCwd}
       workspaceHint={isEmptyNew ? homeCwdLabel : null}
-      imagesEnabled={false}
+      imagesEnabled={true}
     />
   );
 
@@ -889,9 +895,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
+                  // Only the user prompt belongs in the transcript while the
+                  // turn is live. Tool cards live in the streaming bubble;
+                  // unrolling the persisted assistant here dumps every
+                  // search_replace body as "parameters".
+                  rendered.push(renderMessage(userIdx));
                   idx = endIdx;
                   continue;
                 }

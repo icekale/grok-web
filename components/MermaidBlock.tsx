@@ -1,12 +1,22 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
+
+const HighlightedCode = lazy(() => import("./HighlightedCode").then((module) => ({
+  default: module.HighlightedCode,
+})));
+
+const codePreStyle = {
+  margin: 0,
+  padding: "11px 13px",
+  fontSize: "var(--text-ui)",
+  lineHeight: "var(--leading-prose)",
+  overflowX: "auto" as const,
+  background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+};
 
 interface MermaidBlockProps {
   code: string;
@@ -272,36 +282,19 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         </div>
       </div>
       {isStreaming ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: "11px 13px",
-            fontSize: "var(--text-ui)",
-            lineHeight: "var(--leading-prose)",
-            overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
-          }}
-        >
+        <pre style={codePreStyle}>
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
         </pre>
       ) : (
-        <SyntaxHighlighter
-          language={lang || "text"}
-          style={isDark ? vscDarkPlus : vs}
-          showLineNumbers
-          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
-          customStyle={{
-            margin: 0,
-            padding: "11px 13px",
-            fontSize: "var(--text-ui)",
-            lineHeight: "var(--leading-prose)",
-            borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
-          }}
-          codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
+        <Suspense
+          fallback={(
+            <pre style={codePreStyle}>
+              <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
+            </pre>
+          )}
         >
-          {code}
-        </SyntaxHighlighter>
+          <HighlightedCode code={code} lang={lang} isDark={isDark} />
+        </Suspense>
       )}
     </div>
   );

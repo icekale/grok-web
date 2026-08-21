@@ -2,6 +2,12 @@ import { EventEmitter } from "node:events";
 import type { Readable, Writable } from "node:stream";
 import { createInterface, type Interface } from "node:readline";
 
+export type JsonRpcId = number | string;
+
+export function isJsonRpcId(value: unknown): value is JsonRpcId {
+  return typeof value === "number" || typeof value === "string";
+}
+
 export class JsonRpcConnectionClosedError extends Error {
   readonly code = "ACP_JSONRPC_CLOSED";
 
@@ -54,7 +60,7 @@ export class JsonRpcConn {
     this.write({ jsonrpc: "2.0", method, params });
   }
 
-  respond(id: number, result?: unknown, error?: { code: number; message: string }): void {
+  respond(id: JsonRpcId, result?: unknown, error?: { code: number; message: string }): void {
     if (error) {
       this.write({ jsonrpc: "2.0", id, error });
       return;
@@ -62,7 +68,7 @@ export class JsonRpcConn {
     this.write({ jsonrpc: "2.0", id, result });
   }
 
-  onNotification(handler: (method: string, params: unknown, id?: number) => void): () => void {
+  onNotification(handler: (method: string, params: unknown, id?: JsonRpcId) => void): () => void {
     this.notes.on("n", handler);
     return () => this.notes.off("n", handler);
   }
@@ -144,7 +150,7 @@ export class JsonRpcConn {
     let msg: Record<string, unknown>;
     try { msg = JSON.parse(line) as Record<string, unknown>; } catch { return; }
     if (typeof msg.method === "string") {
-      this.notes.emit("n", msg.method, msg.params, typeof msg.id === "number" ? msg.id : undefined);
+      this.notes.emit("n", msg.method, msg.params, isJsonRpcId(msg.id) ? msg.id : undefined);
       return;
     }
     if (typeof msg.id === "number" && this.pending.has(msg.id)) {

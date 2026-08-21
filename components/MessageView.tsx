@@ -9,11 +9,13 @@ import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantAbortDetail, getAssistantErrorMessage, isAbortedAssistantMessage, isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
-import { isEditToolName } from "@/lib/tool-names";
+import { grokCanonicalToolName, grokToolPreviewValue } from "@/lib/grok-tool-input";
+import { isBashToolName, isEditToolName } from "@/lib/tool-names";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { epochMillis } from "@/lib/epoch-ms";
+import { replaceUserMessageText } from "@/lib/replace-user-message";
 import { billedOutputTokens, computeStreamingTps, estimateStreamingTokens, type TokenEstimateCacheEntry } from "@/lib/token-speed";
 import type {
   AgentMessage,
@@ -195,25 +197,6 @@ function formatTime(ts?: number): string | null {
   if (isToday) return time;
   const date = d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
   return `${date} ${time}`;
-}
-
-export function replaceUserMessageText(message: UserMessage, text: string): UserMessage {
-  if (typeof message.content === "string") return { ...message, content: text };
-
-  const content: Array<TextContent | ImageContent> = [];
-  let replaced = false;
-  for (const block of message.content) {
-    if (block.type !== "text") {
-      content.push(block);
-      continue;
-    }
-    if (!replaced) {
-      content.push({ ...block, text });
-      replaced = true;
-    }
-  }
-  if (!replaced) content.unshift({ type: "text", text });
-  return { ...message, content };
 }
 
 function haveSameRelevantToolResults(
@@ -543,6 +526,23 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
+  const visibleBlockItems = useMemo(() => {
+    if (!isStreaming) return blockItems;
+    let lastTool = -1;
+    for (let i = 0; i < blockItems.length; i++) {
+      if (blockItems[i].block.type === "toolCall") lastTool = i;
+    }
+    if (lastTool < 0) return blockItems;
+    return blockItems.filter((item, index) => item.block.type !== "toolCall" || index === lastTool);
+  }, [blockItems, isStreaming]);
+  const streamingToolSummary = useMemo(() => {
+    if (!isStreaming) return null;
+    const tools = blockItems.filter((item) => item.block.type === "toolCall");
+    if (tools.length <= 1) return null;
+    const current = tools[tools.length - 1]?.block;
+    const name = current && current.type === "toolCall" ? current.toolName : "tool";
+    return { name, extra: tools.length - 1 };
+  }, [blockItems, isStreaming]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const aborted = isAbortedAssistantMessage(message, { isStreaming });
   const abortDetail = getAssistantAbortDetail(message, { isStreaming });
@@ -707,7 +707,18 @@ function AssistantMessageView({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {blockItems.map(({ block, originalIndex }) => (
+        {streamingToolSummary && (
+          <div
+            style={{
+              fontSize: "var(--text-ui)",
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {t("chat.runningToolsMore", { names: streamingToolSummary.name, count: streamingToolSummary.extra })}
+          </div>
+        )}
+        {visibleBlockItems.map(({ block, originalIndex }) => (
           <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultDetailsExpanded={defaultDetailsExpanded} />
         ))}
       </div>
@@ -900,7 +911,10 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStre
 }
 
 
-export function getToolCallInputText(block: ToolCallContent): string {
+function getToolCallInputText(block: ToolCallContent): string {
+  if (isBashToolName(block.toolName) && typeof block.input?.command === "string") {
+    return block.input.command;
+  }
   return block.rawInput ?? JSON.stringify(block.input, null, 2);
 }
 
@@ -914,7 +928,7 @@ function ToolCallBlock({ block, result, duration, defaultExpanded, isStreaming, 
   const expanded = userExpanded ?? defaultExpanded;
   const effectiveResult = loadedResult ?? result;
   const inputStr = getToolCallInputText(block);
-  const isStreamingInput = block.rawInput !== undefined;
+  const isStreamingInput = block.rawInput !== undefined && Object.keys(block.input ?? {}).length === 0;
   const isEditTool = isEditToolName(block.toolName);
   const resultDiff = effectiveResult && !effectiveResult.isError ? getResultDiff(effectiveResult) : null;
 
@@ -997,7 +1011,7 @@ function ToolCallBlock({ block, result, duration, defaultExpanded, isStreaming, 
           <Check size={11} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, color: "#16a34a" }} />
         )}
         <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--text-meta)", flexShrink: 0 }}>
-          {block.toolName}
+          {grokCanonicalToolName(block.toolName)}
         </span>
         <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: "var(--text-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
           {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
@@ -1616,18 +1630,21 @@ function previewText(text: string): string {
 function getToolPreview(block: ToolCallContent): string {
   const input = block.input;
   if (!input || typeof input !== "object") return "";
+  const preview = grokToolPreviewValue(input, [
+    "command",
+    "target_file",
+    "target_directory",
+    "path",
+    "file_path",
+    "pattern",
+    "query",
+    "description",
+  ]);
+  if (preview) return preview;
   const keys = Object.keys(input);
   if (keys.length === 0) return "";
-
-  // Common tool input patterns
-  if ("command" in input) return String(input.command).slice(0, 120);
-  if ("path" in input) return String(input.path).slice(0, 120);
-  if ("file_path" in input) return String(input.file_path).slice(0, 120);
-  if ("pattern" in input) return String(input.pattern).slice(0, 120);
-  if ("query" in input) return String(input.query).slice(0, 120);
-
   const first = input[keys[0]];
-  return String(first).slice(0, 120);
+  return typeof first === "string" ? first.replace(/\s+/g, " ").slice(0, 120) : "";
 }
 
 function formatUsage(usage: {

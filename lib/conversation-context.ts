@@ -14,24 +14,27 @@ export function buildConversationContextModel({
   stats,
   contextUsage,
 }: {
-  stats: SessionStatsInfo;
+  stats?: SessionStatsInfo | null;
   contextUsage: ContextUsage | null;
 }) {
-  const ctx = contextUsage ?? stats.contextUsage ?? null;
+  const ctx = contextUsage ?? stats?.contextUsage ?? null;
   const contextWindow = Math.max(0, ctx?.contextWindow ?? 0);
   const usedTokens = ctx?.tokens == null ? null : Math.max(0, ctx.tokens);
   const percent = ctx?.percent == null ? null : Math.min(100, Math.max(0, ctx.percent));
-  const cacheHitDenominator = stats.tokens.input + stats.tokens.cacheRead + stats.tokens.cacheWrite;
-  const cacheHitRate = stats.tokens.cacheRead + stats.tokens.cacheWrite > 0 && cacheHitDenominator > 0
-    ? Number((stats.tokens.cacheRead / cacheHitDenominator * 100).toFixed(1))
+  const tokens = stats?.tokens;
+  const cacheHitDenominator = tokens
+    ? tokens.input + tokens.cacheRead + tokens.cacheWrite
+    : 0;
+  const cacheHitRate = tokens && tokens.cacheRead + tokens.cacheWrite > 0 && cacheHitDenominator > 0
+    ? Number((tokens.cacheRead / cacheHitDenominator * 100).toFixed(1))
     : null;
   return {
     percent,
     usedTokens,
     contextWindow,
     availableTokens: Math.max(0, contextWindow - (usedTokens ?? 0)),
-    userMessages: stats.userMessages,
-    toolCalls: stats.toolCalls,
+    userMessages: ctx?.userMessages ?? stats?.userMessages ?? 0,
+    toolCalls: ctx?.toolCalls ?? stats?.toolCalls ?? 0,
     cacheHitRate,
   };
 }
