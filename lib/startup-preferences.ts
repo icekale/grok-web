@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@/lib/pi-stubs/agent-core";
-import type { SettingsManager } from "@/lib/pi-stubs/coding-agent";
+import type { SettingsManager } from "./pi-types";
+import type { ThinkingLevel } from "./types";
 
 export interface ExplicitStartupPreferences {
   model?: { provider: string; modelId: string };

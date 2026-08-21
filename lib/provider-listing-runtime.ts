@@ -1,12 +1,25 @@
-import type { ModelRuntime } from "@/lib/pi-stubs/coding-agent";
 import type { ProviderCredentialType, ProviderListingInput } from "@/lib/provider-listing";
+
+interface ModelRuntimeLike {
+  getModels(): Array<{ provider: string }>;
+  listCredentials(): Promise<Array<{ type?: string; providerId: string }>>;
+  getProviders(): Array<{
+    id: string;
+    name: string;
+    auth: {
+      apiKey?: { login?: unknown };
+      oauth?: { name?: string } | null;
+    };
+  }>;
+  getProviderAuthStatus(id: string): { configured: boolean; source?: string };
+}
 
 /**
  * Adapter between `ModelRuntime` and the pure listing helpers in
  * `lib/provider-listing.ts`.
  */
 export async function collectProviderListingInputs(
-  modelRuntime: ModelRuntime,
+  modelRuntime: ModelRuntimeLike,
 ): Promise<ProviderListingInput[]> {
   const models = modelRuntime.getModels();
 

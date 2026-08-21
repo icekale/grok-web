@@ -1,5 +1,4 @@
-import type { ThinkingLevel } from "@/lib/pi-stubs/agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, SettingsManager, Theme } from "@/lib/pi-stubs/coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, initTheme, SessionManager, SettingsManager, Theme } from "@/lib/pi-stubs/coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@/lib/pi-stubs/tui";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
@@ -16,7 +15,7 @@ import {
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
-import type { SlashCommandInfo } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "./grok-home.ts";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type {
   ExtensionUiRequest,
@@ -24,6 +23,8 @@ import type {
   ExtensionWidgetItem,
   SessionInfo,
   SessionMessageEntry,
+  SlashCommandInfo,
+  ThinkingLevel,
 } from "./types";
 import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
 import { createSubagentRpcCapture, SubagentRpcClient, type SubagentRpcCapture } from "./subagent-rpc";
@@ -1573,7 +1574,7 @@ export class AgentSessionWrapper {
   }
 
   private syncProjectTrust(): void {
-    const status = getProjectTrustStatus(this.cwd, getAgentDir());
+    const status = getProjectTrustStatus(this.cwd, grokHome());
     this.inner.settingsManager.setProjectTrusted(status.trusted);
   }
 }
@@ -1837,7 +1838,7 @@ export async function startRpcSession(
   const starting = (async () => {
     // Some extensions access the SDK's global theme even outside the terminal UI.
     initTheme();
-    const agentDir = getAgentDir();
+    const agentDir = grokHome();
 
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.

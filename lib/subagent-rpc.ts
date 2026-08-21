@@ -1,5 +1,10 @@
-import type { InlineExtension } from "@/lib/pi-stubs/coding-agent";
 import { randomUUID } from "crypto";
+
+type InlineExtension = {
+  name: string;
+  hidden?: boolean;
+  factory: (pi: { events?: unknown }) => void;
+};
 
 // ============================================================================
 // Protocol constants (mirrors the pi-subagents extension RPC v1 surface).

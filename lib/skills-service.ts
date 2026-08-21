@@ -1,6 +1,6 @@
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import type { SkillInfo, SkillsResponse } from "@/lib/api-types";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "@/lib/grok-home";
 import { annotateSkillsWithInstallInfo } from "@/lib/skill-lock";
 import { listGrokSkills } from "@/lib/grok-settings/home-config.ts";
 import { getProjectTrustStatus } from "@/lib/project-trust";
@@ -37,7 +37,7 @@ function mapGrokSkill(skill: { name: string; path: string }, cwd: string): Skill
 }
 
 export async function loadSkillsWithInstallInfo(cwd: string): Promise<SkillsResponse> {
-  const agentDir = getAgentDir();
+  const agentDir = grokHome();
   const trust = getProjectTrustStatus(cwd, agentDir);
   let skills: SkillInfo[] = [];
   if (trust.trusted) {

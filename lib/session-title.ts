@@ -1,10 +1,89 @@
-import {
-  Agent,
-  type AgentMessage,
-  type AgentOptions,
-  type AgentTool,
-} from "@/lib/pi-stubs/agent-core";
-import type { AgentSession } from "@/lib/pi-stubs/coding-agent";
+type AgentTool = Record<string, unknown> & {
+  execute?: (...args: never[]) => unknown;
+};
+
+type TitleContentBlock = {
+  type?: string;
+  text?: string;
+  id?: string;
+  toolCallId?: string;
+};
+
+type AgentMessage = {
+  role: string;
+  content: string | TitleContentBlock[];
+  stopReason?: string;
+  errorMessage?: string;
+  toolCallId?: string;
+  usage?: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    totalTokens: number;
+  };
+};
+
+type AgentOptions = {
+  initialState?: {
+    systemPrompt?: unknown;
+    model?: unknown;
+    thinkingLevel?: unknown;
+    tools?: AgentTool[];
+    messages?: AgentMessage[];
+  };
+  convertToLlm?: unknown;
+  transformContext?: unknown;
+  streamFn?: unknown;
+  getApiKey?: unknown;
+  onPayload?: unknown;
+  onResponse?: unknown;
+  steeringMode?: unknown;
+  followUpMode?: unknown;
+  sessionId?: unknown;
+  thinkingBudgets?: unknown;
+  transport?: unknown;
+  maxRetryDelayMs?: unknown;
+  toolExecution?: unknown;
+};
+
+class Agent {
+  constructor(_options: AgentOptions) {
+    throw new Error("not implemented in foundation");
+  }
+  declare state: {
+    systemPrompt?: unknown;
+    model?: unknown;
+    thinkingLevel?: unknown;
+    tools: AgentTool[];
+    messages: AgentMessage[];
+  };
+  convertToLlm?: unknown;
+  transformContext?: unknown;
+  streamFunction?: unknown;
+  getApiKey?: unknown;
+  onPayload?: unknown;
+  onResponse?: unknown;
+  steeringMode?: unknown;
+  followUpMode?: unknown;
+  sessionId?: unknown;
+  thinkingBudgets?: unknown;
+  transport?: unknown;
+  maxRetryDelayMs?: unknown;
+  toolExecution?: unknown;
+  waitForIdle(): Promise<void> {
+    return Promise.resolve();
+  }
+  continue(): Promise<void> {
+    return Promise.reject(new Error("not implemented in foundation"));
+  }
+  prompt(_text: string): Promise<void> {
+    return Promise.reject(new Error("not implemented in foundation"));
+  }
+  abort(): void {}
+}
+
+type AgentSession = { agent: Agent };
 
 const TITLE_TIMEOUT_MS = 90_000;
 const MAX_TITLE_LENGTH = 80;
@@ -143,9 +222,10 @@ function getAssistantResult(agent: Agent, historyLength: number): GeneratedSessi
     if (message.stopReason === "error") {
       throw new Error(message.errorMessage || "The title model request failed");
     }
+    if (!Array.isArray(message.content)) continue;
     const text = message.content
       .filter((block) => block.type === "text")
-      .map((block) => block.text)
+      .map((block) => block.text ?? "")
       .join("\n")
       .trim();
     if (!text) continue;
@@ -177,14 +257,19 @@ export function sanitizeTitleMessages(messages: AgentMessage[]): AgentMessage[] 
       for (let resultIndex = index + 1; resultIndex < messages.length; resultIndex++) {
         const resultMessage = messages[resultIndex];
         if (resultMessage.role !== "toolResult") break;
-        followingToolResultIds.add(resultMessage.toolCallId);
+        if (resultMessage.toolCallId) followingToolResultIds.add(resultMessage.toolCallId);
       }
 
       expectedToolResultIds = new Set<string>();
+      if (!Array.isArray(message.content)) {
+        sanitized.push(message);
+        continue;
+      }
       const content = message.content.filter((block) => {
         if (block.type !== "toolCall") return true;
-        if (!followingToolResultIds.has(block.id)) return false;
-        expectedToolResultIds!.add(block.id);
+        const id = block.id ?? block.toolCallId;
+        if (!id || !followingToolResultIds.has(id)) return false;
+        expectedToolResultIds!.add(id);
         return true;
       });
 

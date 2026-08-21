@@ -1,7 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Credential } from "@/lib/pi-stubs/ai";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "./grok-home";
 import lockfile from "proper-lockfile";
 import type { ProviderCredentialType } from "@/lib/provider-listing";
 
@@ -75,8 +74,8 @@ async function updateStoredCredentials<T>(
 /** Store a provider credential without triggering a model-catalog refresh. */
 export function storeProviderCredential(
   providerId: string,
-  credential: Credential,
-  authPath = join(getAgentDir(), "auth.json"),
+  credential: unknown,
+  authPath = join(grokHome(), "auth.json"),
 ): Promise<void> {
   return updateStoredCredentials(authPath, (credentials) => {
     credentials[providerId] = credential;
@@ -93,7 +92,7 @@ export function storeProviderCredential(
 export async function removeStoredCredentialIfType(
   providerId: string,
   expectedType: ProviderCredentialType,
-  authPath = join(getAgentDir(), "auth.json"),
+  authPath = join(grokHome(), "auth.json"),
 ): Promise<CredentialRemovalResult> {
   return updateStoredCredentials<CredentialRemovalResult>(authPath, (credentials) => {
     if (!Object.hasOwn(credentials, providerId)) {

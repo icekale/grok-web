@@ -1,10 +1,25 @@
-import type { ThinkingLevel } from "@/lib/pi-stubs/agent-core";
-import {
-  resolveModelScopeWithDiagnostics,
-  type ModelRuntime,
-  type ScopedModel,
-} from "@/lib/pi-stubs/coding-agent";
-import type { Api, Model } from "@/lib/pi-stubs/ai";
+import type { ThinkingLevel } from "./types";
+
+interface ModelLike {
+  id: string;
+  provider: string;
+}
+
+interface ScopedModel {
+  model: ModelLike;
+  thinkingLevel?: ThinkingLevel;
+}
+
+interface ModelRuntimeLike {
+  getAvailable(): Promise<readonly ModelLike[]>;
+}
+
+async function resolveModelScopeWithDiagnostics(
+  _patterns: string[],
+  _runtime: ModelRuntimeLike,
+): Promise<{ scopedModels: ScopedModel[]; diagnostics: Array<{ message: string }> }> {
+  return { scopedModels: [], diagnostics: [] };
+}
 
 const THINKING_LEVEL_SUFFIXES = new Set<ThinkingLevel>([
   "off",
@@ -17,19 +32,16 @@ const THINKING_LEVEL_SUFFIXES = new Set<ThinkingLevel>([
 ]);
 
 /**
- * Model scoping shared by the UI selector and AgentSession startup.
+ * Model scoping shared by the UI selector and session startup.
  *
- * The `enabledModels` setting uses the same syntax as pi's `--models` flag:
- * globs matched with minimatch against `provider/modelId` or a bare `modelId`,
- * fuzzy matching for non-glob patterns, plus an optional `:thinkingLevel` suffix
- * (`anthropic/*:high`). Exact string comparison silently drops every model
- * behind a pattern like `my-gateway/*` (#307), so delegate to pi's own resolver
- * instead of reimplementing the matching rules here.
+ * Exact `enabledModels` references are checked here so an ambiguous bare id
+ * cannot silently drop models. Glob / `:thinkingLevel` scope currently has no
+ * grok-web engine; unresolved patterns fall back to every available model.
  */
 
 export interface ModelScopeResult {
   /** Models the UI should offer, in resolver order (all available when unscoped). */
-  visible: readonly Model<Api>[];
+  visible: readonly ModelLike[];
   /** SDK-native scope retained for AgentSession model cycling and extensions. */
   scopedModels: readonly ScopedModel[];
   /** `provider/modelId` → thinking level pinned with a `:level` pattern suffix. */
@@ -45,7 +57,7 @@ export interface InitialModelScopeOptions {
 }
 
 export interface InitialModelScopeResult {
-  model?: Model<Api>;
+  model?: ModelLike;
   thinkingLevel?: ThinkingLevel;
   scopedModels: ScopedModel[];
 }
@@ -61,7 +73,7 @@ function hasGlob(pattern: string): boolean {
   return pattern.includes("*") || pattern.includes("?") || pattern.includes("[");
 }
 
-function exactReferenceMatches(pattern: string, models: readonly Model<Api>[]): Model<Api>[] {
+function exactReferenceMatches(pattern: string, models: readonly ModelLike[]): ModelLike[] {
   const normalized = pattern.toLowerCase();
   const canonical = models.filter(
     (model) => `${model.provider}/${model.id}`.toLowerCase() === normalized,
@@ -72,7 +84,7 @@ function exactReferenceMatches(pattern: string, models: readonly Model<Api>[]): 
 
 function assertNoAmbiguousExactPatterns(
   patterns: readonly string[],
-  models: readonly Model<Api>[],
+  models: readonly ModelLike[],
 ): void {
   for (const pattern of patterns) {
     if (hasGlob(pattern)) continue;
@@ -106,7 +118,7 @@ function assertNoAmbiguousExactPatterns(
  * the UI without any selectable model.
  */
 export async function resolveVisibleModels(
-  modelRuntime: ModelRuntime,
+  modelRuntime: ModelRuntimeLike,
   patterns: string[] | undefined,
 ): Promise<ModelScopeResult> {
   const cleaned = (patterns ?? []).map((pattern) => pattern.trim()).filter(Boolean);
@@ -123,7 +135,7 @@ export async function resolveVisibleModels(
   assertNoAmbiguousExactPatterns(cleaned, available);
   const snapshotRuntime = {
     getAvailable: async () => available,
-  } as ModelRuntime;
+  } as ModelRuntimeLike;
   const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(cleaned, snapshotRuntime);
   const warnings = diagnostics.map((diagnostic) => diagnostic.message);
   if (scopedModels.length === 0) {

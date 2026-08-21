@@ -1,4 +1,25 @@
-// Types mirrored from pi-mono coding-agent session-manager
+export type ThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | (string & {});
+
+export interface SlashCommandInfo {
+  name: string;
+  description?: string;
+  source: "extension" | "prompt" | "skill";
+  sourceInfo?: {
+    path?: string;
+    source?: string;
+    scope?: string;
+    origin?: string;
+    baseDir?: string;
+  };
+}
 
 export interface SessionHeader {
   type: "session";
@@ -101,6 +122,7 @@ export interface CustomMessage {
   timestamp?: number;
 }
 
+/** Composer `!` bash only. Agent terminal tools use toolCall + toolResult. */
 export interface BashExecutionMessage {
   role: "bashExecution";
   command: string;

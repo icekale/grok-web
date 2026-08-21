@@ -1,12 +1,22 @@
-import type {
-  AgentSessionEvent,
-  BashOperations,
-  SessionManager,
-  SettingsManager,
-  SlashCommandInfo,
-  Theme,
-} from "@/lib/pi-stubs/coding-agent";
-import type { AgentMessage as PiAgentMessage } from "@/lib/pi-stubs/agent-core";
+import type { AgentMessage, SlashCommandInfo } from "./types";
+
+type SessionManager = {
+  getCwd(): string;
+  getBranch(): unknown[];
+};
+
+export interface SettingsManager {
+  setDefaultModelAndProvider(provider: string, modelId: string): void;
+  setDefaultThinkingLevel(level: string): void;
+  setProjectTrusted(trusted: boolean): void;
+  flush(): Promise<unknown>;
+  getShellPath(): string | undefined;
+  getEnabledModels(): string[] | undefined;
+  getDefaultProvider(): string | undefined;
+  getDefaultModel(): string | undefined;
+}
+
+type AgentSessionEvent = { type: string; [key: string]: unknown };
 
 export interface ContextUsage {
   percent: number | null;
@@ -117,7 +127,7 @@ export interface ExtensionUiContextLike {
   addAutocompleteProvider(): void;
   setEditorComponent(): void;
   getEditorComponent(): undefined;
-  readonly theme: Theme;
+  readonly theme: unknown;
   getAllThemes(): unknown[];
   getTheme(name: string): undefined;
   setTheme(theme: unknown): { success: boolean; error?: string };
@@ -143,7 +153,7 @@ export interface AgentSessionLike {
     state?: {
       systemPrompt?: string;
       thinkingLevel?: string;
-      streamingMessage?: PiAgentMessage;
+      streamingMessage?: AgentMessage;
     };
   };
   readonly extensionRunner: ExtensionRunnerLike;
@@ -163,7 +173,7 @@ export interface AgentSessionLike {
   abort(): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: {
     excludeFromContext?: boolean;
-    operations?: BashOperations;
+    operations?: unknown;
   }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string }>;
   abortBash(): void;
   readonly isBashRunning: boolean;

@@ -1,9 +1,44 @@
-import type {
-  BeforeAgentStartEvent,
-  BeforeAgentStartEventResult,
-  ExtensionCommandContext,
-  InlineExtension,
-} from "@/lib/pi-stubs/coding-agent";
+type InlineExtension = {
+  name: string;
+  hidden?: boolean;
+  factory: (pi: ReasoningRouterPi) => void;
+};
+
+type ExtensionCommandContext = {
+  sessionManager: { getBranch(): readonly RouterEntry[] };
+  ui: {
+    setStatus(key: string, text: string | undefined): void;
+    notify(message: string, type?: string): void;
+  };
+};
+
+type BeforeAgentStartEvent = {
+  prompt: string;
+  systemPrompt: string;
+};
+
+type BeforeAgentStartEventResult = {
+  systemPrompt: string;
+  message?: {
+    customType: string;
+    content: string;
+    display: boolean;
+    details?: unknown;
+  };
+};
+
+type ReasoningRouterPi = {
+  registerCommand(name: string, command: unknown): void;
+  appendEntry(customType: string, data: unknown): void;
+  getActiveTools(): unknown[];
+  on(
+    event: "before_agent_start",
+    handler: (
+      event: BeforeAgentStartEvent,
+      ctx: ExtensionCommandContext & { model?: { id?: string } },
+    ) => BeforeAgentStartEventResult | undefined,
+  ): void;
+};
 
 export type RouterMode = "spec" | "weak" | "react";
 export type RouterSetting = "off" | "auto" | RouterMode;

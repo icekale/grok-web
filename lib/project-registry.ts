@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "./grok-home";
 import lockfile from "proper-lockfile";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { normalizeProjectPreferences, type ProjectPreference } from "./project-registry-core";
@@ -13,7 +13,7 @@ interface ProjectRegistryFile {
 }
 
 export function getProjectRegistryPath(): string {
-  return join(getAgentDir(), "pi-web-projects.json");
+  return join(grokHome(), "pi-web-projects.json");
 }
 
 export function readProjectPreferences(

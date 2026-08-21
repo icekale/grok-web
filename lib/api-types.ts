@@ -1,4 +1,9 @@
-import type { ResourceDiagnostic } from "@/lib/pi-stubs/coding-agent";
+export interface ResourceDiagnostic {
+  message: string;
+  type?: string;
+  source?: string;
+  path?: string;
+}
 
 export interface SkillSearchResult {
   package: string;

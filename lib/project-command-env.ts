@@ -1,12 +1,32 @@
-import {
-  createBashToolDefinition,
-  createLocalBashOperations,
-  getAgentDir,
-  type BashOperations,
-  type InlineExtension,
-  type LoadExtensionsResult,
-} from "@/lib/pi-stubs/coding-agent";
 import { join } from "node:path";
+import { grokHome } from "./grok-home";
+
+type BashOperations = {
+  exec: (
+    command: unknown,
+    cwd: unknown,
+    executionOptions: { env?: NodeJS.ProcessEnv } & Record<string, unknown>,
+  ) => unknown;
+};
+
+type InlineExtension = {
+  name: string;
+  hidden?: boolean;
+  factory: (pi: { registerTool: (tool: Record<string, unknown>) => void }) => void;
+};
+
+type LoadExtensionsResult = {
+  extensions: Array<{ path: string; tools: { has(name: string): boolean } }>;
+  errors: Array<{ path?: string; error?: string }>;
+};
+
+function createBashToolDefinition(..._args: unknown[]): never {
+  throw new Error("not implemented in foundation");
+}
+
+function createLocalBashOperations(..._args: unknown[]): BashOperations {
+  throw new Error("not implemented in foundation");
+}
 
 const HOST_EXTENSION_NAME = "pi-web-project-command-environment";
 const HOST_EXTENSION_PATH = `<inline:${HOST_EXTENSION_NAME}>`;
@@ -63,7 +83,7 @@ export function createProjectCommandBashOperations(
   options: ProjectCommandBashOperationsOptions = {},
 ): BashOperations {
   const {
-    agentBinDir = join(getAgentDir(), "bin"),
+    agentBinDir = join(grokHome(), "bin"),
     baseEnvironment = process.env,
     localOperations = createLocalBashOperations({ shellPath: options.shellPath }),
     platform = process.platform,

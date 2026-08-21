@@ -1,27 +1,15 @@
-import type { JsonAgentSessionEvent } from "@/lib/pi-stubs/coding-agent";
+import type {
+  ClientAssistantMessageEvent,
+  ClientMessageUpdateEvent,
+  GrokWireEvent,
+} from "./agent-events";
+
+export type { ClientAssistantMessageEvent, ClientMessageUpdateEvent, GrokWireEvent };
 
 export interface AgentEventLike {
   type: string;
   [key: string]: unknown;
 }
-
-type JsonMessageUpdateEvent = Extract<
-  JsonAgentSessionEvent,
-  { type: "message_update" }
->;
-
-type JsonAssistantMessageEvent = JsonMessageUpdateEvent["assistantMessageEvent"];
-type JsonToolCallStartEvent = Extract<JsonAssistantMessageEvent, { type: "toolcall_start" }>;
-type JsonToolCallDeltaEvent = Extract<JsonAssistantMessageEvent, { type: "toolcall_delta" }>;
-
-export type ClientAssistantMessageEvent =
-  | Exclude<JsonAssistantMessageEvent, { type: "toolcall_start" | "toolcall_delta" }>
-  | (JsonToolCallStartEvent & { id?: string; toolName?: string })
-  | (JsonToolCallDeltaEvent & { id?: string; toolName?: string });
-
-export type ClientMessageUpdateEvent = Omit<JsonMessageUpdateEvent, "assistantMessageEvent"> & {
-  assistantMessageEvent: ClientAssistantMessageEvent;
-};
 
 const OMITTED_EVENT_TYPES = new Set([
   "turn_start",
@@ -54,10 +42,10 @@ function toolCallMetadata(
   return id !== null && toolName !== null ? { id, toolName } : null;
 }
 
-/** Apply pi-web's event filters plus Pi 0.84's message_update projection. */
+/** Drop turn markers and strip cumulative `partial` from streamed deltas. */
 export function toClientAgentEvent(
   event: AgentEventLike,
-): AgentEventLike | ClientMessageUpdateEvent | null {
+): GrokWireEvent | null {
   if (OMITTED_EVENT_TYPES.has(event.type)) return null;
 
   if (event.type === "message_update") {
