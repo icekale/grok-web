@@ -14,7 +14,10 @@ function escapeHtml(value: string): string {
 
 function messageHtml(message: HistoryMessage): string {
   if (message.role === "user") {
-    return `<section class="user"><h2>User</h2><pre>${escapeHtml(message.content)}</pre></section>`;
+    const text = typeof message.content === "string"
+      ? message.content
+      : message.content.filter((part) => part.type === "text").map((part) => part.text).join("");
+    return `<section class="user"><h2>User</h2><pre>${escapeHtml(text)}</pre></section>`;
   }
   if (message.role === "toolResult") {
     const text = message.content.map((part) => part.text).join("\n");

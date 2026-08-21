@@ -9,8 +9,23 @@ export type HistoryToolResult = {
   isError?: boolean;
 };
 
+export type HistoryUserImage = {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type?: string;
+    data?: string;
+  } | {
+    type: "url";
+    url?: string;
+  };
+};
+
+export type HistoryUserBlock = { type: "text"; text: string } | HistoryUserImage;
+export type HistoryUserContent = string | HistoryUserBlock[];
+
 export type HistoryMessage =
-  | { role: "user"; content: string; timestamp?: number }
+  | { role: "user"; content: HistoryUserContent; timestamp?: number }
   | {
       role: "assistant";
       content: Array<
@@ -90,18 +105,23 @@ export function mapUpdatesJsonl(text: string): {
     }
 
     if (kind === "user_message_chunk") {
-      const chunk = contentText(update.content);
+      const { text: chunk, images } = userChunkParts(update.content);
       if (current?.role === "user") {
-        current.content += chunk;
+        appendUserContent(current, chunk, images);
         continue;
       }
       const lastUser = lastUserMessage(messages, current);
       // Grok sometimes replays the same prompt when a turn restarts, before
       // turn_completed. That is not a second user send.
-      if (current?.role === "assistant" && lastUser === chunk) {
+      if (current?.role === "assistant" && images.length === 0 && lastUser === chunk) {
         continue;
       }
-      const user: HistoryMessage = { role: "user", content: chunk };
+      const user: HistoryMessage = images.length > 0
+        ? {
+          role: "user",
+          content: [...(chunk ? [{ type: "text" as const, text: chunk }] : []), ...images],
+        }
+        : { role: "user", content: chunk };
       if (timestamp !== undefined) user.timestamp = timestamp;
       begin(user, eventId);
       continue;
@@ -173,16 +193,96 @@ export function mapUpdatesJsonl(text: string): {
   return { messages, entryIds };
 }
 
+export function historyUserText(content: HistoryUserContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((block): block is { type: "text"; text: string } => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+}
+
 function lastUserMessage(
   messages: HistoryMessage[],
   current: HistoryMessage | null,
 ): string | undefined {
-  if (current?.role === "user") return current.content;
+  if (current?.role === "user") return historyUserText(current.content);
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
-    if (message.role === "user") return message.content;
+    if (message.role === "user") return historyUserText(message.content);
   }
   return undefined;
+}
+
+function userChunkParts(content: unknown): { text: string; images: HistoryUserImage[] } {
+  const items = Array.isArray(content) ? content : [content];
+  let text = "";
+  const images: HistoryUserImage[] = [];
+  for (const item of items) {
+    const image = asUserImage(item);
+    if (image) {
+      images.push(image);
+      continue;
+    }
+    text += contentText(item);
+  }
+  return { text, images };
+}
+
+function asUserImage(value: unknown): HistoryUserImage | null {
+  if (!isRecord(value) || value.type !== "image") return null;
+  if (isRecord(value.source)) {
+    const source = value.source;
+    if (source.type === "base64" && typeof source.data === "string" && source.data) {
+      return {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: typeof source.media_type === "string" ? source.media_type : "image/png",
+          data: source.data,
+        },
+      };
+    }
+    if (source.type === "url" && typeof source.url === "string" && source.url) {
+      return { type: "image", source: { type: "url", url: source.url } };
+    }
+  }
+  const mimeType = typeof value.mimeType === "string"
+    ? value.mimeType
+    : typeof value.media_type === "string"
+      ? value.media_type
+      : "image/png";
+  if (typeof value.data === "string" && value.data) {
+    return { type: "image", source: { type: "base64", media_type: mimeType, data: value.data } };
+  }
+  const url = typeof value.url === "string" ? value.url : typeof value.uri === "string" ? value.uri : "";
+  if (url) return { type: "image", source: { type: "url", url } };
+  return null;
+}
+
+function appendUserContent(
+  message: Extract<HistoryMessage, { role: "user" }>,
+  text: string,
+  images: HistoryUserImage[],
+): void {
+  if (!text && images.length === 0) return;
+  if (typeof message.content === "string") {
+    if (images.length === 0) {
+      message.content += text;
+      return;
+    }
+    const blocks: HistoryUserBlock[] = [];
+    const combined = message.content + text;
+    if (combined) blocks.push({ type: "text", text: combined });
+    blocks.push(...images);
+    message.content = blocks;
+    return;
+  }
+  if (text) {
+    const last = message.content[message.content.length - 1];
+    if (last?.type === "text") last.text += text;
+    else message.content.push({ type: "text", text });
+  }
+  message.content.push(...images);
 }
 
 export function toolResultText(content: unknown): string {
