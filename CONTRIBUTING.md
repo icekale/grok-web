@@ -31,7 +31,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-starts Vite on `127.0.0.1:30143` and checks that the operate shell loads. It needs `grok` on `PATH`. It does not send a model prompt. Refresh the README screenshot with `GROK_WEB_UPDATE_SCREENSHOTS=1 npm run test:e2e`.
+starts Vite on `127.0.0.1:30143` and checks that the operate shell loads. It needs `grok` on `PATH`. It does not send a model prompt. Refresh the README screenshot with `npm run shot`. That uses an isolated Grok home so personal sessions stay out of the image.
 
 ## Pull requests
 

@@ -86,7 +86,8 @@ test("sidebar header restores restrained branding above the compact workspace to
   assert.match(sidebar, /className="codex-sidebar-brand-header"/);
   assert.match(sidebar, /className="codex-sidebar-brand"/);
   assert.match(sidebar, /codex-sidebar-brand-logo/);
-  assert.match(sidebar, /aria-label="Grok"/);
+  assert.match(sidebar, /codex-sidebar-brand-name/);
+  assert.match(sidebar, /Grok Web/);
   assert.match(styles, /mask:\s*url\("\/icons\/logo\.svg"\)/);
   assert.doesNotMatch(sidebar, />Pi Web</);
   assert.match(sidebar, /<RefreshCw size=\{14\}/);

@@ -1007,6 +1007,8 @@ pre, code {
 .codex-sidebar-brand {
   display: flex;
   align-items: center;
+  min-width: 0;
+  gap: 8px;
 }
 .codex-sidebar-brand-logo {
   display: block;
@@ -1015,6 +1017,16 @@ pre, code {
   background: var(--text);
   -webkit-mask: url("/icons/logo.svg") center / contain no-repeat;
   mask: url("/icons/logo.svg") center / contain no-repeat;
+  flex-shrink: 0;
+}
+.codex-sidebar-brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .codex-sidebar-workspace-toolbar {
   height: 32px;

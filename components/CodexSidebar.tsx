@@ -664,8 +664,9 @@ export function CodexSidebar({
       )}
 
       <header className="codex-sidebar-brand-header">
-        <div className="codex-sidebar-brand">
-          <span className="codex-sidebar-brand-logo" role="img" aria-label="Grok" />
+        <div className="codex-sidebar-brand" aria-label="Grok Web">
+          <span className="codex-sidebar-brand-logo" role="img" aria-hidden="true" />
+          <span className="codex-sidebar-brand-name">Grok Web</span>
         </div>
         <IconButton label={t("sidebar.refresh")} onClick={() => void loadData(true)}>
           <RefreshCw size={14} aria-hidden="true" />
