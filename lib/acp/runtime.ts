@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
-import { mapUpdatesJsonl } from "../history-map.ts";
+import { historyUserText, mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { AcpConnection } from "./connection.ts";
@@ -974,7 +974,7 @@ async function diskHasUserMessages(sessionId: string): Promise<boolean> {
   try {
     const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
     return mapUpdatesJsonl(text).messages.some((message) => (
-      message.role === "user" && typeof message.content === "string" && message.content.trim().length > 0
+      message.role === "user" && historyUserText(message.content).trim().length > 0
     ));
   } catch {
     return false;

@@ -2,7 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
-import { mapUpdatesJsonl, toolResultText } from "./history-map.ts";
+import { historyUserText, mapUpdatesJsonl, toolResultText } from "./history-map.ts";
 import { findGrokSession } from "./session-index.ts";
 import { isReservedSubagentSessionName } from "./session-relations.ts";
 import { listAllSessions } from "./session-reader.ts";
@@ -92,7 +92,7 @@ const MAX_AUTO_NAME_LENGTH = 80;
 
 export function titleFromHistory(messages: { role: string; content: unknown }[]): string {
   const user = messages.find((message) => message.role === "user");
-  const text = typeof user?.content === "string" ? user.content : "";
+  const text = historyUserText(user?.content);
   const collapsed = text.replace(/\s+/g, " ").trim();
   if (!collapsed) return "";
   return collapsed.length <= MAX_AUTO_NAME_LENGTH

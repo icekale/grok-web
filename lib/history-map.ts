@@ -193,10 +193,13 @@ export function mapUpdatesJsonl(text: string): {
   return { messages, entryIds };
 }
 
-export function historyUserText(content: HistoryUserContent): string {
+export function historyUserText(content: unknown): string {
   if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
   return content
-    .filter((block): block is { type: "text"; text: string } => block.type === "text")
+    .filter((block): block is { type: "text"; text: string } => (
+      isRecord(block) && block.type === "text" && typeof block.text === "string"
+    ))
     .map((block) => block.text)
     .join("");
 }

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HistoryMessage } from "./history-map.ts";
+import { historyUserText, type HistoryMessage } from "./history-map.ts";
 
 function escapeHtml(value: string): string {
   return value
@@ -14,10 +14,7 @@ function escapeHtml(value: string): string {
 
 function messageHtml(message: HistoryMessage): string {
   if (message.role === "user") {
-    const text = typeof message.content === "string"
-      ? message.content
-      : message.content.filter((part) => part.type === "text").map((part) => part.text).join("");
-    return `<section class="user"><h2>User</h2><pre>${escapeHtml(text)}</pre></section>`;
+    return `<section class="user"><h2>User</h2><pre>${escapeHtml(historyUserText(message.content))}</pre></section>`;
   }
   if (message.role === "toolResult") {
     const text = message.content.map((part) => part.text).join("\n");

@@ -1326,6 +1326,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const live = liveResultsFromOutputs(liveToolOutputsRef.current);
           setMessages((prev) => mergeLiveToolResults([...prev, next], live));
         }
+        liveToolOutputsRef.current = new Map();
+        setLiveToolResults((prev) => (prev.size === 0 ? prev : new Map()));
         dispatch({ type: "end" });
         setAgentPhase({ kind: "waiting_model" });
         break;

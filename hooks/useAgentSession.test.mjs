@@ -343,6 +343,21 @@ test("maintains live tool results from tool_execution_update using applyToolOutp
   assert.match(chatWindowSource, /toolResults=\{toolResultsMap\}/);
 });
 
+test("clears live tool results after merging them on message_end", () => {
+  const messageEndSource = source.slice(
+    source.indexOf('case "message_end"'),
+    source.indexOf('case "tool_execution_start"'),
+  );
+  const mergeAt = messageEndSource.indexOf("mergeLiveToolResults");
+  const clearRefAt = messageEndSource.indexOf("liveToolOutputsRef.current = new Map()");
+  const clearStateAt = messageEndSource.indexOf("setLiveToolResults(");
+  assert.notEqual(mergeAt, -1);
+  assert.notEqual(clearRefAt, -1);
+  assert.notEqual(clearStateAt, -1);
+  assert.ok(clearRefAt > mergeAt, "message_end must clear liveToolOutputsRef after merging");
+  assert.ok(clearStateAt > mergeAt, "message_end must clear liveToolResults after merging");
+});
+
 test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", () => {
   const connectedSource = source.slice(
     source.indexOf('case "connected"'),

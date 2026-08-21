@@ -203,5 +203,7 @@ function toolPartialResult(update: Record<string, unknown>): unknown {
     result.rawOutput = update.rawOutput;
   }
   if (typeof update.status === "string") result.status = update.status;
+  if ("rawInput" in update) result.rawInput = update.rawInput;
+  if ("input" in update) result.input = update.input;
   return Object.keys(result).length ? result : undefined;
 }
