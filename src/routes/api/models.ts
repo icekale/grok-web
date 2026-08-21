@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as GETHandler } from "@/app/api/models/route";
+import { GET as GETHandler } from "@/lib/models-http";
 
 export const Route = createFileRoute("/api/models")({
   server: {

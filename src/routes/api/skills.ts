@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getSkills,
   PATCH as patchSkills,
-} from "@/app/api/skills/route";
+} from "@/lib/skills-http";
 
 export const Route = createFileRoute("/api/skills")({
   server: {

@@ -3,7 +3,7 @@ import {
   DELETE as deleteApiKey,
   GET as getApiKey,
   POST as postApiKey,
-} from "@/app/api/auth/api-key/[provider]/route";
+} from "@/lib/auth-api-key-http";
 
 export const Route = createFileRoute("/api/auth/api-key/$provider")({
   server: {

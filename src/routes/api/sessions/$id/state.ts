@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as getState } from "@/app/api/sessions/[id]/state/route";
+import { getSessionState } from "@/lib/session-http";
 
 export const Route = createFileRoute("/api/sessions/$id/state")({
   server: {
     handlers: {
-      GET: ({ request, params }) => getState(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
+      GET: ({ request, params }) => getSessionState(request, params.id),
     },
   },
 });

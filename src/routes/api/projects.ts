@@ -3,7 +3,7 @@ import {
   GET as getProjects,
   PATCH as patchProjects,
   PUT as putProjects,
-} from "@/app/api/projects/route";
+} from "@/lib/projects-http";
 
 export const Route = createFileRoute("/api/projects")({
   server: {

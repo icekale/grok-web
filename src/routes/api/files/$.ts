@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getFiles,
   POST as postFiles,
-} from "@/app/api/files/[...path]/route";
+} from "@/lib/files-http";
 
 export const Route = createFileRoute("/api/files/$")({
   server: {

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as postLogout } from "@/app/api/auth/logout/[provider]/route";
+import { POST as postLogout } from "@/lib/auth-logout-http";
 
 export const Route = createFileRoute("/api/auth/logout/$provider")({
   server: {

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getLogin,
   POST as postLogin,
-} from "@/app/api/auth/login/[provider]/route";
+} from "@/lib/auth-login-http";
 
 export const Route = createFileRoute("/api/auth/login/$provider")({
   server: {

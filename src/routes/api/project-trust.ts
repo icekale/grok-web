@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getProjectTrust,
   POST as postProjectTrust,
-} from "@/app/api/project-trust/route";
+} from "@/lib/project-trust-http";
 
 export const Route = createFileRoute("/api/project-trust")({
   server: {

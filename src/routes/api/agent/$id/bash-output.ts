@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as getBashOutput } from "@/app/api/agent/[id]/bash-output/route";
+import { GET as getBashOutput } from "@/lib/bash-output-http";
 
 export const Route = createFileRoute("/api/agent/$id/bash-output")({
   server: {

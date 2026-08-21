@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as GETHandler } from "@/app/api/git/diff/route";
+import { GET as GETHandler } from "@/lib/git-diff-http";
 
 export const Route = createFileRoute("/api/git/diff")({
   server: {

@@ -32,8 +32,8 @@ test("read-only mode never connects child SSE or starts a child runtime", async 
   assert.doesNotMatch(refreshEffect, /EventSource/);
   assert.doesNotMatch(refreshEffect, /maintainEventsConnected/);
   assert.doesNotMatch(refreshEffect, /startRpcSession/);
-  const stateRoute = await readFile(new URL("../app/api/sessions/[id]/state/route.ts", import.meta.url), "utf8");
-  assert.match(stateRoute, /getSessionState/);
+  const stateRoute = await readFile(new URL("../lib/session-http.ts", import.meta.url), "utf8");
+  assert.match(stateRoute, /export async function getSessionState/);
   assert.doesNotMatch(stateRoute, /startRpcSession/);
 });
 

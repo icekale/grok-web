@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as GETHandler } from "@/app/api/git/status/route";
+import { GET as GETHandler } from "@/lib/git-status-http";
 
 export const Route = createFileRoute("/api/git/status")({
   server: {

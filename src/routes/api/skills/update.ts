@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as POSTHandler } from "@/app/api/skills/update/route";
+import { POST as POSTHandler } from "@/lib/skills-update-http";
 
 export const Route = createFileRoute("/api/skills/update")({
   server: {

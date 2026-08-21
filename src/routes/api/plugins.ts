@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getPlugins,
   POST as postPlugins,
-} from "@/app/api/plugins/route";
+} from "@/lib/plugins-http";
 
 export const Route = createFileRoute("/api/plugins")({
   server: {

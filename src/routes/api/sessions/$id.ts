@@ -1,22 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  DELETE as deleteSession,
-  GET as getSession,
-  PATCH as patchSession,
-} from "@/app/api/sessions/[id]/route";
+import { deleteSession, getSessionDetail, patchSession } from "@/lib/session-http";
 
 export const Route = createFileRoute("/api/sessions/$id")({
   server: {
     handlers: {
-      GET: ({ request, params }) => getSession(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
-      PATCH: ({ request, params }) => patchSession(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
-      DELETE: ({ request, params }) => deleteSession(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
+      GET: ({ request, params }) => getSessionDetail(request, params.id),
+      PATCH: ({ request, params }) => patchSession(request, params.id),
+      DELETE: ({ params }) => deleteSession(params.id),
     },
   },
 });

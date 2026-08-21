@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as postAutoName } from "@/app/api/sessions/[id]/auto-name/route";
+import { autoNameSession } from "@/lib/session-http";
 
 export const Route = createFileRoute("/api/sessions/$id/auto-name")({
   server: {
     handlers: {
-      POST: ({ request, params }) => postAutoName(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
+      POST: ({ params }) => autoNameSession(params.id),
     },
   },
 });

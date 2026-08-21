@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getBrowse,
   POST as postBrowse,
-} from "@/app/api/cwd/browse/route";
+} from "@/lib/cwd-browse-http";
 
 export const Route = createFileRoute("/api/cwd/browse")({
   server: {

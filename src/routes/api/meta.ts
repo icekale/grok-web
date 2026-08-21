@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as postMeta } from "@/app/api/meta/route";
+import { postMeta } from "@/lib/session-http";
 
 export const Route = createFileRoute("/api/meta")({
   server: {

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getModelsConfig,
   PUT as putModelsConfig,
-} from "@/app/api/models-config/route";
+} from "@/lib/models-config-http";
 
 export const Route = createFileRoute("/api/models-config")({
   server: {

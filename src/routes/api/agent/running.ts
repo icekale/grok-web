@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as GETHandler } from "@/app/api/agent/running/route";
+import { createAgentHandlers } from "@/lib/acp/http";
+import { getAgentRuntime } from "@/lib/acp/runtime";
 
 export const Route = createFileRoute("/api/agent/running")({
   server: {
     handlers: {
-      GET: () => GETHandler(),
+      GET: () => createAgentHandlers(getAgentRuntime()).getRunning(),
     },
   },
 });

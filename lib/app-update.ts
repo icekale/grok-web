@@ -30,3 +30,7 @@ export function currentUpdateStatus(currentVersion: string) {
     releaseUrl: "",
   };
 }
+
+export function getAppUpdate(): Response {
+  return Response.json(currentUpdateStatus(process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"));
+}

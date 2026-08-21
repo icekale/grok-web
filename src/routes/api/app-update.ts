@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as GETHandler } from "@/app/api/app-update/route";
+import { getAppUpdate } from "@/lib/app-update";
 
 export const Route = createFileRoute("/api/app-update")({
   server: {
     handlers: {
-      GET: () => GETHandler(),
+      GET: () => getAppUpdate(),
     },
   },
 });

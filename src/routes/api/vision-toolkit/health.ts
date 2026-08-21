@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as POSTHandler } from "@/app/api/vision-toolkit/health/route";
+import { POST as POSTHandler } from "@/lib/vision-toolkit-health-http";
 
 export const Route = createFileRoute("/api/vision-toolkit/health")({
   server: {

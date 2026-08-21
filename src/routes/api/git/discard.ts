@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as POSTHandler } from "@/app/api/git/discard/route";
+import { handleGitWrite } from "@/lib/git-http";
 
 export const Route = createFileRoute("/api/git/discard")({
   server: {
     handlers: {
-      POST: ({ request }) => POSTHandler(request),
+      POST: ({ request }) => handleGitWrite(request, "discard"),
     },
   },
 });

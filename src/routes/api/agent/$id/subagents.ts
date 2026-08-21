@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   GET as getSubagents,
   POST as postSubagents,
-} from "@/app/api/agent/[id]/subagents/route";
+} from "@/lib/subagent-http";
 
 export const Route = createFileRoute("/api/agent/$id/subagents")({
   server: {

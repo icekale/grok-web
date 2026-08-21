@@ -1,18 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  GET as getAgent,
-  POST as postAgent,
-} from "@/app/api/agent/[id]/route";
+import { createAgentHandlers } from "@/lib/acp/http";
+import { getAgentRuntime } from "@/lib/acp/runtime";
 
 export const Route = createFileRoute("/api/agent/$id")({
   server: {
     handlers: {
-      GET: ({ request, params }) => getAgent(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
-      POST: ({ request, params }) => postAgent(request, {
-        params: Promise.resolve({ id: params.id }),
-      }),
+      GET: ({ request, params }) => createAgentHandlers(getAgentRuntime()).getSession(request, params.id),
+      POST: ({ request, params }) => createAgentHandlers(getAgentRuntime()).postSession(request, params.id),
     },
   },
 });

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { POST as POSTHandler } from "@/app/api/models-config/test/route";
+import { POST as POSTHandler } from "@/lib/models-config-test-http";
 
 export const Route = createFileRoute("/api/models-config/test")({
   server: {

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GET as getAgentEvents } from "@/app/api/agent/[id]/events/route";
+import { GET as getAgentEvents } from "@/lib/agent-events-http";
 
 export const Route = createFileRoute("/api/agent/$id/events")({
   server: {

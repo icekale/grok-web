@@ -3,7 +3,7 @@ import {
   DELETE as deleteWorktree,
   GET as getWorktrees,
   POST as postWorktrees,
-} from "@/app/api/worktrees/route";
+} from "@/lib/worktrees-http";
 
 export const Route = createFileRoute("/api/worktrees")({
   server: {

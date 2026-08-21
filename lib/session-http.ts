@@ -2,8 +2,10 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
-import { historyUserText, mapUpdatesJsonl, toolResultText } from "./history-map.ts";
+import { applyToolOutputUpdate, historyUserText, mapUpdatesJsonl } from "./history-map.ts";
+import { packSessionArchive, renderSessionHtml } from "./session-export.ts";
 import { findGrokSession } from "./session-index.ts";
+import { readSessionContextUsage } from "./session-signals.ts";
 import { isReservedSubagentSessionName } from "./session-relations.ts";
 import { listAllSessions } from "./session-reader.ts";
 import type { SessionInfo } from "./types.ts";
@@ -191,7 +193,7 @@ export async function getToolResult(_req: Request, id: string, entryId: string):
     text = "";
   }
   let found = false;
-  let resultText = "";
+  let output = { text: "" };
   for (const raw of text.split(/\r?\n/)) {
     if (!raw.trim()) continue;
     let record: unknown;
@@ -213,10 +215,9 @@ export async function getToolResult(_req: Request, id: string, entryId: string):
           ? (update as { id: string }).id
           : "";
     if (toolCallId !== entryId) continue;
-    if (kind === "tool_call" || kind === "tool_call_update") found = true;
-    if (kind === "tool_call_update") {
-      resultText += toolResultText((update as { content?: unknown; rawOutput?: unknown }).content
-        ?? (update as { rawOutput?: unknown }).rawOutput);
+    if (kind === "tool_call" || kind === "tool_call_update") {
+      found = true;
+      output = applyToolOutputUpdate(output, update as Record<string, unknown>);
     }
   }
   if (!found) return Response.json({ error: "Tool result not found" }, { status: 404 });
@@ -224,7 +225,7 @@ export async function getToolResult(_req: Request, id: string, entryId: string):
     result: {
       role: "toolResult",
       toolCallId: entryId,
-      content: resultText ? [{ type: "text", text: resultText }] : [],
+      content: output.text ? [{ type: "text", text: output.text }] : [],
     },
   });
 }
@@ -232,11 +233,18 @@ export async function getToolResult(_req: Request, id: string, entryId: string):
 export async function getSessionState(_req: Request, id: string): Promise<Response> {
   const session = await findGrokSession(id);
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  const contextUsage = await readSessionContextUsage(id);
   const runtime = peekAgentRuntime();
   if (runtime) {
     try {
-      const state = await runtime.send(id, { type: "get_state" });
-      return Response.json({ running: runtime.isBusy(id), state });
+      const state = await runtime.send(id, { type: "get_state" }) as Record<string, unknown>;
+      return Response.json({
+        running: runtime.isBusy(id),
+        state: {
+          ...state,
+          ...(contextUsage ? { contextUsage } : {}),
+        },
+      });
     } catch {
       // Session is on disk but not loaded in ACP; return idle state.
     }
@@ -246,6 +254,7 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
     state: {
       thinkingLevel: "off",
       queuedMessages: { steering: [], followUp: [] },
+      ...(contextUsage ? { contextUsage } : {}),
     },
   });
 }
@@ -287,4 +296,53 @@ function toggleAction(value: unknown): { id: string; value: boolean } | undefine
   const rec = value as Record<string, unknown>;
   if (typeof rec.id !== "string" || !rec.id || typeof rec.value !== "boolean") return undefined;
   return { id: rec.id, value: rec.value };
+}
+
+function encodeHeaderValue(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (ch) =>
+    `%${ch.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
+function contentDisposition(fileName: string, inline: boolean): string {
+  const fallback = fileName.replace(/[^\x20-\x7E]|["\\;\r\n]/g, "_") || "session.zip";
+  const disposition = inline ? "inline" : "attachment";
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
+}
+
+export async function getSessionExport(req: Request, id: string): Promise<Response> {
+  const inline = new URL(req.url).searchParams.get("inline") === "1";
+  try {
+    const session = await findGrokSession(id);
+    if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+
+    if (inline) {
+      let text = "";
+      try {
+        text = readFileSync(join(session.path, "updates.jsonl"), "utf8");
+      } catch {
+        text = "";
+      }
+      const { messages } = mapUpdatesJsonl(text);
+      const html = renderSessionHtml(session.name || id, messages);
+      return new Response(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": contentDisposition(`${id}.html`, true),
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
+    const archive = packSessionArchive(session.path, id);
+    return new Response(archive.bytes, {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": contentDisposition(archive.fileName, false),
+        "Cache-Control": "no-cache",
+      },
+    });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
 }
