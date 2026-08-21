@@ -1,3 +1,5 @@
+import { grokCanonicalToolName, sanitizeGrokToolInput } from "../grok-tool-input.ts";
+
 export type AcpSseEvent = {
   type: string;
   [key: string]: unknown;
@@ -38,8 +40,23 @@ export class AcpTurnMapper {
     }
   }
 
+  snapshot(): { role: "assistant"; content: unknown[]; model: string; provider: string } | null {
+    if (!this.started) return null;
+    return {
+      role: "assistant",
+      content: this.partialContent.filter((block) => block != null),
+      model: "",
+      provider: "grok",
+    };
+  }
+
   endTurn(): AcpSseEvent[] {
-    return [{ type: "agent_end" }, { type: "prompt_done" }, { type: "agent_settled" }];
+    const events: AcpSseEvent[] = [];
+    const message = this.snapshot();
+    if (message) events.push({ type: "message_end", message });
+    events.push({ type: "agent_end" }, { type: "prompt_done" }, { type: "agent_settled" });
+    this.begin();
+    return events;
   }
 
   private startPrefix(): AcpSseEvent[] {
@@ -64,6 +81,18 @@ export class AcpTurnMapper {
   ): AcpSseEvent[] {
     const firstBlock = kind === "thinking" ? this.thinkingIndex === undefined : this.textIndex === undefined;
     const contentIndex = this.blockIndex(kind);
+    const previous = this.partialContent[contentIndex];
+    if (kind === "thinking") {
+      const thinking = isRecord(previous) && previous.type === "thinking" && typeof previous.thinking === "string"
+        ? previous.thinking
+        : "";
+      this.partialContent[contentIndex] = { type: "thinking", thinking: thinking + delta };
+    } else {
+      const text = isRecord(previous) && previous.type === "text" && typeof previous.text === "string"
+        ? previous.text
+        : "";
+      this.partialContent[contentIndex] = { type: "text", text: text + delta };
+    }
     const events = this.startPrefix();
     if (firstBlock) {
       events.push({
@@ -83,9 +112,11 @@ export class AcpTurnMapper {
 
   private toolCall(update: Record<string, unknown>): AcpSseEvent[] {
     const toolCallId = stringField(update.toolCallId) || stringField(update.id);
-    const toolName =
-      stringField(update.title) || stringField(update.toolName) || stringField(update.kind);
-    const input = asRecord(update.input ?? update.rawInput);
+    const toolName = grokCanonicalToolName(
+      stringField(update.title) || stringField(update.toolName),
+      stringField(update.kind),
+    );
+    const input = sanitizeGrokToolInput(asRecord(update.input ?? update.rawInput));
     if (toolName) this.toolNameById.set(toolCallId, toolName);
 
     let contentIndex = this.toolIndexById.get(toolCallId);
@@ -107,17 +138,30 @@ export class AcpTurnMapper {
           partial: { content: this.partialContent.slice() },
         },
       },
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "toolcall_end",
+          contentIndex,
+          toolCall: {
+            type: "toolCall",
+            id: toolCallId,
+            name: toolName,
+            arguments: input,
+          },
+        },
+      },
     ];
   }
 
   private toolCallUpdate(update: Record<string, unknown>): AcpSseEvent[] {
     const toolCallId = stringField(update.toolCallId) || stringField(update.id);
     const toolName =
-      stringField(update.title)
-      || stringField(update.toolName)
-      || stringField(update.kind)
-      || this.toolNameById.get(toolCallId)
-      || "";
+      this.toolNameById.get(toolCallId)
+      || grokCanonicalToolName(
+        stringField(update.title) || stringField(update.toolName),
+        stringField(update.kind),
+      );
     if (toolName) this.toolNameById.set(toolCallId, toolName);
     return [
       ...this.startPrefix(),
@@ -150,9 +194,14 @@ function contentText(content: unknown): string {
 }
 
 function toolPartialResult(update: Record<string, unknown>): unknown {
-  if ("partialResult" in update) return update.partialResult;
-  if ("content" in update) return { content: update.content };
-  if ("rawOutput" in update) return update.rawOutput;
-  if (typeof update.status === "string") return { status: update.status };
-  return undefined;
+  const result: Record<string, unknown> = {};
+  if ("partialResult" in update && isRecord(update.partialResult)) {
+    Object.assign(result, update.partialResult);
+  } else if ("content" in update) {
+    result.content = update.content;
+  } else if ("rawOutput" in update) {
+    result.rawOutput = update.rawOutput;
+  }
+  if (typeof update.status === "string") result.status = update.status;
+  return Object.keys(result).length ? result : undefined;
 }

@@ -1,4 +1,5 @@
 import { epochMillis } from "./epoch-ms.ts";
+import { grokCanonicalToolName, sanitizeGrokToolInput } from "./grok-tool-input.ts";
 
 export type HistoryToolResult = {
   role: "toolResult";
@@ -39,7 +40,7 @@ export function mapUpdatesJsonl(text: string): {
 } {
   const messages: HistoryMessage[] = [];
   const entryIds: string[] = [];
-  const toolOutputs = new Map<string, { text: string; toolName?: string; isError?: boolean }>();
+  const toolOutputs = new Map<string, ToolOutputState>();
   let fallbackId = 0;
   let lastModelId: string | undefined;
   let current: HistoryMessage | null = null;
@@ -83,15 +84,26 @@ export function mapUpdatesJsonl(text: string): {
         : undefined;
     const kind = update.sessionUpdate;
 
+    if (kind === "turn_completed") {
+      flush();
+      continue;
+    }
+
     if (kind === "user_message_chunk") {
       const chunk = contentText(update.content);
       if (current?.role === "user") {
         current.content += chunk;
-      } else {
-        const user: HistoryMessage = { role: "user", content: chunk };
-        if (timestamp !== undefined) user.timestamp = timestamp;
-        begin(user, eventId);
+        continue;
       }
+      const lastUser = lastUserMessage(messages, current);
+      // Grok sometimes replays the same prompt when a turn restarts, before
+      // turn_completed. That is not a second user send.
+      if (current?.role === "assistant" && lastUser === chunk) {
+        continue;
+      }
+      const user: HistoryMessage = { role: "user", content: chunk };
+      if (timestamp !== undefined) user.timestamp = timestamp;
+      begin(user, eventId);
       continue;
     }
 
@@ -116,13 +128,15 @@ export function mapUpdatesJsonl(text: string): {
         appendText(assistant.content, contentText(update.content));
       } else {
         const toolCallId = stringField(update.toolCallId) || stringField(update.id);
-        const toolName =
-          stringField(update.title) || stringField(update.kind) || stringField(update.toolName);
+        const toolName = grokCanonicalToolName(
+          stringField(update.title) || stringField(update.toolName),
+          stringField(update.kind),
+        );
         assistant.content.push({
           type: "toolCall",
           toolCallId,
           toolName,
-          input: asRecord(update.input ?? update.rawInput),
+          input: sanitizeGrokToolInput(asRecord(update.input ?? update.rawInput)),
         });
         rememberToolOutput(toolOutputs, toolCallId, toolName, update);
       }
@@ -134,7 +148,7 @@ export function mapUpdatesJsonl(text: string): {
       if (!id) continue;
       const tool = findToolCall(current, messages, id);
       if (tool) {
-        Object.assign(tool.input, asRecord(update.input ?? update.rawInput));
+        Object.assign(tool.input, sanitizeGrokToolInput(asRecord(update.input ?? update.rawInput)));
         if (typeof update.status === "string") tool.status = update.status;
       }
       rememberToolOutput(toolOutputs, id, tool?.toolName, update);
@@ -159,6 +173,18 @@ export function mapUpdatesJsonl(text: string): {
   return { messages, entryIds };
 }
 
+function lastUserMessage(
+  messages: HistoryMessage[],
+  current: HistoryMessage | null,
+): string | undefined {
+  if (current?.role === "user") return current.content;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role === "user") return message.content;
+  }
+  return undefined;
+}
+
 export function toolResultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) return content.map(toolResultText).join("");
@@ -168,8 +194,33 @@ export function toolResultText(content: unknown): string {
   return "";
 }
 
+export type ToolOutputState = {
+  text: string;
+  toolName?: string;
+  isError?: boolean;
+  description?: string;
+};
+
+export function applyToolOutputUpdate(
+  current: ToolOutputState,
+  update: Record<string, unknown>,
+  toolName?: string,
+): ToolOutputState {
+  const input = asRecord(update.input ?? update.rawInput);
+  const description = (typeof input.description === "string" && input.description)
+    || current.description
+    || "";
+  const chunk = toolResultText(update.content ?? update.rawOutput);
+  const failed = update.status === "failed" || update.status === "error";
+  const next: ToolOutputState = { ...current, text: current.text, description };
+  if (toolName && !next.toolName) next.toolName = grokCanonicalToolName(toolName);
+  if (chunk && chunk !== description) next.text += chunk;
+  if (failed) next.isError = true;
+  return next;
+}
+
 function rememberToolOutput(
-  outputs: Map<string, { text: string; toolName?: string; isError?: boolean }>,
+  outputs: Map<string, ToolOutputState>,
   toolCallId: string,
   toolName: string | undefined,
   update: Record<string, unknown>,
@@ -178,11 +229,7 @@ function rememberToolOutput(
   const chunk = toolResultText(update.content ?? update.rawOutput);
   const failed = update.status === "failed" || update.status === "error";
   if (!chunk && !failed && !toolName) return;
-  const current = outputs.get(toolCallId) ?? { text: "" };
-  if (toolName && !current.toolName) current.toolName = toolName;
-  if (chunk) current.text += chunk;
-  if (failed) current.isError = true;
-  outputs.set(toolCallId, current);
+  outputs.set(toolCallId, applyToolOutputUpdate(outputs.get(toolCallId) ?? { text: "" }, update, toolName));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,3 +1,5 @@
+import { grokCanonicalToolName, sanitizeGrokToolInput } from "../grok-tool-input.ts";
+
 export type PermissionUiRequest = {
   type: "extension_ui_request";
   id: string;
@@ -10,17 +12,30 @@ export type PermissionResult =
   | { outcome: { outcome: "selected"; optionId: string } }
   | { outcome: { outcome: "rejected" } };
 
-export function translatePermissionRequest(params: unknown, rpcId: number): PermissionUiRequest {
+export function translatePermissionRequest(params: unknown, rpcId: number | string): PermissionUiRequest {
   const toolCall = isRecord(params) && isRecord(params.toolCall) ? params.toolCall : {};
   const title = firstString(toolCall.title, toolCall.kind, "tool");
-  const input = toolCall.rawInput ?? toolCall.input ?? {};
+  const kind = typeof toolCall.kind === "string" ? toolCall.kind : "";
+  const input = sanitizeGrokToolInput(asRecord(toolCall.rawInput ?? toolCall.input));
   return {
     type: "extension_ui_request",
     id: String(rpcId),
     method: "confirm",
     title: "Allow tool",
-    message: `${title} ${JSON.stringify(input)}`,
+    message: permissionMessage(title, kind, input),
   };
+}
+
+function permissionMessage(title: string, kind: string, input: Record<string, unknown>): string {
+  const name = grokCanonicalToolName(title, kind);
+  if (typeof input.command === "string" && input.command) {
+    return `${name}\n${input.command}`;
+  }
+  return `${name} ${JSON.stringify(input)}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? { ...value } : {};
 }
 
 export function resolvePermission(
