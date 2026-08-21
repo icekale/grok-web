@@ -1,7 +1,7 @@
 import { realpath, stat } from "fs/promises";
 import { resolve } from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "@/lib/grok-home";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { getProjectTrustStatus, trustProject } from "@/lib/project-trust";
@@ -35,7 +35,7 @@ async function validateCwd(value: unknown): Promise<
 export async function GET(req: Request) {
   const result = await validateCwd(new URL(req.url).searchParams.get("cwd"));
   if ("response" in result) return result.response;
-  return Response.json(getProjectTrustStatus(result.cwd, getAgentDir()));
+  return Response.json(getProjectTrustStatus(result.cwd, grokHome()));
 }
 
 export async function POST(req: Request) {
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     const result = await validateCwd(body.cwd);
     if ("response" in result) return result.response;
 
-    const agentDir = getAgentDir();
+    const agentDir = grokHome();
     const current = getProjectTrustStatus(result.cwd, agentDir);
     if (!current.requiresTrust) {
       return Response.json({ error: "This project has no resources that require trust" }, { status: 409 });

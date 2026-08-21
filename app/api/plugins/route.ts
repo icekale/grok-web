@@ -3,7 +3,7 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import { listMcpServers, readGrokConfig } from "@/lib/grok-settings/home-config.ts";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "@/lib/grok-home";
 import type {
   PluginDiagnostic,
   PluginPackageInfo,
@@ -47,7 +47,7 @@ function toPluginsResponse(
     packages: servers.map(toPackage),
     totals: emptyCounts(),
     diagnostics,
-    projectResourcesLoaded: getProjectTrustStatus(cwd, getAgentDir()).trusted,
+    projectResourcesLoaded: getProjectTrustStatus(cwd, grokHome()).trusted,
   };
 }
 

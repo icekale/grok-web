@@ -18,8 +18,7 @@ export type ClientAssistantMessageEvent =
       name: string;
       arguments: Record<string, unknown>;
     };
-  }
-  | { type: string; contentIndex?: number; [key: string]: unknown };
+  };
 
 export type ClientMessageUpdateEvent = {
   type: "message_update";

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import path from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "@/lib/grok-home";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
@@ -23,10 +23,10 @@ async function listAcpSkills(cwd: string): Promise<AcpSkill[]> {
 
 async function skillPatchAllowedRoots(): Promise<Set<string>> {
   const allowedRoots = new Set(await getAllowedFileRoots());
-  allowedRoots.add(getAgentDir());
+  allowedRoots.add(grokHome());
   // Globally installed skills live in ~/.agents/skills and are symlinked into
   // the agent's skills dir; isExistingFilePathAllowed resolves the symlink, so
-  // the real target sits outside getAgentDir(). Allow the global skills root
+  // the real target sits outside grokHome(). Allow the global skills root
   // too (the SDK always treats ~/.agents/skills as trusted).
   const globalSkillsDir = path.join(homedir(), ".agents", "skills");
   if (existsSync(globalSkillsDir)) allowedRoots.add(globalSkillsDir);
@@ -70,7 +70,7 @@ export async function PATCH(req: Request) {
     try {
       const runtime = getAgentRuntime();
       const listCwds = [...new Set(
-        [body.cwd, getAgentDir(), path.dirname(filePath)].filter((value): value is string => Boolean(value)),
+        [body.cwd, grokHome(), path.dirname(filePath)].filter((value): value is string => Boolean(value)),
       )];
       for (const listCwd of listCwds) {
         const skill = (await listAcpSkills(listCwd)).find((item) => item.path === filePath);

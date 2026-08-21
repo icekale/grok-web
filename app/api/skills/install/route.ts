@@ -1,4 +1,4 @@
-import { getAgentDir } from "@/lib/pi-stubs/coding-agent";
+import { grokHome } from "@/lib/grok-home";
 import { runNpx } from "@/lib/npx";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
@@ -30,7 +30,7 @@ export async function handleSkillsInstall(
       if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
         return Response.json({ error: "Access denied" }, { status: 403 });
       }
-      if (!getProjectTrustStatus(cwd, getAgentDir()).trusted) {
+      if (!getProjectTrustStatus(cwd, grokHome()).trusted) {
         return Response.json(
           { error: "Project resources must be trusted before installing project skills" },
           { status: 403 },

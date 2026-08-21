@@ -221,6 +221,8 @@ test("PATCH writes SKILL.md frontmatter when ACP is offline", async () => {
 
 test("PATCH looks up ACP skills from cwd, agent dir, and the skill folder", async () => {
   const source = await readFile(new URL("./route.ts", import.meta.url), "utf8");
-  assert.match(source, /getAgentDir\(\)/);
+  assert.match(source, /grokHome\(\)/);
+  assert.doesNotMatch(source, /pi-stubs/);
+  assert.doesNotMatch(source, /getAgentDir/);
   assert.match(source, /path\.dirname\(filePath\)/);
 });
