@@ -79,12 +79,11 @@ export function parseChatHistoryActivity(raw: string): { userMessages: number; t
   };
 }
 
-const TOOL_CALL_ID = /^call-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-\d+)?$/i;
-
 function logicalToolCallId(toolCallId: string): string {
-  const match = toolCallId.match(TOOL_CALL_ID);
-  if (!match) return toolCallId;
-  return toolCallId.replace(/-\d+$/, "");
+  const match = toolCallId.match(
+    /^(call-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$/i,
+  );
+  return match ? match[1] : toolCallId;
 }
 
 function isCountedUserTurn(rec: Record<string, unknown>): boolean {
