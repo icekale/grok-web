@@ -167,12 +167,13 @@ test("sidebar buttons inherit family only so Recent matches Projects type", () =
   assert.match(styles, /\.codex-sidebar-tool-heading \{[\s\S]*?font-size: var\(--text-meta\)/);
 });
 
-test("sidebar recomposition preserves worktree switching and creation", () => {
+test("sidebar recomposition preserves worktree switching", () => {
   assert.match(sidebar, /className="codex-worktree-block"/);
   assert.match(sidebar, /\/api\/worktrees/);
   assert.match(sidebar, /worktreeRequestRef/);
   assert.match(sidebar, /generation !== worktreeRequestRef\.current/);
-  assert.match(sidebar, /createWorktree/);
+  assert.doesNotMatch(sidebar, /createWorktree/);
+  assert.doesNotMatch(sidebar, /codex-worktree-create/);
   assert.match(sidebar, /removeWorktree/);
   assert.match(sidebar, /sidebar\.forceRemoveCheckout/);
   assert.match(sidebar, /\[worktreeOpen, setWorktreeOpen\] = useState\(false\)/);

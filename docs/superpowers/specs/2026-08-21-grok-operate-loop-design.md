@@ -134,7 +134,7 @@
 
 侧栏顺序：New task、Projects、Recent，然后才是 Worktrees。不要把 Skills / Plugins / MCP 做成侧栏日常按钮。
 
-**Worktrees。** 选中项目是 git 仓库且有 worktree 时，区块出现在 Recent 下面，默认折叠。创建/删除行为不变。
+**Worktrees。** 选中项目是 git 仓库且有 worktree 时，区块出现在 Recent 下面，默认折叠。侧栏只切换和删除已有 checkout，不要放「分支名称」创建框。
 
 **Skills / Plugins / MCP。** 从页脚 Settings 或 Composer `/skills` `/plugins` `/mcp` 打开。从 `/` 打开时，对话框是 Grok 工具面板（只含 Skills / Plugins / MCP），标题不是 Settings。页内编辑器不重写。
 

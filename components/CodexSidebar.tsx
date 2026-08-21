@@ -171,7 +171,6 @@ export function CodexSidebar({
   const [pendingConfirmation, setPendingConfirmation] = useState<
     { type: "worktree"; path: string } | { type: "project"; path: string; name: string } | null
   >(null);
-  const [newBranch, setNewBranch] = useState("");
   const previousRunningRef = useRef<Set<string> | null>(null);
   const previousRawRunningRef = useRef<Set<string> | null>(null);
   const restoredRef = useRef(false);
@@ -619,28 +618,6 @@ export function CodexSidebar({
     }
   }, [selectedCwd, selectedProject, t, worktreeBusy]);
 
-  const createWorktree = useCallback(async () => {
-    if (!selectedProject || !newBranch.trim() || worktreeBusy) return;
-    setWorktreeBusy(true);
-    setWorktreeError(null);
-    try {
-      const response = await fetch("/api/worktrees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: selectedProject.path, branch: newBranch.trim() }),
-      });
-      const data = await response.json() as { path?: string; error?: string };
-      if (!response.ok || !data.path) throw new Error(data.error ?? `HTTP ${response.status}`);
-      setWorktrees((current) => [...current, { path: data.path!, branch: newBranch.trim(), isMain: false }]);
-      setSelectedCwd(data.path);
-      setNewBranch("");
-    } catch (cause) {
-      setWorktreeError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setWorktreeBusy(false);
-    }
-  }, [newBranch, selectedProject, worktreeBusy]);
-
   useEffect(() => {
     if (projectSearchOpen) projectSearchInputRef.current?.focus();
   }, [projectSearchOpen]);
@@ -901,12 +878,6 @@ export function CodexSidebar({
                       {!worktree.isMain && <IconButton disabled={worktreeBusy} label={t("sidebar.removeWorktreeTitle", { path: worktree.path })} onClick={() => void removeWorktree(worktree.path)}><X size={13} aria-hidden="true" /></IconButton>}
                     </div>
                   ))}
-                  <div className="codex-worktree-create">
-                    <input value={newBranch} onChange={(event) => setNewBranch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createWorktree(); }} placeholder={t("sidebar.branchName")} />
-                    <IconButton disabled={!newBranch.trim() || worktreeBusy} label={t("sidebar.create")} onClick={() => void createWorktree()}>
-                      <Plus size={13} aria-hidden="true" />
-                    </IconButton>
-                  </div>
                   {worktreeError && <div className="codex-sidebar-error">{worktreeError}</div>}
                 </div>
               )}
