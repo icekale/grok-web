@@ -24,6 +24,15 @@ test("session stats do not read .type off missing assistant content", () => {
   assert.doesNotMatch(statsSource, /\.content\.filter\(\(c\) => c\.type === "toolCall"\)/);
 });
 
+test("drops untyped agent events without an illegal break", () => {
+  const handler = source.slice(
+    source.indexOf("  const handleAgentEvent = useCallback"),
+    source.indexOf('    switch (event.type)'),
+  );
+  assert.match(handler, /if \(!event \|\| typeof event\.type !== "string"\) return;/);
+  assert.doesNotMatch(handler, /\bbreak;/);
+});
+
 test("applies streamed context usage from Grok session signals", () => {
   const usageSource = source.slice(
     source.indexOf('case "context_usage"'),

@@ -1151,7 +1151,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return true;
     };
 
-    if (!event || typeof event.type !== "string") break;
+    if (!event || typeof event.type !== "string") return;
     switch (event.type) {
       case "connected": {
         if (event.isStreaming === true) {
