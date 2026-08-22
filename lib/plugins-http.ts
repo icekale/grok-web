@@ -154,7 +154,7 @@ async function readPlugins(cwd: string, refreshed = false): Promise<PluginsRespo
     });
   }
   try {
-    const listed = await runtime.listMarketplace();
+    const listed = await runtime.listMarketplace(cwd);
     sources = listed.sources ?? [];
   } catch (error) {
     diagnostics.push({

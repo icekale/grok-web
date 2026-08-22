@@ -138,6 +138,7 @@ export class AgentRuntime {
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
+  private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
   private disposed = false;
 
   constructor(options?: {
@@ -162,16 +163,17 @@ export class AgentRuntime {
   }
 
   async createSession(cwd: string): Promise<string> {
+    const canonical = canonicalCwd(cwd);
     await this.ensureProcess();
     const connection = this.captureConnection();
     const created = await connection.acp.sessionNew(
-      cwd,
+      canonical,
       sessionNewMeta(readPermissionMode()),
     );
     this.assertCurrentConnection(connection, "session/new");
     const session = this.ensureSession(created.sessionId);
     session.loaded = true;
-    session.cwd = cwd;
+    session.cwd = canonical;
     session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
     session.thinkingLevel = selectedGrokEffort(created) ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]);
     session.configOptions = readAcpConfigOptions(created);
@@ -179,17 +181,18 @@ export class AgentRuntime {
   }
 
   async loadSession(sessionId: string, cwd?: string): Promise<void> {
+    const canonical = cwd ? canonicalCwd(cwd) : undefined;
     await this.ensureProcess();
     const connection = this.captureConnection();
     const loaded = await connection.acp.sessionLoad(
       sessionId,
-      cwd,
+      canonical,
       sessionNewMeta(readPermissionMode()),
     );
     this.assertCurrentConnection(connection, "session/load");
     const session = this.ensureSession(sessionId);
     session.loaded = true;
-    session.cwd = cwd;
+    session.cwd = canonical;
     const modelId = selectedGrokModelId(loaded);
     if (modelId) session.modelId = modelId;
     const effort = selectedGrokEffort(loaded);
@@ -200,7 +203,7 @@ export class AgentRuntime {
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
     await this.ensureProcess();
-    const directory = cwd || this.ensureSession(sessionId).cwd || process.cwd();
+    const directory = cwd ? canonicalCwd(cwd) : this.ensureSession(sessionId).cwd || canonicalCwd(process.cwd());
     const connection = this.captureConnection();
     await connection.acp.sessionResume(sessionId, directory);
     this.assertCurrentConnection(connection, "session/resume");
@@ -338,12 +341,8 @@ export class AgentRuntime {
     return this.requireAcp().authenticate(methodId);
   }
 
-  async listMcp(cwd?: string) {
-    if (!cwd) {
-      await this.ensureProcess();
-      return this.requireAcp().mcpList();
-    }
-    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpList(sessionId)) as Promise<{
+  async listMcp(cwd: string) {
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().mcpList(sessionId)) as Promise<{
       servers: Array<{
         name: string;
         source?: string;
@@ -355,42 +354,56 @@ export class AgentRuntime {
     }>;
   }
 
-  async withSession(cwd: string, fn: (sessionId: string) => Promise<unknown>) {
+  private async workspaceSession(cwd: string): Promise<string> {
+    const canonical = canonicalCwd(cwd);
     await this.ensureProcess();
-    const existing = [...this.sessions].find(([, session]) => session.loaded)?.[0];
-    const sessionId = existing ?? await this.createSession(cwd);
-    return fn(sessionId);
+    const loaded = [...this.sessions].find(([, session]) => (
+      session.loaded && session.cwd && canonicalCwd(session.cwd) === canonical
+    ));
+    if (loaded) return loaded[0];
+    const current = this.workspaceSessionStarts.get(canonical);
+    if (current) return current;
+    const start = this.createSession(canonical);
+    this.workspaceSessionStarts.set(canonical, start);
+    try {
+      return await start;
+    } finally {
+      if (this.workspaceSessionStarts.get(canonical) === start) this.workspaceSessionStarts.delete(canonical);
+    }
+  }
+
+  async withWorkspaceSession(cwd: string, fn: (sessionId: string) => Promise<unknown>) {
+    return fn(await this.workspaceSession(cwd));
   }
 
   async toggleMcp(cwd: string, name: string, enabled: boolean) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpToggle(sessionId, name, enabled));
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().mcpToggle(sessionId, name, enabled));
   }
 
   async upsertMcp(cwd: string, name: string, transport: { command?: string; url?: string; args?: string[] }) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpUpsert(sessionId, name, transport));
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().mcpUpsert(sessionId, name, transport));
   }
 
   async deleteMcp(cwd: string, name: string) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().mcpDelete(sessionId, name));
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().mcpDelete(sessionId, name));
   }
 
   async listPlugins(cwd: string) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().pluginsList(sessionId)) as Promise<{
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().pluginsList(sessionId)) as Promise<{
       plugins: GrokPluginInfo[];
     }>;
   }
 
   async pluginsAction(cwd: string, action: GrokPluginsAction) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().pluginsAction(sessionId, action)) as Promise<GrokActionOutcome>;
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().pluginsAction(sessionId, action)) as Promise<GrokActionOutcome>;
   }
 
-  async listMarketplace() {
-    await this.ensureProcess();
-    return this.requireAcp().marketplaceList();
+  async listMarketplace(cwd: string) {
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().marketplaceList(sessionId));
   }
 
   async marketplaceAction(cwd: string, action: GrokMarketplaceAction) {
-    return this.withSession(cwd, (sessionId) => this.requireAcp().marketplaceAction(sessionId, action)) as Promise<GrokActionOutcome>;
+    return this.withWorkspaceSession(cwd, (sessionId) => this.requireAcp().marketplaceAction(sessionId, action)) as Promise<GrokActionOutcome>;
   }
 
   async listSkills(cwd: string) {
@@ -1000,6 +1013,7 @@ export class AgentRuntime {
   }
 
   private dropConnection(): void {
+    this.workspaceSessionStarts.clear();
     this.unsubUpdate?.();
     this.unsubPermission?.();
     this.unsubClose?.();
