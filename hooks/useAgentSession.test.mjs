@@ -33,6 +33,15 @@ test("drops untyped agent events without an illegal break", () => {
   assert.doesNotMatch(handler, /\bbreak;/);
 });
 
+test("rolls back thinking mode after a rejected ACP update", () => {
+  const handler = source.slice(source.indexOf("const handleThinkingLevelChange"), source.indexOf("const handleToolPresetChange"));
+  assert.match(handler, /const previous = thinkingLevel/);
+  assert.match(handler, /thinkingLevelRequestRef/);
+  assert.match(handler, /setThinkingLevel\(previous\)/);
+  assert.match(handler, /addNotice/);
+  assert.doesNotMatch(handler, /level === "auto"\) return/);
+});
+
 test("reconciles authoritative session snapshots and permission resolutions", () => {
   const handler = source.slice(source.indexOf("  const handleAgentEvent = useCallback"), source.indexOf("  handleAgentEventRef.current"));
   assert.match(handler, /case "session_snapshot"/);

@@ -423,6 +423,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
   const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
+  const thinkingLevelRequestRef = useRef(0);
   const promptRunIdRef = useRef(0);
   const agentLifecycleGenerationRef = useRef(0);
   // Highest prompt generation seen on the SSE wire; terminal events stamped
@@ -2135,19 +2136,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [applyQueueResult, addNotice]);
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
+    const previous = thinkingLevel;
+    const request = ++thinkingLevelRequestRef.current;
     setThinkingLevel(level);
     if (isNew && !sessionIdRef.current) {
       thinkingLevelOverrideRef.current = level === "auto" ? null : level;
     }
-    if (level === "auto") return; // "auto" leaves pi's current setting untouched
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
     if (!sid) return;
     try {
-      await sendAgentCommand(sid, { type: "set_thinking_level", level });
+      const result = await sendAgentCommand<{ level?: string }>(sid, { type: "set_thinking_level", level });
+      if (request === thinkingLevelRequestRef.current && typeof result?.level === "string") {
+        setThinkingLevel(result.level as ThinkingLevelOption);
+      }
     } catch (e) {
-      console.error("Failed to set thinking level:", e);
+      if (request !== thinkingLevelRequestRef.current) return;
+      setThinkingLevel(previous);
+      addNotice({ type: "error", message: e instanceof Error ? e.message : "Failed to set thinking level" });
     }
-  }, [isNew]);
+  }, [addNotice, isNew, thinkingLevel]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
     const previous = toolPresetRef.current;

@@ -2546,7 +2546,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             position: "relative",
             gap: 2,
           }}>
-            {onThinkingLevelChange && (
+            {onThinkingLevelChange && visibleThinkingLevels.length > 0 && (
               <div ref={thinkingMenuRef} style={{ position: "relative" }}>
                 <button
                   type="button"

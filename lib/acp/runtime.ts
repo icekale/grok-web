@@ -559,9 +559,11 @@ export class AgentRuntime {
         await this.ensureProcess();
         const level = stringField(command.level);
         if (!level) throw new Error("level is required");
-        if (level !== "off") await this.requireAcp().sessionSetMode(sessionId, level);
-        this.ensureSession(sessionId).thinkingLevel = level;
-        return { level };
+        const session = this.ensureSession(sessionId);
+        const previous = session.thinkingLevel;
+        await this.requireAcp().sessionSetMode(sessionId, level);
+        session.thinkingLevel = level;
+        return { level, previous };
       }
       case "get_commands":
         return this.listSlashCommands(sessionId);

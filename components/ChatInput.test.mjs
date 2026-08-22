@@ -211,14 +211,20 @@ test("lays out attach, model, and effort; tool access only when ACP advertised i
   );
   assert.doesNotMatch(hidden, />Full access</);
   assert.match(hidden, />grok-4\.6</);
-  assert.match(hidden, /data-thinking-badge="high"/);
-  assert.match(hidden, /Change effort/);
+  assert.doesNotMatch(hidden, /data-thinking-badge="high"/);
+  assert.doesNotMatch(hidden, /Change effort/);
   assert.doesNotMatch(hidden, />Compact context</);
   assert.doesNotMatch(hidden, /aria-label="More controls"/);
 
   const shown = renderToStaticMarkup(
-    React.createElement(I18nProvider, null, React.createElement(ChatInput, { ...props, toolsAdvertised: ["none", "read-only", "default", "full"] })),
+    React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+      ...props,
+      availableThinkingLevels: ["off", "high"],
+      toolsAdvertised: ["none", "read-only", "default", "full"],
+    })),
   );
+  assert.match(shown, /Change effort/);
+  assert.match(shown, /data-thinking-badge="high"/);
   assert.match(shown, />Full access</);
 });
 
