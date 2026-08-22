@@ -112,7 +112,7 @@ TDD coverage must prove:
 - `off` calls ACP when advertised and UI rollback occurs on rejection;
 - unadvertised levels are absent from the picker.
 
-Stage validation adds browser tests using the stage C fixture shape, complete single-threaded tests, typecheck, lint, build, route smoke, and a no-empty-sidebar check.
+Stage validation adds a minimal stdio ACP fixture only for the reconnect and multi-workspace browser checks required by this stage. Stage C then promotes and expands that fixture into the complete CI harness. The gate also requires complete single-threaded tests, typecheck, lint, build, route smoke, and a no-empty-sidebar check.
 
 ## Release boundary
 

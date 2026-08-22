@@ -29,7 +29,7 @@ Excluded:
 - headless `output-format`, streaming wire formats, and JSON Schema automation;
 - arbitrary plugin widgets/forms/custom Extension UI;
 - per-project or per-session Agent process pools;
-- probing undeclared private RPC methods;
+- probing arbitrary undeclared private RPC methods beyond the narrow restore-code exception below;
 - multi-tenant or remote sandbox infrastructure.
 
 ## Runtime Profile
@@ -66,7 +66,7 @@ Capability discovery is cached per resolved Grok binary version/mtime and combin
 - `grok inspect --json` for discovered Agents and configuration sources;
 - ACP initialize, model metadata, and config options for session-level model/mode/tools/worktree/fork capabilities.
 
-Parsing only recognizes exact known option tokens and validated JSON fields. An absent capability hides or disables its control with “current Grok version does not support this capability.” The implementation does not optimistically call an undeclared private RPC.
+Parsing only recognizes exact known option tokens and validated JSON fields. An absent capability hides or disables its control with “current Grok version does not support this capability.” The only private-RPC exception is the existing, contract-tested restore path described below; the implementation does not discover or call any other undeclared private method.
 
 ## Process argument construction
 
@@ -121,10 +121,10 @@ If the backend does not advertise Plan, the WebUI states that the current Grok v
 Restore-code is an explicit session action and always targets a new worktree.
 
 1. Read the historical session's indexed cwd, git root, head commit/branch, and capability state.
-2. Require a valid Git project and advertised CLI restore/worktree plus ACP worktree/fork support.
+2. Require a valid Git project and advertised CLI restore/worktree support. Run the existing read-only `_x.ai/git/worktree/list` contract as the ACP worktree capability check.
 3. Ask for confirmation and propose a collision-safe `restore/<session-short-id>` worktree name.
-4. Use Grok's session-aware worktree capability to create the worktree from the historical session. Do not reconstruct or reinterpret `rewind_points.jsonl` in Grok Web.
-5. Fork/resume the conversation into the returned worktree cwd.
+4. Use only the existing, explicitly allowlisted and contract-tested `_x.ai/git/worktree/create` method to create the worktree from the historical session. Do not reconstruct or reinterpret `rewind_points.jsonl` in Grok Web.
+5. Use only the existing, explicitly allowlisted and contract-tested `_x.ai/session/fork` method to continue the conversation in the returned worktree cwd. A method-not-found response is treated as unsupported, not as a reason to probe alternatives.
 6. Register the worktree as an allowed root and navigate to the new session.
 7. Never modify the original cwd, even when it is clean.
 
@@ -165,7 +165,8 @@ TDD and browser coverage must prove:
 - UI controls follow detected capabilities and save errors roll back visually;
 - standard Plan is shown only when advertised and read back;
 - restore-code never modifies the original cwd;
-- missing capability performs no worktree mutation;
+- missing CLI capability or failed read-only worktree capability check performs no worktree mutation;
+- method-not-found from the allowlisted create/fork path is reported as unsupported and triggers only request-owned cleanup;
 - successful restore creates a new worktree and navigates to a forked/resumed session;
 - failure cleanup only touches the request-owned worktree;
 - authentication-required presents a login path even when custom models are visible.
