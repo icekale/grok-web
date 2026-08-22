@@ -69,7 +69,7 @@ type SessionState = {
   configOptions: AcpConfigOption[];
   eventSequence: number;
   eventPromptGeneration?: number;
-  queuedPromptGenerations: number[];
+  queuedPromptGenerations: Array<number | undefined>;
 };
 
 export class AgentCapabilityError extends Error {
@@ -464,15 +464,12 @@ export class AgentRuntime {
         const generation = commandField(command, "promptGeneration");
         const behavior = promptBehavior(command);
         const session = this.ensureSession(sessionId);
-        if (typeof generation === "number" && session.busy && behavior !== "steer") {
-          session.queuedPromptGenerations.push(generation);
-        }
         return this.sendPrompt(
           sessionId,
           stringField(command.message),
           behavior,
           commandImages(command),
-          typeof generation === "number" && !session.busy ? generation : undefined,
+          typeof generation === "number" ? generation : undefined,
           true,
         );
       }
@@ -778,6 +775,7 @@ export class AgentRuntime {
         return this.requireAcp().sessionInterject(sessionId, message);
       }
       const snap = session.queue.enqueue("followUp", message);
+      session.queuedPromptGenerations.push(promptGeneration);
       this.emit(sessionId, [{ type: "queue_update", ...snap }]);
       return snap;
     }
