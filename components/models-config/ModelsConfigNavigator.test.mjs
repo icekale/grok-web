@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("./ModelsConfigNavigator.tsx", import.meta.url), "utf8");
+const styles = await readFile(new URL("../../app/globals.css", import.meta.url), "utf8");
 
 test("navigator rows are native buttons with a labelled selected state", () => {
   assert.match(source, /<button\b[\s\S]*?models-settings-row/);
@@ -42,6 +43,10 @@ test("footer holds one add-provider command and empty state offers Grok sign-in"
 test("lists read-only Grok ACP models above custom providers", () => {
   assert.match(source, /aria-label=\{t\("models\.liveChat"\)\}/);
   assert.match(source, /t\("models\.customProvidersHint"\)/);
+});
+
+test("custom-provider group disclosure keeps its label horizontal", () => {
+  assert.match(styles, /\.models-settings-group-label\.models-settings-disclosure\s*\{[\s\S]*?width:\s*100%[\s\S]*?justify-content:\s*flex-start/);
 });
 
 test("navigator stays controlled: no fetch or config mutation inside", () => {
