@@ -152,8 +152,33 @@ function splitTopLevelToml(text: string): { preamble: string; rest: string } {
 function apiKeyLineHasValue(line: string): boolean {
   const match = line.match(/^api_key\s*=\s*(.*)$/);
   if (!match) return false;
-  const value = match[1].trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
+  const value = stripTomlComment(match[1]).trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1).length > 0;
+  }
   return value.length > 0;
+}
+
+function stripTomlComment(value: string): string {
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && quote === '"') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = quote === char ? "" : quote || char;
+      continue;
+    }
+    if (char === "#" && !quote) return value.slice(0, index);
+  }
+  return value;
 }
 
 export function hasGrokApiKey(home = grokHome()): boolean {

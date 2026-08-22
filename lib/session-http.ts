@@ -8,7 +8,7 @@ import { packSessionArchive, renderSessionHtml } from "./session-export.ts";
 import { findGrokSession } from "./session-index.ts";
 import { readSessionContextUsage } from "./session-signals.ts";
 import { isReservedSubagentSessionName } from "./session-relations.ts";
-import { listAllSessions } from "./session-reader.ts";
+import { invalidateSessionListCache, listAllSessions } from "./session-reader.ts";
 import type { SessionInfo } from "./types.ts";
 import { getAgentRuntime, peekAgentRuntime } from "./acp/runtime.ts";
 import type { AgentRuntime } from "./acp/runtime.ts";
@@ -274,11 +274,17 @@ export async function deleteSession(
   }
   try {
     if (!runtime.hasSession(id)) await runtime.loadSession(id, session.cwd);
-    await runtime.closeSession(id);
+    const closed = await runtime.closeSession(id) as {
+      outcome?: unknown;
+      _meta?: { "x.ai/closeOutcome"?: unknown };
+    } | undefined;
+    const outcome = closed?.outcome ?? closed?._meta?.["x.ai/closeOutcome"];
+    if (outcome !== "closed") throw new Error("ACP session did not close");
   } catch {
     return Response.json({ error: "Session is in use", code: "session_in_use" }, { status: 409 });
   }
   rmSync(session.path, { recursive: true, force: true });
+  invalidateSessionListCache();
   return Response.json({ ok: true, id });
 }
 

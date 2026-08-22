@@ -78,6 +78,7 @@ async function main() {
 
   let browserOpened = false;
   let shuttingDown = false;
+  let exited = false;
   let forceExitTimer;
   const url = `http://${hostname}:${port}`;
 
@@ -122,28 +123,29 @@ async function main() {
   });
 
   const exitFromChild = (code, signal) => {
+    exited = true;
     if (forceExitTimer) clearTimeout(forceExitTimer);
     process.exit(code ?? (signal ? 1 : 0));
   };
 
   function shutdown(signal) {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (!child || child.killed) {
-      process.exit(0);
+    if (shuttingDown) {
+      if (!exited) child.kill("SIGKILL");
       return;
     }
+    shuttingDown = true;
     child.once("exit", exitFromChild);
     child.kill(signal);
     forceExitTimer = setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
+      if (!exited) child.kill("SIGKILL");
     }, 5_000);
     forceExitTimer.unref();
   }
 
-  process.once("SIGINT", () => shutdown("SIGINT"));
-  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
   child.on("exit", (code, signal) => {
+    exited = true;
     if (!shuttingDown) exitFromChild(code, signal);
   });
 }

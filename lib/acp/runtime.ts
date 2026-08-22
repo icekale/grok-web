@@ -85,6 +85,41 @@ function canonicalCwd(cwd: string): string {
   }
 }
 
+function childHasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+async function terminateChild(child: ChildProcess): Promise<void> {
+  if (childHasExited(child)) return;
+  let exited = false;
+  let resolveExit: () => void = () => {};
+  const exit = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
+  const onExit = () => {
+    exited = true;
+    resolveExit();
+  };
+  child.once("exit", onExit);
+  child.once("error", onExit);
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    exited = true;
+  }
+  await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+  if (!exited && !childHasExited(child)) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // The child may have exited between the check and escalation.
+    }
+    await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+  }
+  child.removeListener("exit", onExit);
+  child.removeListener("error", onExit);
+}
+
 function extraAcpReadRoots(): string[] {
   return [join(homedir(), ".agents"), join(grokHome(), "docs"), join(grokHome(), "skills")].map(canonicalCwd);
 }
@@ -193,6 +228,7 @@ export class AgentRuntime {
     if (this.disposed) return;
     this.disposed = true;
     this.startupToken += 1;
+    const startup = this.starting;
     const acp = this.acp;
     const child = this.child;
     if (acp) {
@@ -219,12 +255,12 @@ export class AgentRuntime {
     } catch {
       // Shutdown is best effort after state has been detached.
     }
-    if (child && !child.killed) {
-      try {
-        child.kill();
-      } catch {
-        // The child may have exited between the check and kill.
-      }
+    if (child) await terminateChild(child);
+    if (startup) {
+      await Promise.race([
+        startup.catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 1_000)),
+      ]);
     }
     this.child = undefined;
     this.sessions.clear();

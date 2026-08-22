@@ -98,16 +98,23 @@ export function syncSettingsModelsToGrokConfig(
   mkdirSync(home, { recursive: true });
   let text = existsSync(file) ? readFileSync(file, "utf8") : "";
   const wanted = new Set(rows.map((row) => grokSettingsPickerId(row, text)));
-  const removed = removeTomlSections(text, wanted);
+  const unchanged = new Set<string>();
+  const ranges = tomlSectionRanges(text);
+  for (const row of rows) {
+    const pickerId = grokSettingsPickerId(row, text);
+    const matches = ranges.filter((range) => settingsManagedPickerId(range.name) === pickerId);
+    const rendered = renderGrokModelTable(row, pickerId).trimEnd();
+    if (matches.length === 1 && text.slice(matches[0].start, matches[0].end).trimEnd() === rendered) {
+      unchanged.add(pickerId);
+    }
+  }
+  const rewriteIds = new Set([...wanted].filter((pickerId) => !unchanged.has(pickerId)));
+  const removed = removeTomlSections(text, rewriteIds);
   text = removed.text;
   const changed = new Set(removed.removed);
   for (const row of rows) {
     const pickerId = grokSettingsPickerId(row, text);
-    if (changed.has(pickerId)) {
-      // The old managed section was removed above; append its current rendering.
-    } else if (configHasModelSection(text, pickerId)) {
-      continue;
-    }
+    if (unchanged.has(pickerId)) continue;
     const suffix = text.length === 0 || text.endsWith("\n") ? "" : "\n";
     text = `${text}${suffix}${suffix ? "" : "\n"}${renderGrokModelTable(row, pickerId)}`;
     changed.add(pickerId);
