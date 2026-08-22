@@ -322,6 +322,19 @@ test("add-provider picker is a modal dialog that restores focus", () => {
   assert.match(picker, /aria-label=\{t\("i18n\.addProvider"\)\}/);
 });
 
+test("add-provider picker keeps every provider entry available", () => {
+  const picker = source.slice(
+    source.indexOf("function AddProviderPicker"),
+    source.indexOf("// ── Main component"),
+  );
+
+  assert.doesNotMatch(picker, /oauthProviders\.filter\(\(p\) => !p\.loggedIn/);
+  assert.doesNotMatch(picker, /apiKeyProviders\.filter\(\(p\) => !p\.configured/);
+  assert.match(picker, /onSelectOAuth\(p\.id\)/);
+  assert.match(picker, /onSelectApiKey\(p\.id\)/);
+  assert.match(picker, /onAddCustom\(\)/);
+});
+
 test("model connection tests ignore stale responses", () => {
   const modelDetail = source.slice(
     source.indexOf("function ModelDetail"),
