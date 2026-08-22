@@ -1,8 +1,10 @@
 # Grok Web
 
-Grok Build 的本地浏览器工作区。它挂在一个长期运行的 `grok agent` ACP 进程和现有的 `~/.grok` 主目录前面，因此 TUI 和网页可以继续同一批会话。
+**Grok Build 的 Web 伴侣。**
 
-这是给本机单人使用的社区 0.x 预览。**不是** xAI 官方产品，与 xAI 无隶属关系，也不是托管的多租户 Grok。浏览器不会直接讲 ACP。
+在浏览器中继续同一批 Grok Build 项目、会话、工具和设置。grok-web 挂在一个长期运行的 `grok agent` ACP 进程前面，并直接使用现有的 `~/.grok` 主目录，因此 TUI 与网页共享同一份工作。
+
+面向本机单人使用。这是独立的社区项目，不是 xAI 官方产品，也不是托管的 Grok 服务。
 
 源码：[github.com/icekale/grok-web](https://github.com/icekale/grok-web)。英文说明：[README.md](README.md)。
 
