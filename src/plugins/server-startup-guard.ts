@@ -1,0 +1,10 @@
+import { definePlugin } from "nitro";
+import { assertServerBindAllowed } from "@/lib/server-bind";
+import { isWebPasswordEnabled } from "@/lib/web-auth";
+
+export default definePlugin(() => {
+  assertServerBindAllowed(
+    process.env,
+    process.env.GROK_WEB_PASSWORD || isWebPasswordEnabled(),
+  );
+});

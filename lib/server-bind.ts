@@ -1,6 +1,6 @@
 import { assertBindAllowed } from "./bind-guard.ts";
 
-type BindEnv = Pick<NodeJS.ProcessEnv, "NITRO_HOST" | "HOST" | "GROK_WEB_HOSTNAME">;
+type BindEnv = Partial<Pick<NodeJS.ProcessEnv, "NITRO_HOST" | "HOST" | "GROK_WEB_HOSTNAME">>;
 
 export function assertServerBindAllowed(
   env: BindEnv = process.env,

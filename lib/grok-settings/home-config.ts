@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writePrivateFileAtomicSync } from "../atomic-file.ts";
-import { grokHome, grokWebMetaDir } from "../grok-home.ts";
+import { grokHome } from "../grok-home.ts";
 
 export type PermissionMode = "ask" | "auto" | "always-approve";
 
@@ -264,5 +264,5 @@ export function loadGrokSettings(home = grokHome(), cwd?: string): GrokSettings 
 }
 
 export function grokWebSettingsPath(home = grokHome()): string {
-  return join(grokWebMetaDir(), "settings.json");
+  return join(home, "grok-web", "settings.json");
 }
