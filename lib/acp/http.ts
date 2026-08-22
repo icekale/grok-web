@@ -5,7 +5,7 @@ import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { hasJsonContentType } from "../request-security.ts";
 import { formatGrokMissingError } from "./process.ts";
-import { AgentCapabilityError, type AgentCommand, type AgentRuntime } from "./runtime.ts";
+import { AgentCapabilityError, AgentCommandError, type AgentCommand, type AgentRuntime } from "./runtime.ts";
 
 type AgentBody = {
   cwd?: unknown;
@@ -210,11 +210,14 @@ function agentErrorResponse(
 ): Response {
   const status = isGrokMissing(error)
     ? 503
+    : error instanceof AgentCommandError
+      ? error.status
     : error instanceof AgentCapabilityError || (error as { status?: unknown }).status === 501
       ? 501
     : 500;
   return Response.json({
     error: formatHandlerError(error),
+    ...(error instanceof AgentCommandError ? { code: error.code } : {}),
     ...(extras.commandType === "prompt" && !extras.promptAccepted
       ? { code: "prompt_rejected", accepted: false }
       : {}),

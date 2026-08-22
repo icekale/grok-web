@@ -1,11 +1,23 @@
 import { grokCanonicalToolName, sanitizeGrokToolInput } from "../grok-tool-input.ts";
 
+export type PermissionUiOption = {
+  id: string;
+  label: string;
+  kind: string;
+};
+
+export type PermissionUiSnapshot = PermissionUiRequest & {
+  sessionId: string;
+  expiresAt: number;
+};
+
 export type PermissionUiRequest = {
   type: "extension_ui_request";
   id: string;
   method: "confirm";
   title: string;
   message: string;
+  options?: PermissionUiOption[];
 };
 
 export type PermissionResult =
@@ -20,13 +32,32 @@ export function translatePermissionRequest(params: unknown, rpcId: number | stri
   const rawTitle = firstString(toolCall.title);
   const kind = typeof toolCall.kind === "string" ? toolCall.kind : "";
   const input = sanitizeGrokToolInput(asRecord(toolCall.rawInput ?? toolCall.input));
+  const options = translatePermissionOptions(params);
   return {
     type: "extension_ui_request",
     id: String(rpcId),
     method: "confirm",
     title: permissionTitle(rawTitle, kind, input),
     message: permissionMessage(rawTitle, kind, input),
+    ...(options ? { options } : {}),
   };
+}
+
+function translatePermissionOptions(params: unknown): PermissionUiOption[] | undefined {
+  if (!isRecord(params) || !Array.isArray(params.options)) return undefined;
+  const options = params.options
+    .filter(isRecord)
+    .map((option) => {
+      const id = optionId(option);
+      const label = firstString(option.label, option.name, option.title, id);
+      const kind = firstString(option.kind, id);
+      return id && label && kind
+        ? { id, label: label.slice(0, 200), kind: kind.slice(0, 100) }
+        : undefined;
+    })
+    .filter((option): option is PermissionUiOption => option !== undefined)
+    .slice(0, 12);
+  return options.length > 0 ? options : undefined;
 }
 
 function permissionTitle(title: string, kind: string, input: Record<string, unknown>): string {

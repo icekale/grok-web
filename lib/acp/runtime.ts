@@ -76,6 +76,17 @@ export class AgentCapabilityError extends Error {
   }
 }
 
+export class AgentCommandError extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = "AgentCommandError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function canonicalCwd(cwd: string): string {
   const resolved = resolve(cwd);
   try {
@@ -133,6 +144,7 @@ export class AgentRuntime {
   private starting: Promise<void> | undefined;
   private unsubUpdate: (() => void) | undefined;
   private unsubPermission: (() => void) | undefined;
+  private unsubPermissionResolved: (() => void) | undefined;
   private unsubClose: (() => void) | undefined;
   private child: ChildProcess | undefined;
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
@@ -749,10 +761,13 @@ export class AgentRuntime {
 
   private async sendPermission(sessionId: string, command: AgentCommand): Promise<void> {
     await this.ensureProcess();
-    this.requireAcp().completePermission(sessionId, stringField(commandField(command, "id")), {
+    const result = this.requireAcp().completePermission(sessionId, stringField(commandField(command, "id")), {
       confirmed: commandField(command, "confirmed") === true,
       cancelled: commandField(command, "cancelled") === true,
     });
+    if (result.status === "already_resolved") {
+      throw new AgentCommandError(409, "already_resolved", "Permission was already resolved");
+    }
   }
 
   private async sendAbort(sessionId: string): Promise<unknown> {
@@ -964,6 +979,7 @@ export class AgentRuntime {
     }
     this.unsubUpdate?.();
     this.unsubPermission?.();
+    this.unsubPermissionResolved?.();
     this.unsubClose?.();
     this.acp = acp;
     const generation = ++this.connectionGeneration;
@@ -986,6 +1002,11 @@ export class AgentRuntime {
     this.unsubPermission = acp.onPermission((event) => {
       this.forwardPermission(event);
     });
+    if (typeof acp.onPermissionResolved === "function") {
+      this.unsubPermissionResolved = acp.onPermissionResolved((event) => {
+        this.emit(event.sessionId, [event]);
+      });
+    }
   }
 
   private async connectDefault(): Promise<AcpConnection> {
@@ -1016,9 +1037,11 @@ export class AgentRuntime {
     this.workspaceSessionStarts.clear();
     this.unsubUpdate?.();
     this.unsubPermission?.();
+    this.unsubPermissionResolved?.();
     this.unsubClose?.();
     this.unsubUpdate = undefined;
     this.unsubPermission = undefined;
+    this.unsubPermissionResolved = undefined;
     this.unsubClose = undefined;
     for (const session of this.sessions.values()) session.loaded = false;
     this.acp = undefined;

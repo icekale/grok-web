@@ -5,13 +5,24 @@ import {
   resolvePermission,
   translatePermissionRequest,
   type PermissionUiRequest,
+  type PermissionUiSnapshot,
 } from "./permissions.ts";
 
 type PendingPermission = {
   request: unknown;
   requestId: JsonRpcId;
+  sessionId: string;
+  uiRequest: PermissionUiRequest;
   startedAt: number;
+  expiresAt: number;
   timer: ReturnType<typeof setTimeout>;
+};
+
+export type PermissionResolution = {
+  type: "permission_resolved";
+  sessionId: string;
+  id: string;
+  result: "confirmed" | "cancelled" | "timed_out";
 };
 
 export type AcpFsContext = {
@@ -94,6 +105,7 @@ export class AcpConnection {
   private readonly fsContext: (sessionId: string | undefined) => AcpFsContext;
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
+  private readonly permissionResolutionHandlers = new Set<(event: PermissionResolution) => void>();
   private readonly fuzzyWaiters = new Map<string, (matches: Array<{ path: string; type?: string; name?: string }>) => void>();
   availableCommands: Array<{ name: string; description?: string }> = [];
 
@@ -152,10 +164,11 @@ export class AcpConnection {
       const existing = this.pendingPermissions.get(key);
       if (existing) clearTimeout(existing.timer);
       const startedAt = this.now();
+      const expiresAt = startedAt + this.permissionTimeoutMs;
       const timer = setTimeout(() => this.expirePermission(key), this.permissionTimeoutMs);
-      this.pendingPermissions.set(key, { request: params, requestId: id, startedAt, timer });
       const event = translatePermissionRequest(params, id);
-      const uiRequest = sessionId ? { ...event, sessionId } : event;
+      const uiRequest = { ...event, sessionId };
+      this.pendingPermissions.set(key, { request: params, requestId: id, sessionId, uiRequest, startedAt, expiresAt, timer });
       for (const handler of this.permissionHandlers) handler(uiRequest);
     });
     this.rpc.onClose(() => {
@@ -171,14 +184,31 @@ export class AcpConnection {
     };
   }
 
+  onPermissionResolved(handler: (event: PermissionResolution) => void): () => void {
+    this.permissionResolutionHandlers.add(handler);
+    return () => {
+      this.permissionResolutionHandlers.delete(handler);
+    };
+  }
+
+  pendingPermissionsForSession(sessionId: string): PermissionUiSnapshot[] {
+    return [...this.pendingPermissions.values()]
+      .filter((pending) => pending.sessionId === sessionId)
+      .map((pending) => ({
+        ...pending.uiRequest,
+        options: pending.uiRequest.options ?? [],
+        expiresAt: pending.expiresAt,
+      }));
+  }
+
   completePermission(
     sessionId: string,
     id: string,
     ui: { confirmed?: boolean; cancelled?: boolean },
-  ): void {
+  ): { status: "resolved" } | { status: "already_resolved" } {
     const key = permissionKey(sessionId, id);
     const pending = this.pendingPermissions.get(key);
-    if (!pending) return;
+    if (!pending) return { status: "already_resolved" };
     clearTimeout(pending.timer);
     this.pendingPermissions.delete(key);
     this.rpc.respond(pending.requestId, resolvePermission(ui, pending.request, {
@@ -186,17 +216,25 @@ export class AcpConnection {
       now: this.now(),
       timeoutMs: this.permissionTimeoutMs,
     }));
+    const result = ui.cancelled || ui.confirmed !== true ? "cancelled" : "confirmed";
+    this.emitPermissionResolution({ type: "permission_resolved", sessionId, id, result });
+    return { status: "resolved" };
   }
 
-  private expirePermission(id: string): void {
-    const pending = this.pendingPermissions.get(id);
+  private expirePermission(key: string): void {
+    const pending = this.pendingPermissions.get(key);
     if (!pending) return;
-    this.pendingPermissions.delete(id);
+    this.pendingPermissions.delete(key);
     this.rpc.respond(pending.requestId, resolvePermission({ cancelled: true }, pending.request, {
       startedAt: pending.startedAt,
       now: this.now(),
       timeoutMs: this.permissionTimeoutMs,
     }));
+    this.emitPermissionResolution({ type: "permission_resolved", sessionId: pending.sessionId, id: String(pending.requestId), result: "timed_out" });
+  }
+
+  private emitPermissionResolution(event: PermissionResolution): void {
+    for (const handler of this.permissionResolutionHandlers) handler(event);
   }
 
   onClose(handler: (error: Error) => void): () => void {
