@@ -94,6 +94,7 @@ async function readSession(
       if (!name || name === EMPTY_SESSION_LABEL) name = fromHistory;
     }
   }
+  if (numberField(body.num_messages) === 0 && !firstMessage && !name) return null;
   if (!firstMessage) firstMessage = EMPTY_SESSION_LABEL;
   const parentSessionId =
     stringField(info.parent_session_id) || stringField(body.parent_session_id) || undefined;
