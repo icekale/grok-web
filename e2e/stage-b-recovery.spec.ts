@@ -21,22 +21,6 @@ async function deleteSession(page, sessionId: string): Promise<void> {
   await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-async function waitForEvent(page, sessionId: string, type: string): Promise<unknown> {
-  return page.evaluate(({ id, type: wantedType }) => new Promise((resolve, reject) => {
-    const source = new EventSource(new URL(`/api/agent/${encodeURIComponent(id)}/events`, location.origin).href);
-    const timer = setTimeout(() => { source.close(); reject(new Error(`${wantedType} timeout`)); }, 10_000);
-    source.onmessage = (event) => {
-      const parsed = JSON.parse(event.data);
-      if (parsed.type === wantedType) {
-        clearTimeout(timer);
-        source.close();
-        resolve(parsed);
-      }
-    };
-    source.onerror = () => { clearTimeout(timer); source.close(); reject(new Error(`SSE closed before ${wantedType}`)); };
-  }), { id: sessionId, type });
-}
-
 async function waitForSnapshot(page, sessionId: string): Promise<unknown> {
   return page.evaluate((id) => new Promise((resolve, reject) => {
     const source = new EventSource(new URL(`/api/agent/${encodeURIComponent(id)}/events`, location.origin).href);
