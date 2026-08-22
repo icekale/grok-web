@@ -12,6 +12,8 @@ if (!isNodeVersionSupported(process.versions.node)) {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { spawn } = require("child_process");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const { constants: osConstants } = require("os");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("fs");
@@ -125,7 +127,7 @@ async function main() {
   const exitFromChild = (code, signal) => {
     exited = true;
     if (forceExitTimer) clearTimeout(forceExitTimer);
-    process.exit(code ?? (signal ? 1 : 0));
+    process.exit(code ?? (signal ? 128 + (osConstants.signals[signal] || 1) : 0));
   };
 
   function shutdown(signal) {

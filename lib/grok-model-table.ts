@@ -99,12 +99,17 @@ export function syncSettingsModelsToGrokConfig(
   let text = existsSync(file) ? readFileSync(file, "utf8") : "";
   const wanted = new Set(rows.map((row) => grokSettingsPickerId(row, text)));
   const unchanged = new Set<string>();
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const normalizeEol = (value: string) => value.replace(/\r\n/g, "\n");
   const ranges = tomlSectionRanges(text);
   for (const row of rows) {
     const pickerId = grokSettingsPickerId(row, text);
     const matches = ranges.filter((range) => settingsManagedPickerId(range.name) === pickerId);
-    const rendered = renderGrokModelTable(row, pickerId).trimEnd();
-    if (matches.length === 1 && text.slice(matches[0].start, matches[0].end).trimEnd() === rendered) {
+    const rendered = renderGrokModelTable(row, pickerId).replaceAll("\n", eol).trimEnd();
+    if (
+      matches.length === 1
+      && normalizeEol(text.slice(matches[0].start, matches[0].end).trimEnd()) === normalizeEol(rendered)
+    ) {
       unchanged.add(pickerId);
     }
   }
@@ -115,8 +120,8 @@ export function syncSettingsModelsToGrokConfig(
   for (const row of rows) {
     const pickerId = grokSettingsPickerId(row, text);
     if (unchanged.has(pickerId)) continue;
-    const suffix = text.length === 0 || text.endsWith("\n") ? "" : "\n";
-    text = `${text}${suffix}${suffix ? "" : "\n"}${renderGrokModelTable(row, pickerId)}`;
+    const suffix = text.length === 0 || text.endsWith(eol) ? "" : eol;
+    text = `${text}${suffix}${suffix ? "" : eol}${renderGrokModelTable(row, pickerId).replaceAll("\n", eol)}`;
     changed.add(pickerId);
   }
   if (changed.size > 0) writePrivateFileAtomicSync(file, text);
