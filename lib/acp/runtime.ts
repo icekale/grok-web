@@ -461,16 +461,17 @@ export class AgentRuntime {
         return this.getState(sessionId);
       case "prompt": {
         const generation = commandField(command, "promptGeneration");
-        if (typeof generation === "number") {
-          const session = this.ensureSession(sessionId);
-          if (session.busy) session.queuedPromptGenerations.push(generation);
-          else session.eventPromptGeneration = generation;
+        const behavior = promptBehavior(command);
+        const session = this.ensureSession(sessionId);
+        if (typeof generation === "number" && session.busy && behavior !== "steer") {
+          session.queuedPromptGenerations.push(generation);
         }
         return this.sendPrompt(
           sessionId,
           stringField(command.message),
-          promptBehavior(command),
+          behavior,
           commandImages(command),
+          typeof generation === "number" && !session.busy ? generation : undefined,
         );
       }
       case "steer":
@@ -756,6 +757,7 @@ export class AgentRuntime {
     message: string,
     streamingBehavior?: "steer" | "followUp",
     images?: unknown,
+    promptGeneration?: number,
   ): Promise<unknown> {
     const imageError = validateAgentImages(images);
     if (imageError) throw new Error(imageError);
@@ -776,11 +778,18 @@ export class AgentRuntime {
       this.emit(sessionId, [{ type: "queue_update", ...snap }]);
       return snap;
     }
-    return this.runPrompt(sessionId, message, images);
+    return this.runPrompt(sessionId, message, images, promptGeneration);
   }
 
-  private async runPrompt(sessionId: string, message: string, images?: unknown): Promise<unknown> {
+  private async runPrompt(
+    sessionId: string,
+    message: string,
+    images?: unknown,
+    promptGeneration?: number,
+  ): Promise<unknown> {
     const session = this.ensureSession(sessionId);
+    const previousPromptGeneration = session.eventPromptGeneration;
+    if (promptGeneration !== undefined) session.eventPromptGeneration = promptGeneration;
     session.busy = true;
     session.mapper.begin();
     try {
@@ -794,13 +803,13 @@ export class AgentRuntime {
         const next = session.queue.takeNext("followUp");
         if (next !== undefined) {
           const nextGeneration = session.queuedPromptGenerations.shift();
-          if (nextGeneration !== undefined) session.eventPromptGeneration = nextGeneration;
           this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
-          return await this.runPrompt(sessionId, next);
+          return await this.runPrompt(sessionId, next, undefined, nextGeneration);
         }
       }
       return result;
     } finally {
+      session.eventPromptGeneration = previousPromptGeneration;
       session.busy = false;
     }
   }
