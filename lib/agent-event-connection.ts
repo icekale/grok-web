@@ -147,7 +147,7 @@ export class AgentEventConnection {
       }
 
       if (!event || typeof event !== "object" || typeof event.type !== "string") return;
-      if (event.type === "connected") {
+      if (event.type === "session_snapshot" || event.type === "connected") {
         attempt.ready = true;
         attempt.succeed();
         this.stopRetrying();

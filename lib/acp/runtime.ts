@@ -38,6 +38,7 @@ import {
 } from "./config-options.ts";
 import { getPresetFromTools, type ToolEntry, type ToolPreset } from "../tool-presets.ts";
 import { validateAgentImages } from "../image-attachments.ts";
+import { getPromptGeneration } from "../prompt-generation.ts";
 
 export type AgentCommand =
   | { type: "prompt"; message: string; images?: unknown[]; streamingBehavior?: "steer" | "followUp" }
@@ -66,6 +67,7 @@ type SessionState = {
   thinkingLevel?: string;
   hasUserPrompt?: boolean;
   configOptions: AcpConfigOption[];
+  eventSequence: number;
 };
 
 export class AgentCapabilityError extends Error {
@@ -150,6 +152,7 @@ export class AgentRuntime {
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
+  private readonly sequencedListeners = new Map<string, Set<(entry: { sequence: number; event: Record<string, unknown> }) => void>>();
   private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
   private disposed = false;
 
@@ -233,6 +236,7 @@ export class AgentRuntime {
     const child = this.child;
     this.sessions.clear();
     this.listeners.clear();
+    this.sequencedListeners.clear();
     this.dropConnection();
     if (child && !child.killed) child.kill();
     this.child = undefined;
@@ -280,6 +284,7 @@ export class AgentRuntime {
     this.child = undefined;
     this.sessions.clear();
     this.listeners.clear();
+    this.sequencedListeners.clear();
     this.starting = undefined;
   }
 
@@ -613,6 +618,38 @@ export class AgentRuntime {
       const current = this.listeners.get(sessionId);
       current?.delete(listener);
       if (current?.size === 0) this.listeners.delete(sessionId);
+    };
+  }
+
+  subscribeSequenced(
+    sessionId: string,
+    listener: (entry: { sequence: number; event: Record<string, unknown> }) => void,
+  ): () => void {
+    let listeners = this.sequencedListeners.get(sessionId);
+    if (!listeners) {
+      listeners = new Set();
+      this.sequencedListeners.set(sessionId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      const current = this.sequencedListeners.get(sessionId);
+      current?.delete(listener);
+      if (current?.size === 0) this.sequencedListeners.delete(sessionId);
+    };
+  }
+
+  async getSessionSnapshot(sessionId: string) {
+    const session = this.ensureSession(sessionId);
+    const state = await this.getState(sessionId);
+    return {
+      ...state,
+      type: "session_snapshot" as const,
+      sessionId,
+      promptGeneration: getPromptGeneration(sessionId),
+      busy: this.isBusy(sessionId),
+      streamingMessage: this.getStreamingMessage(sessionId),
+      pendingPermissions: this.acp?.pendingPermissionsForSession(sessionId) ?? [],
+      eventSequence: session.eventSequence,
     };
   }
 
@@ -1094,6 +1131,7 @@ export class AgentRuntime {
         bashTerminalIds: new Set(),
         queue: new SessionQueue(),
         configOptions: [],
+        eventSequence: 0,
       };
       this.sessions.set(sessionId, session);
     }
@@ -1101,10 +1139,16 @@ export class AgentRuntime {
   }
 
   private emit(sessionId: string, events: Array<Record<string, unknown>>): void {
+    const session = this.ensureSession(sessionId);
+    if (events.length === 0) return;
     const listeners = this.listeners.get(sessionId);
-    if (!listeners || events.length === 0) return;
+    const sequenced = this.sequencedListeners.get(sessionId);
     for (const event of events) {
-      for (const listener of [...listeners]) listener(event);
+      session.eventSequence += 1;
+      for (const listener of [...(listeners ?? [])]) listener(event);
+      for (const listener of [...(sequenced ?? [])]) {
+        listener({ sequence: session.eventSequence, event });
+      }
     }
   }
 

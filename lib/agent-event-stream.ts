@@ -1,18 +1,16 @@
-import {
-  isEventIncludedInSnapshot,
-  toClientAgentEvent,
-  type AgentEventLike,
-} from "./agent-event-wire";
+import { isEventIncludedInSnapshot, toClientAgentEvent, type AgentEventLike } from "./agent-event-wire";
+import type { SessionSnapshotEvent } from "./agent-events";
 import type { ContextUsage } from "./pi-types";
 import { getPromptGeneration } from "./prompt-generation";
 
 export type AgentEventStreamContextUsage = ContextUsage;
 
 export interface AgentEventStreamSession {
-  readonly isStreaming: boolean;
-  readonly streamingMessage: unknown;
+  readonly isStreaming?: boolean;
+  readonly streamingMessage?: unknown;
   readonly contextUsage?: AgentEventStreamContextUsage | Promise<AgentEventStreamContextUsage | null> | null;
-  onEvent(listener: (event: AgentEventLike) => void): () => void;
+  snapshot?: () => Promise<Omit<SessionSnapshotEvent, "type" | "sessionId"> | SessionSnapshotEvent>;
+  onEvent(listener: (entry: AgentEventLike | { sequence: number; event: AgentEventLike }) => void): () => void;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -64,13 +62,14 @@ export function createAgentEventStream(
       const encode = (data: unknown) => {
         enqueueText(`data: ${JSON.stringify(data)}\n\n`);
       };
-      const forwardEvent = (event: AgentEventLike, snapshot: unknown) => {
+      let streamPromptGeneration = getPromptGeneration(sessionId);
+      const forwardEvent = (event: AgentEventLike, snapshot: unknown = undefined) => {
         if (isEventIncludedInSnapshot(event, snapshot)) return;
         const clientEvent = toClientAgentEvent(event);
         if (clientEvent) {
           // Stamp the generation that was current when the event was emitted;
           // the client drops terminal events older than its latest prompt.
-          encode({ ...clientEvent, promptGeneration: getPromptGeneration(sessionId) });
+          encode({ ...clientEvent, promptGeneration: streamPromptGeneration });
         }
       };
 
@@ -79,14 +78,19 @@ export function createAgentEventStream(
           const session = await sessionPromise;
           if (closed) return;
 
-          const bufferedEvents: AgentEventLike[] = [];
+          const modernSnapshot = typeof session.snapshot === "function";
+          const bufferedEvents: Array<{ sequence: number; event: AgentEventLike }> = [];
           let snapshotPublished = false;
-          const handleEvent = (event: AgentEventLike) => {
+          const handleEvent = (entry: AgentEventLike | { sequence: number; event: AgentEventLike }) => {
+            const normalized: { sequence: number; event: AgentEventLike } = modernSnapshot
+              && entry && typeof entry === "object" && "event" in entry
+              ? entry as { sequence: number; event: AgentEventLike }
+              : { sequence: Number.MAX_SAFE_INTEGER, event: entry as AgentEventLike };
             if (!snapshotPublished) {
-              bufferedEvents.push(event);
+              bufferedEvents.push(normalized);
               return;
             }
-            forwardEvent(event, snapshot);
+            forwardEvent(normalized.event);
           };
 
           const stopListening = session.onEvent(handleEvent);
@@ -96,22 +100,34 @@ export function createAgentEventStream(
           }
           unsubscribe = stopListening;
 
-          const snapshot = session.isStreaming === true ? session.streamingMessage : null;
-          encode({
-            type: "connected",
-            sessionId,
-            isStreaming: session.isStreaming,
-          });
-          const contextUsage = await session.contextUsage;
-          if (closed) return;
-          if (contextUsage && contextUsage.contextWindow > 0) {
-            encode({ type: "context_usage", contextUsage });
+          if (modernSnapshot) {
+            const snapshot = await session.snapshot!();
+            if (closed) return;
+            const snapshotEvent = { ...snapshot, type: "session_snapshot" as const, sessionId };
+            streamPromptGeneration = Number(snapshot.promptGeneration ?? streamPromptGeneration);
+            encode(snapshotEvent);
+            for (const entry of bufferedEvents) {
+              if (entry.sequence > Number(snapshot.eventSequence ?? 0)) forwardEvent(entry.event);
+            }
+            snapshotPublished = true;
+          } else {
+            const snapshot = session.isStreaming === true ? session.streamingMessage : null;
+            encode({
+              type: "connected",
+              sessionId,
+              isStreaming: session.isStreaming,
+            });
+            const contextUsage = await session.contextUsage;
+            if (closed) return;
+            if (contextUsage && contextUsage.contextWindow > 0) {
+              encode({ type: "context_usage", contextUsage });
+            }
+            for (const entry of bufferedEvents) forwardEvent(entry.event, snapshot);
+            if (snapshot !== undefined && snapshot !== null) {
+              encode({ type: "message_start", message: snapshot });
+            }
+            snapshotPublished = true;
           }
-          for (const event of bufferedEvents) forwardEvent(event, snapshot);
-          if (snapshot !== undefined && snapshot !== null) {
-            encode({ type: "message_start", message: snapshot });
-          }
-          snapshotPublished = true;
         } catch (error) {
           if (closed) return;
           encode({

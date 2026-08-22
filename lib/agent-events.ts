@@ -26,7 +26,23 @@ export type ClientMessageUpdateEvent = {
   message?: unknown;
 };
 
+export type SessionSnapshotEvent = {
+  type: "session_snapshot";
+  sessionId: string;
+  promptGeneration: number;
+  busy: boolean;
+  streamingMessage: unknown | null;
+  queuedMessages: { steering: string[]; followUp: string[] };
+  pendingPermissions: Array<Record<string, unknown>>;
+  model: { provider: string; id: string };
+  thinkingLevel?: string;
+  toolPresets: unknown[];
+  contextUsage?: unknown;
+  eventSequence: number;
+};
+
 export type GrokWireEvent =
+  | SessionSnapshotEvent
   | { type: "connected"; sessionId: string; isStreaming?: boolean }
   | { type: "context_usage"; contextUsage: unknown }
   | { type: "agent_start" }
@@ -49,4 +65,5 @@ export type GrokWireEvent =
   | { type: "auto_compaction_end"; errorMessage?: string; aborted?: unknown; result?: unknown; reason?: string }
   | { type: "compaction_end"; errorMessage?: string; aborted?: unknown; result?: unknown; reason?: string }
   | { type: "extension_ui_request"; id: string; method: string; [k: string]: unknown }
+  | { type: "permission_resolved"; sessionId: string; id: string; result: string }
   | { type: string; [k: string]: unknown };

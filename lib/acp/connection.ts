@@ -197,6 +197,7 @@ export class AcpConnection {
       .map((pending) => ({
         ...pending.uiRequest,
         options: pending.uiRequest.options ?? [],
+        sessionId: pending.sessionId,
         expiresAt: pending.expiresAt,
       }));
   }
@@ -480,8 +481,8 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/plugins/action", { sessionId, action }).then((raw) => unwrapResult(raw) as never);
   }
 
-  marketplaceList(): Promise<{ sources: GrokMarketplaceSource[] }> {
-    return this.rpc.request("_x.ai/marketplace/list", {}).then((raw) => unwrapResult(raw) as never);
+  marketplaceList(sessionId: string): Promise<{ sources: GrokMarketplaceSource[] }> {
+    return this.rpc.request("_x.ai/marketplace/list", { sessionId }).then((raw) => unwrapResult(raw) as never);
   }
 
   marketplaceAction(sessionId: string, action: GrokMarketplaceAction): Promise<GrokActionOutcome> {

@@ -1,7 +1,6 @@
 import { createAgentEventStream } from "@/lib/agent-event-stream";
 import type { AgentEventLike } from "@/lib/agent-event-wire";
 import { getAgentRuntime } from "@/lib/acp/runtime";
-import { readSessionContextUsage } from "@/lib/session-signals";
 
 // GET /api/agent/[id]/events - SSE stream of agent events
 export async function GET(
@@ -13,11 +12,9 @@ export async function GET(
 
   const runtime = getAgentRuntime();
   const sessionPromise = Promise.resolve({
-    isStreaming: runtime.isBusy(id),
-    streamingMessage: null,
-    contextUsage: readSessionContextUsage(id),
-    onEvent: (listener: (event: AgentEventLike) => void) => (
-      runtime.subscribe(id, listener as (event: Record<string, unknown>) => void)
+    snapshot: () => runtime.getSessionSnapshot(id),
+    onEvent: (listener: (entry: { sequence: number; event: AgentEventLike }) => void) => (
+      runtime.subscribeSequenced(id, listener as (entry: { sequence: number; event: Record<string, unknown> }) => void)
     ),
   });
 
