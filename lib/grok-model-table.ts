@@ -27,6 +27,52 @@ export function grokSettingsPickerId(row: SettingsComposerModel, _configText?: s
   return `${row.providerId}/${row.id}`;
 }
 
+/** Namespaced Settings tables look like `model."Cursor/grok-4.5"`. Official Grok ids have no slash. */
+export function settingsManagedPickerId(sectionName: string): string | undefined {
+  const match = sectionName.match(/^model\.(.+)$/);
+  if (!match) return undefined;
+  let id = match[1];
+  if (
+    (id.startsWith('"') && id.endsWith('"'))
+    || (id.startsWith("'") && id.endsWith("'"))
+  ) {
+    id = id.slice(1, -1);
+  }
+  return id.includes("/") ? id : undefined;
+}
+
+function rewriteTomlSections(text: string, keep: (sectionName: string) => boolean): string {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  let sectionName: string | undefined;
+  let sectionLines: string[] = [];
+
+  const flush = () => {
+    if (sectionName === undefined) return;
+    if (keep(sectionName)) {
+      out.push(`[${sectionName}]`, ...sectionLines);
+    }
+    sectionName = undefined;
+    sectionLines = [];
+  };
+
+  for (const raw of lines) {
+    const name = raw.trim().match(/^\[([^\]]+)\]$/)?.[1];
+    if (name !== undefined) {
+      flush();
+      sectionName = name;
+      continue;
+    }
+    if (sectionName === undefined) out.push(raw);
+    else sectionLines.push(raw);
+  }
+  flush();
+
+  let next = out.join("\n");
+  if (text.endsWith("\n") && !next.endsWith("\n")) next += "\n";
+  return next.replace(/\n{3,}/g, "\n\n");
+}
+
 export function grokConfigText(home = grokHome()): string {
   const file = join(home, "config.toml");
   return existsSync(file) ? readFileSync(file, "utf8") : "";
@@ -55,10 +101,19 @@ export function syncSettingsModelsToGrokConfig(
   home = grokHome(),
 ): string[] {
   const rows = collectSettingsComposerModels(settings).filter((row) => row.baseUrl);
-  if (rows.length === 0) return [];
-  mkdirSync(home, { recursive: true });
   const file = join(home, "config.toml");
+  if (rows.length === 0 && !existsSync(file)) return [];
+  mkdirSync(home, { recursive: true });
   let text = existsSync(file) ? readFileSync(file, "utf8") : "";
+  const wanted = new Set(rows.map((row) => grokSettingsPickerId(row, text)));
+  const removed: string[] = [];
+  const pruned = rewriteTomlSections(text, (sectionName) => {
+    const pickerId = settingsManagedPickerId(sectionName);
+    if (!pickerId || wanted.has(pickerId)) return true;
+    removed.push(pickerId);
+    return false;
+  });
+  if (removed.length > 0) text = pruned;
   const wrote: string[] = [];
   for (const row of rows) {
     const pickerId = grokSettingsPickerId(row, text);
@@ -67,6 +122,6 @@ export function syncSettingsModelsToGrokConfig(
     text = `${text}${suffix}\n${renderGrokModelTable(row, pickerId)}`;
     wrote.push(pickerId);
   }
-  if (wrote.length > 0) writePrivateFileAtomicSync(file, text);
-  return wrote;
+  if (wrote.length > 0 || removed.length > 0) writePrivateFileAtomicSync(file, text);
+  return [...removed, ...wrote];
 }

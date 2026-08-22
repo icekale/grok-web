@@ -54,12 +54,19 @@ export {
   visibleGrokEffortLevels,
 } from "./grok-effort-levels.ts";
 
+export function isOfficialGrokCatalogModel(model: { id: string; provider: string }): boolean {
+  return model.provider === "grok" && !model.id.includes("/");
+}
+
 export function mergeComposerModels(
   acp: ModelsData,
   settings: Record<string, unknown>,
   pickerId: (row: SettingsComposerModel) => string = defaultSettingsPickerId,
+  officialGrokConnected = true,
 ): ModelsData {
-  const resolved = collectSettingsComposerModels(settings).map((row) => ({
+  const settingsRows = collectSettingsComposerModels(settings);
+  const settingsProviders = new Set(settingsRows.map((row) => row.providerId));
+  const resolved = settingsRows.map((row) => ({
     id: pickerId(row),
     name: row.name,
     provider: row.providerId,
@@ -69,6 +76,14 @@ export function mergeComposerModels(
   const seen = new Set<string>();
 
   for (const model of acp.modelList) {
+    if (!officialGrokConnected && isOfficialGrokCatalogModel(model)) continue;
+    if (
+      model.id.includes("/")
+      && model.provider !== "grok"
+      && !settingsProviders.has(model.provider)
+    ) {
+      continue;
+    }
     const extra = overlay.get(model.id);
     const entry = extra
       ? { id: model.id, name: extra.name, provider: extra.provider }
@@ -84,7 +99,7 @@ export function mergeComposerModels(
 
   const models: Record<string, string> = {};
   for (const model of modelList) models[`${model.provider}:${model.id}`] = model.name;
-  if (modelList.length === 0) {
+  if (modelList.length === 0 && officialGrokConnected) {
     for (const [key, name] of Object.entries(acp.models)) {
       const id = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
       models[key] = composerModelLabel(id, name);
@@ -105,16 +120,24 @@ export function mergeComposerModels(
   }
 
   const defaultOverlay = acp.defaultModel ? overlay.get(acp.defaultModel.modelId) : undefined;
+  let defaultModel = defaultOverlay && acp.defaultModel
+    ? { provider: defaultOverlay.provider, modelId: acp.defaultModel.modelId }
+    : acp.defaultModel;
+  const defaultVisible = Boolean(defaultModel && modelList.some((model) => (
+    model.id === defaultModel?.modelId && model.provider === defaultModel.provider
+  )));
+  if (!defaultVisible) {
+    const first = modelList[0];
+    defaultModel = first ? { provider: first.provider, modelId: first.id } : null;
+  }
   return {
     ...acp,
-    models: Object.keys(models).length > 0 ? models : acp.models,
+    models: Object.keys(models).length > 0 ? models : officialGrokConnected ? acp.models : {},
     modelList,
     thinkingLevels,
     thinkingLevelMaps,
     thinkingLevelPins,
-    defaultModel: defaultOverlay && acp.defaultModel
-      ? { provider: defaultOverlay.provider, modelId: acp.defaultModel.modelId }
-      : acp.defaultModel,
+    defaultModel,
   };
 }
 

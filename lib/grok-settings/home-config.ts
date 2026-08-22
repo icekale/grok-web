@@ -219,6 +219,10 @@ export function clearGrokApiKey(home = grokHome()): void {
   writePrivateFileAtomicSync(file, kept.join("\n"));
 }
 
+export function grokAccountConnected(home = grokHome()): boolean {
+  return hasGrokApiKey(home) || readGrokAuth(home).loggedIn;
+}
+
 export function readGrokAuth(home = grokHome()): { loggedIn: boolean; methods: string[] } {
   const file = join(home, "auth.json");
   if (!existsSync(file)) return { loggedIn: false, methods: [] };

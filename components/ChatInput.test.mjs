@@ -50,6 +50,12 @@ test("model chip matches Settings models by id when the provider label differs",
   assert.match(source, /modelOptions\.find\(\(o\) => o\.modelId === model\.modelId\)\?\.name/);
 });
 
+test("composer model menu always shows the provider group label", async () => {
+  const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /modelsByProvider\.length > 1/);
+  assert.match(source, /\{group\.provider\}/);
+});
+
 test("disables image attach when imagesEnabled is false", () => {
   const html = renderToStaticMarkup(
     React.createElement(

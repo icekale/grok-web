@@ -1,6 +1,7 @@
 import { stat } from "fs/promises";
 import { resolve } from "path";
 import { getAgentRuntime } from "@/lib/acp/runtime";
+import { resolveOfficialGrokConnected } from "@/lib/auth-providers-http";
 import { collectSettingsComposerModels, mergeComposerModels } from "@/lib/composer-models";
 import { settingsPickerIdResolver, syncSettingsModelsToGrokConfig } from "@/lib/grok-model-table";
 import { readModelsConfig } from "@/lib/models-config-store";
@@ -23,6 +24,7 @@ const EMPTY_MODELS: ModelsData = {
 
 async function loadModels(): Promise<ModelsData> {
   const settings = readModelsConfig();
+  const officialGrokConnected = await resolveOfficialGrokConnected();
   try {
     const wrote = syncSettingsModelsToGrokConfig(settings);
     if (wrote.length > 0) await getAgentRuntime().recycleProcess();
@@ -36,9 +38,9 @@ async function loadModels(): Promise<ModelsData> {
       await getAgentRuntime().recycleProcess();
       listed = await getAgentRuntime().listModels();
     }
-    return mergeComposerModels(listed, settings, pickerId);
+    return mergeComposerModels(listed, settings, pickerId, officialGrokConnected);
   } catch {
-    return withSafeModelLoadFailure(mergeComposerModels(EMPTY_MODELS, settings, settingsPickerIdResolver()));
+    return withSafeModelLoadFailure(mergeComposerModels(EMPTY_MODELS, settings, settingsPickerIdResolver(), officialGrokConnected));
   }
 }
 

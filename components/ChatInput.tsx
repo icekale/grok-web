@@ -2493,16 +2493,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           </div>
                         ) : modelsByProvider.map((group, gi) => (
                           <div key={group.provider}>
-                            {(modelsByProvider.length > 1) && (
-                              <div style={{
-                                padding: "6px 12px 4px",
-                                fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-dim)",
-                                textTransform: "uppercase", letterSpacing: "0.07em",
-                                borderTop: gi > 0 ? "1px solid var(--border)" : "none",
-                              }}>
-                                {group.provider}
-                              </div>
-                            )}
+                            <div style={{
+                              padding: "6px 12px 4px",
+                              fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-dim)",
+                              textTransform: "uppercase", letterSpacing: "0.07em",
+                              borderTop: gi > 0 ? "1px solid var(--border)" : "none",
+                            }}>
+                              {group.provider}
+                            </div>
                             {group.options.map((opt) => {
                               const exactActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
                               const isActive = exactActive || (
