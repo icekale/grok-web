@@ -50,6 +50,7 @@
     "prepublishOnly": "node scripts/reject-root-publish.mjs",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\" \"src/**/*.test.mjs\" \"scripts/**/*.test.mjs\"",
     "test:e2e": "playwright test",
+    "test:e2e:stage-b": "playwright test e2e/stage-b-recovery.spec.ts --workers=1",
     "shot": "node scripts/update-readme-screenshot.mjs"
   },
   "dependencies": {
