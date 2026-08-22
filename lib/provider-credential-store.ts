@@ -1,10 +1,9 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { writePrivateFileAtomicSync } from "./atomic-file.ts";
 import { grokHome } from "./grok-home";
 import lockfile from "proper-lockfile";
 import type { ProviderCredentialType } from "@/lib/provider-listing";
-
-const AUTH_FILE_WRITE_OPTIONS = { encoding: "utf-8" as const, mode: 0o600 };
 
 export type CredentialRemovalResult =
   | { status: "removed" }
@@ -14,10 +13,7 @@ export type CredentialRemovalResult =
 function ensureAuthFile(authPath: string): void {
   const parent = dirname(authPath);
   if (!existsSync(parent)) mkdirSync(parent, { recursive: true, mode: 0o700 });
-  if (!existsSync(authPath)) {
-    writeFileSync(authPath, "{}", AUTH_FILE_WRITE_OPTIONS);
-    chmodSync(authPath, 0o600);
-  }
+  if (!existsSync(authPath)) writePrivateFileAtomicSync(authPath, "{}\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,8 +53,7 @@ async function updateStoredCredentials<T>(
     const { result, changed } = update(parsed);
     if (changed) {
       throwIfCompromised();
-      writeFileSync(authPath, JSON.stringify(parsed, null, 2), AUTH_FILE_WRITE_OPTIONS);
-      chmodSync(authPath, 0o600);
+      writePrivateFileAtomicSync(authPath, `${JSON.stringify(parsed, null, 2)}\n`);
       throwIfCompromised();
     }
     return result;

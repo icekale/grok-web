@@ -1,7 +1,8 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { archiveSession, pinSession, readAppMeta } from "./app-meta.ts";
+import { writePrivateFileAtomicSync } from "./atomic-file.ts";
 import { applyToolOutputUpdate, historyUserText, mapUpdatesJsonl } from "./history-map.ts";
 import { packSessionArchive, renderSessionHtml } from "./session-export.ts";
 import { findGrokSession } from "./session-index.ts";
@@ -120,7 +121,7 @@ export async function persistSessionName(id: string, name: string): Promise<Resp
     }
     const rec = parsed as Record<string, unknown>;
     rec.generated_title = name;
-    writeFileSync(summaryPath, `${JSON.stringify(rec, null, 2)}\n`);
+    writePrivateFileAtomicSync(summaryPath, `${JSON.stringify(rec, null, 2)}\n`);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
