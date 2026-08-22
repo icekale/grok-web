@@ -460,6 +460,7 @@ export class AgentRuntime {
       case "get_state":
         return this.getState(sessionId);
       case "prompt": {
+        await this.ensureProcess();
         const generation = commandField(command, "promptGeneration");
         const behavior = promptBehavior(command);
         const session = this.ensureSession(sessionId);
@@ -472,6 +473,7 @@ export class AgentRuntime {
           behavior,
           commandImages(command),
           typeof generation === "number" && !session.busy ? generation : undefined,
+          true,
         );
       }
       case "steer":
@@ -758,10 +760,11 @@ export class AgentRuntime {
     streamingBehavior?: "steer" | "followUp",
     images?: unknown,
     promptGeneration?: number,
+    processReady = false,
   ): Promise<unknown> {
     const imageError = validateAgentImages(images);
     if (imageError) throw new Error(imageError);
-    await this.ensureProcess();
+    if (!processReady) await this.ensureProcess();
     const session = this.ensureSession(sessionId);
     session.hasUserPrompt = true;
     if (this.isSessionBashRunning(session)) {
