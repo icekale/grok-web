@@ -11,6 +11,7 @@ import { isReservedSubagentSessionName } from "./session-relations.ts";
 import { listAllSessions } from "./session-reader.ts";
 import type { SessionInfo } from "./types.ts";
 import { getAgentRuntime, peekAgentRuntime } from "./acp/runtime.ts";
+import type { AgentRuntime } from "./acp/runtime.ts";
 
 const SESSION_LIST_FIRST_MESSAGE_CHARS = 512;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
@@ -260,13 +261,22 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
   });
 }
 
-export async function deleteSession(id: string): Promise<Response> {
+type SessionDeleteRuntime = Pick<AgentRuntime, "hasSession" | "isBusy" | "loadSession" | "closeSession">;
+
+export async function deleteSession(
+  id: string,
+  runtime: SessionDeleteRuntime = getAgentRuntime(),
+): Promise<Response> {
   const session = await findGrokSession(id);
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+  if (runtime.hasSession(id) && runtime.isBusy(id)) {
+    return Response.json({ error: "Session is running", code: "session_busy" }, { status: 409 });
+  }
   try {
-    await peekAgentRuntime()?.closeSession(id);
+    if (!runtime.hasSession(id)) await runtime.loadSession(id, session.cwd);
+    await runtime.closeSession(id);
   } catch {
-    // Disk delete still proceeds if the ACP session is already gone.
+    return Response.json({ error: "Session is in use", code: "session_in_use" }, { status: 409 });
   }
   rmSync(session.path, { recursive: true, force: true });
   return Response.json({ ok: true, id });
