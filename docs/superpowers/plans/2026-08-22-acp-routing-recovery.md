@@ -127,6 +127,10 @@ assert.deepEqual(acp.pendingPermissionsForSession("s1"), [{
   method: "confirm",
   title: "Allow bash",
   message: "bash ...",
+  options: [
+    { id: "allow-once", label: "Allow once", kind: "allow_once" },
+    { id: "reject-once", label: "Reject", kind: "reject_once" },
+  ],
   sessionId: "s1",
   expiresAt: 61_000,
 }]);
@@ -154,7 +158,7 @@ pendingPermissionsForSession(sessionId: string): PermissionUiSnapshot[] {
 }
 ```
 
-Do not expose raw ACP params or reset timers.
+Extend `translatePermissionRequest()` to retain only a bounded allowlist of option `{ id, label, kind }` strings from ACP `options`; discard every other option field and all raw tool params. Do not expose raw ACP params or reset timers. Add a test with secret-bearing raw option/tool fields and prove the snapshot contains only translated IDs/labels/kinds.
 
 - [ ] **Step 4: Add one resolved event path**
 
@@ -221,10 +225,11 @@ export type SessionSnapshotEvent = {
   thinkingLevel?: string;
   toolPresets: unknown[];
   contextUsage?: unknown;
+  eventSequence: number;
 };
 ```
 
-Replace the old connected/message-start test expectations with one `session_snapshot`. Add a synchronous update inside `onEvent()` and prove order is snapshot first, buffered delta second. Include a mapper snapshot containing text, thinking, and tool blocks.
+Replace the old connected/message-start test expectations with one `session_snapshot`. Add an update while asynchronous `snapshot()` is pending and prove content represented by the snapshot appears exactly once, while a later update appears once after the snapshot. Include a mapper snapshot containing text, thinking, and tool blocks.
 
 - [ ] **Step 2: Verify RED**
 
@@ -239,16 +244,19 @@ Expected: stream emits `connected`, buffers events before `message_start`, and r
 ```ts
 async getSessionSnapshot(sessionId: string) {
   const state = await this.getState(sessionId);
+  // Mapper state is updated before each event receives its monotonic sequence.
+  // These synchronous reads therefore form one JS-turn watermark.
   return {
     ...state,
     busy: this.isBusy(sessionId),
     streamingMessage: this.getStreamingMessage(sessionId),
     pendingPermissions: this.requireAcp().pendingPermissionsForSession(sessionId),
+    eventSequence: this.currentEventSequence(sessionId),
   };
 }
 ```
 
-Do not copy persisted history. Keep context usage bounded to the existing summary signal read.
+Assign a monotonically increasing per-session sequence only after an event's data has been applied to runtime/mapper state, and pass `{ sequence, event }` to listeners. Do not copy persisted history. Keep context usage bounded to the existing summary signal read.
 
 - [ ] **Step 4: Make the stream read snapshot after subscription**
 
@@ -257,11 +265,11 @@ Change `AgentEventStreamSession` to:
 ```ts
 interface AgentEventStreamSession {
   snapshot(): Promise<Omit<SessionSnapshotEvent, "type" | "sessionId" | "promptGeneration">>;
-  onEvent(listener: (event: AgentEventLike) => void): () => void;
+  onEvent(listener: (entry: { sequence: number; event: AgentEventLike }) => void): () => void;
 }
 ```
 
-After `onEvent()` installs the listener, capture one generation, await `snapshot()`, encode it, set `snapshotPublished = true`, then drain buffered events in order. Remove `isEventIncludedInSnapshot()` object-identity suppression from this startup path; client generation/idempotence owns duplication control.
+After `onEvent()` installs the listener, capture one generation, await `snapshot()`, publish it, then drain only buffered entries whose `sequence > snapshot.eventSequence`, preserving sequence order. New live entries continue from that watermark. Remove `isEventIncludedInSnapshot()` object-identity suppression; the sequence watermark, not prompt generation or client heuristics, owns the no-duplicate boundary.
 
 - [ ] **Step 5: Wire the real route**
 

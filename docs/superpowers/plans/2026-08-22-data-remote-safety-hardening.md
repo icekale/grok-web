@@ -4,7 +4,7 @@
 
 **Goal:** Prevent official logout from damaging custom Provider credentials, require positive ACP ownership before session deletion, make core writes atomic, and harden remote/process boundaries.
 
-**Architecture:** Keep all current file formats and reuse existing TOML section rewriting, `writePrivateFileAtomicSync`, request-peer, and runtime ownership primitives. Security checks fail closed at the shared boundary: top-level credential classification, ACP load/close before disk deletion, server startup bind validation, and a sanitized child environment.
+**Architecture:** Keep all current file formats, splice only proven TOML section byte ranges, and reuse `writePrivateFileAtomicSync`, request-peer, and runtime ownership primitives. Security checks fail closed at the shared boundary: top-level credential classification, ACP load/close before disk deletion, server startup bind validation, and a sanitized child environment.
 
 **Tech Stack:** TypeScript, Node.js 22, TanStack Start/Nitro, Grok ACP stdio, `proper-lockfile`, Node test runner.
 
@@ -103,13 +103,20 @@ Expected: all focused tests pass.
 - [ ] **Step 1: Add failing repair and preservation tests**
 
 ```js
-test("sync repairs an existing managed section without rewriting unknown sections", () => {
+test("sync repairs an existing managed section without rewriting unknown bytes", () => {
   const home = mkdtempSync(join(tmpdir(), "grok-model-repair-"));
-  writeFileSync(join(home, "config.toml"), `[model."manual/model"]
+  const unknown = `  [model."manual/model"] # preserve header whitespace/comment
 model = "manual"
 custom = "keep-byte-for-byte"
 
-[model."cpa/grok-4.6"]
+
+
+[model."former-provider/former-model"]
+model = "former-model"
+custom = "not-provably-settings-managed"
+
+`;
+  writeFileSync(join(home, "config.toml"), `${unknown}[model."cpa/grok-4.6"]
 model = "grok-4.6"
 base_url = "https://old.example/v1"
 `);
@@ -120,7 +127,7 @@ base_url = "https://old.example/v1"
     models: [{ id: "grok-4.6" }],
   } } }, home);
   const text = readFileSync(join(home, "config.toml"), "utf8");
-  assert.match(text, /\[model\."manual\/model"\][\s\S]*custom = "keep-byte-for-byte"/);
+  assert.equal(text.slice(0, unknown.length), unknown);
   assert.match(text, /\[model\."cpa\/grok-4\.6"\][\s\S]*base_url = "https:\/\/new\.example\/v1"/);
   assert.match(text, /api_key = "restored-key"/);
   assert.equal((text.match(/\[model\."cpa\/grok-4\.6"\]/g) ?? []).length, 1);
@@ -137,23 +144,11 @@ Expected: existing managed section is skipped and retains the old URL/missing ke
 
 - [ ] **Step 3: Rewrite only targeted managed sections**
 
-Use the existing `rewriteTomlSections()` callback to remove sections whose `settingsManagedPickerId(sectionName)` is in the current wanted set, append `renderGrokModelTable()` for every current row, and continue pruning deleted Settings-managed sections. Do not match unnamespaced/manual sections.
+Replace full-document `rewriteTomlSections()` for this path with one offset-based parser that records each TOML header's exact `[start, end)` section range while leaving every non-target byte untouched. It must recognize surrounding whitespace/comments for boundary discovery but pass the normalized bracket contents to `settingsManagedPickerId()`.
 
-The resulting loop must have one action per row:
+Build the current managed picker-ID set, remove only ranges whose normalized picker ID is in that set (iterate ranges from the end or concatenate untouched slices), then append one freshly rendered section per current row. Do not call `.trim()`, split/join the document, or normalize blank lines. Preserve every absent namespaced section because current `models.json` cannot prove it is Settings-managed; do not prune deleted/unknown or unnamespaced/manual sections.
 
-```ts
-const managed = new Map(rows.map((row) => [grokSettingsPickerId(row, text), row]));
-text = rewriteTomlSections(text, (sectionName) => {
-  const pickerId = settingsManagedPickerId(sectionName);
-  return !pickerId || !managed.has(pickerId);
-});
-for (const [pickerId, row] of managed) {
-  const suffix = text.length === 0 || text.endsWith("\n") ? "" : "\n";
-  text = `${text}${suffix}\n${renderGrokModelTable(row, pickerId)}`;
-}
-```
-
-Return changed picker IDs only when serialized output differs, preserving the existing caller contract that triggers ACP recycle.
+Return changed picker IDs only when serialized output differs, preserving the existing caller contract that triggers ACP recycle. The regression test must compare the complete untouched preamble/manual/absent-section byte blob exactly, including header whitespace/comment and three blank lines.
 
 - [ ] **Step 4: Run model/config tests**
 
@@ -451,7 +446,9 @@ git commit -m "fix: prove loopback before clearing remote password"
 - Modify: `lib/acp/process.ts`
 - Modify: `lib/acp/process.test.mjs`
 - Modify: `lib/acp/runtime.ts:897-917,1047-1070`
-- Modify: `src/server.ts`
+- Create: `src/plugins/acp-runtime-cleanup.ts`
+- Modify: `vite.tanstack.config.ts`
+- Modify: `lib/tanstack-spike-config.test.mjs`
 
 - [ ] **Step 1: Add failing environment tests**
 
@@ -496,13 +493,32 @@ Use it in `spawn(bin, grokAgentArgs(), { stdio, env: grokAgentEnv() })`.
 
 `AgentRuntime.dispose()` aborts active terminals, closes JSON-RPC, terminates its owned child, clears connection subscriptions, and is safe to call twice. Export `disposeAgentRuntime()` for server shutdown without creating a singleton.
 
-Wire the supported Nitro/TanStack shutdown hook in `src/server.ts`; do not register a second competing signal handler inside every request module.
+Register one Nitro runtime plugin explicitly from `vite.tanstack.config.ts`:
+
+```ts
+nitro({
+  // existing options
+  plugins: ["src/plugins/acp-runtime-cleanup.ts"],
+})
+```
+
+```ts
+// src/plugins/acp-runtime-cleanup.ts
+import { definePlugin } from "nitro";
+import { disposeAgentRuntime } from "@/lib/acp/runtime";
+
+export default definePlugin((nitroApp) => {
+  nitroApp.hooks.hook("close", disposeAgentRuntime);
+});
+```
+
+Add a source/config test proving the plugin is registered once and hooks Nitro `close`. Do not add process signal handlers inside request modules; Nitro's node preset owns graceful signal shutdown.
 
 - [ ] **Step 5: Test and commit**
 
 ```bash
-node --experimental-strip-types --test --test-concurrency=1 lib/acp/process.test.mjs lib/acp/runtime.test.mjs lib/tanstack-server-startup.test.mjs
-git add lib/acp/process.ts lib/acp/process.test.mjs lib/acp/runtime.ts src/server.ts
+node --experimental-strip-types --test --test-concurrency=1 lib/acp/process.test.mjs lib/acp/runtime.test.mjs lib/tanstack-spike-config.test.mjs
+git add lib/acp/process.ts lib/acp/process.test.mjs lib/acp/runtime.ts src/plugins/acp-runtime-cleanup.ts vite.tanstack.config.ts lib/tanstack-spike-config.test.mjs
 git commit -m "fix: isolate and dispose the Grok child process"
 ```
 

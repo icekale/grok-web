@@ -50,7 +50,7 @@ Add tests that reject:
 - empty/overlong rules and out-of-range max turns;
 - relative, missing, directory, symlink-escape, and untrusted profile paths.
 
-Test mode `0600`, `runtime-profile.json` location, and old complete file preservation using the existing atomic-file failure test seam.
+Test mode `0600`, `runtime-profile.json` location, old complete file preservation using the existing atomic-file failure test seam, and that unknown fields in a valid on-disk v1 profile are ignored on read and omitted by the next schema-controlled write.
 
 - [ ] **Step 2: Verify RED**
 
@@ -76,7 +76,7 @@ export type RuntimeProfile = {
 };
 ```
 
-`runtimeProfilePath(home)` returns `join(grokWebMetaDir(), "runtime-profile.json")`. Read absence as defaults. Invalid on-disk version returns defaults plus an actionable warning for GET; invalid PUT fails `400` and does not write. Use `realpath`/`stat.isFile()` and existing allowed roots for profile paths.
+`runtimeProfilePath(home = grokHome())` returns `join(home, "grok-web", "runtime-profile.json")`; do not call the process-global-only `grokWebMetaDir()` when a test/caller supplied `home`. Read absence as defaults. Invalid on-disk version returns defaults plus an actionable warning for GET; invalid PUT fails `400` and does not write. Use `realpath`/`stat.isFile()` and existing allowed roots for profile paths.
 
 - [ ] **Step 4: Run tests and commit**
 
@@ -101,6 +101,7 @@ Inject `execFile` and `stat` functions. Supply controlled outputs for:
 
 ```text
 grok --help
+  --agent <NAME>
   --sandbox <PROFILE>
   --permission-mode <MODE>
   --allow <RULE>
@@ -123,7 +124,7 @@ Assert exact `--sandbox` is recognized but `--sandboxed` is not. Parse `grok ins
 
 - [ ] **Step 2: Add cache invalidation tests**
 
-Call twice with identical binary path/mtime/version and assert four subprocess invocations only once. Change mtime/version and assert refresh. Malformed help/JSON returns unavailable controls plus sanitized warnings, never guessed capabilities.
+Call twice with the same resolved binary stat identity and assert the first discovery's five subprocesses (`--version`, three help calls, and inspect) run only once. Change mtime/size and assert all five refresh and the newly read version participates in the stored cache identity. Malformed help/JSON returns unavailable controls plus sanitized warnings, never guessed capabilities.
 
 - [ ] **Step 3: Verify RED**
 
@@ -144,7 +145,7 @@ export type GrokCapabilities = {
 };
 ```
 
-Run exact argv arrays with bounded output/timeouts and no shell. Cache by resolved binary realpath, stat mtime/size, and parsed `--version`. Do not retain raw stderr that may contain private paths.
+Run exact argv arrays with bounded output/timeouts and no shell. Cache by resolved binary realpath, stat mtime/size, and parsed `--version`. Recognize `--agent` only as an exact global token; an inspected Agent is selectable only when its validated name is present in inspect output and that flag is advertised. Do not retain raw stderr that may contain private paths.
 
 - [ ] **Step 5: Run and commit**
 
@@ -181,7 +182,7 @@ assert.deepEqual(grokAgentArgs(profile, capabilities), [
 ]);
 ```
 
-Assert metacharacters/whitespace remain one array value, defaults are omitted, unsupported flags fail before spawn, and `agent`/`agentProfilePath` conflict fails.
+Assert metacharacters/whitespace remain one array value, defaults are omitted, unsupported flags fail before spawn, and `agent`/`agentProfilePath` conflict fails. Add a table proving Agent selection requires both exact global `--agent` capability and a matching validated inspect Agent name; missing either rejects before persistence/spawn.
 
 - [ ] **Step 2: Verify RED**
 
@@ -296,7 +297,7 @@ git commit -m "feat: transactionally restart the Grok runtime"
 - Modify: `lib/tanstack-route-inventory.test.mjs`
 - Modify: `scripts/tanstack-route-smoke.mjs`
 - Modify: `lib/settings-http.ts`
-- Modify: `lib/settings-http.test.mjs`
+- Create: `lib/settings-http.test.mjs`
 
 - [ ] **Step 1: Add failing GET/PUT tests**
 
@@ -311,7 +312,23 @@ Test two simultaneous PUTs serialize through runtime.
 
 - [ ] **Step 2: Resolve the old permission-mode ownership**
 
-Move the General-page permission control to Runtime Profile. Keep `/api/settings` GET compatibility, but make its permission value read from the active Runtime Profile. Make `/api/settings` PUT delegate to the same validated profile transaction rather than writing an independent conflicting source. Add regression tests proving both APIs converge on one value and one restart path.
+Move the General-page permission control to Runtime Profile. Keep `/api/settings` GET compatibility, but make its permission value read from the active Runtime Profile through this explicit legacy map:
+
+```ts
+const legacyToRuntime = {
+  ask: "default",
+  auto: "auto",
+  "always-approve": "bypassPermissions",
+} as const;
+
+function runtimeToLegacy(mode: RuntimeProfile["permissionMode"]): PermissionMode {
+  if (mode === "auto") return "auto";
+  if (mode === "bypassPermissions") return "always-approve";
+  return "ask"; // lossy compatibility view for default/acceptEdits/dontAsk/plan
+}
+```
+
+Make legacy `/api/settings` PUT map through `legacyToRuntime` and delegate to the same validated serialized profile transaction rather than writing an independent source. GET remains intentionally lossy for profile-only modes, while `/api/runtime-profile` is authoritative. Add table-driven tests for every runtime mode and all three legacy PUT values, proving both APIs converge on one persisted value and one restart path.
 
 - [ ] **Step 3: Verify RED**
 
@@ -457,7 +474,7 @@ Create session fixtures with `summary.json` containing `git_root_dir`, `head_com
 - unauthorized realpath -> `403`;
 - absent CLI restore/worktree flags -> `501 unsupported`, zero RPC calls;
 - `_x.ai/git/worktree/list` method-not-found/failure -> `501 unsupported`, zero create calls;
-- existing target collision -> `409 worktree_conflict`.
+- collision of the generated advisory name `restore/<session-short-id>` in the worktree list -> `409 worktree_conflict`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -514,7 +531,7 @@ Add failures:
 - fork `-32601` after successful create -> remove exactly returned request-owned path;
 - ambiguous create error with no confirmed path -> no broad cleanup;
 - cleanup failure -> `500` with exact residual path under authorized project;
-- returned path outside the expected project/worktree boundary -> reject and do not fork.
+- returned path outside the expected project/worktree boundary -> do not fork or remove it, but return that exact ACP-reported path as an explicit residual resource for manual recovery.
 
 - [ ] **Step 2: Verify RED**
 
@@ -539,7 +556,9 @@ Do not parse rewind snapshots or try alternate private method names.
 
 - [ ] **Step 4: Implement request ownership**
 
-Set `ownedWorktreePath` only after a successful create response and boundary validation. Cleanup may call only the existing allowlisted remove method for that exact path. The ACP-returned path is authoritative; an advisory branch/name is shown only if the detected backend explicitly supports naming, otherwise the UI must not promise a requested branch.
+Keep the raw successful create response path in `reportedWorktreePath`, but set cleanup-authorized `ownedWorktreePath` only after boundary validation. If validation fails, do not call remove/fork; return a failure with the exact `reportedWorktreePath` as a residual resource for manual recovery. Cleanup may call only the existing allowlisted remove method for an exact validated `ownedWorktreePath`.
+
+Always generate and show the collision-safe advisory name `restore/<session-short-id>` required by the confirmation design. Because the allowlisted RPC contract accepts only `{ sessionId, sourcePath }`, do not send an invented name field or promise that exact branch name. The ACP-returned path is authoritative; if it differs, display the returned name/path after creation.
 
 - [ ] **Step 5: Run and commit**
 

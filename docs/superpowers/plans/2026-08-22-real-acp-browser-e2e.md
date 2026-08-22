@@ -138,8 +138,10 @@ const isolated = process.env.GROK_WEB_E2E_ISOLATED === "1";
 const port = Number(process.env.GROK_WEB_E2E_PORT || 30143);
 // ...
 reuseExistingServer: isolated ? false : !process.env.CI,
-trace: "retain-on-failure",
-screenshot: "only-on-failure",
+trace: "off", // harness captures and sanitizes its own failure trace
+screenshot: "off", // harness captures one fully masked failure screenshot
+video: "off",
+outputDir: process.env.GROK_WEB_E2E_RAW_OUTPUT_DIR,
 ```
 
 Ensure `webServer.command` receives the runner's port and inherited fixture environment.
@@ -169,6 +171,8 @@ git commit -m "test: isolate browser ACP end-to-end runs"
 - Create: `scripts/e2e-artifacts.test.mjs`
 - Modify: `scripts/run-acp-e2e.mjs`
 - Create: `e2e/helpers/harness.ts`
+- Modify: `package.json`
+- Modify: `package-lock.json`
 
 - [ ] **Step 1: Add failing redaction/allowlist tests**
 
@@ -186,7 +190,7 @@ assert.deepEqual(safe, { method: "session/prompt", testId: "stream-text" });
 assert.doesNotMatch(JSON.stringify(safe), /secret|private user|\/Users\/person/);
 ```
 
-Test text redaction for bearer/basic authorization, API-key/password/token assignments, URL credentials, fixture/home/project roots, and unknown absolute paths.
+Test text redaction for bearer/basic authorization, API-key/password/token assignments, URL credentials, fixture/home/project roots, and unknown absolute paths. Using a synthetic trace ZIP, test recursive string redaction, removal of source/network/resource bodies, and rejection when any decompressed retained entry still contains an injected secret/path.
 
 - [ ] **Step 2: Verify RED**
 
@@ -198,17 +202,23 @@ node --experimental-strip-types --test --test-concurrency=1 scripts/e2e-artifact
 
 `safeArtifactEvent()` constructs a new object from allowed keys; it never clones then scrubs arbitrary input. `redactE2eText()` handles stderr/chronology and replaces test roots with aliases before masking unknown paths/secrets.
 
-The browser helper may register owned session IDs, query fixture control/log endpoints/files through runner-safe APIs, capture response status/method chronology, delete owned sessions, and assert pollution. It must not read auth files or dump environment/storage state.
+Use one small dev dependency, `fflate`, to sanitize Playwright ZIPs without platform `zip`/`unzip` commands. `sanitizeTraceArchive()` decompresses to memory under byte/count bounds, recursively redacts every string in trace JSON/JSONL, drops source files, response/request bodies, binary resources, and embedded trace screenshots, then recompresses only allowlisted trace metadata. Re-open the output and fail closed unless every decompressed retained entry passes the same secret/path scanner; partial sanitization is not publishable.
+
+The browser helper may register owned session IDs, query fixture control/log endpoints/files through runner-safe APIs, capture response status/method chronology, delete owned sessions, and assert pollution. It starts `context.tracing` with `screenshots: false`, `snapshots: true`, `sources: false`; on failure it writes the raw trace only under the temporary raw-output directory, sanitizes it into the upload root, then removes raw output. It must not read auth files or dump environment/storage state.
 
 - [ ] **Step 4: Integrate failure-only artifact writing**
 
-On runner failure write bounded redacted `chronology.json`, `server.log`, and `fixture.log`, then leave Playwright trace/screenshots under the same artifact root. Deterministic prompts use public markers only.
+On runner failure write bounded redacted `chronology.json`, `server.log`, and `fixture.log`, sanitized `trace.zip`, and `screenshot.png` into the upload root. Capture the screenshot from the failed application page only after `sanitizePageForScreenshot(page)` mutates that failure page to a layout-preserving safe representation: replace every non-empty text node and form value with fixed placeholders; remove `src`, `href`, URL/data/ARIA/title attributes except an explicit safe allowlist; replace image/SVG/canvas/video/iframe content; disable CSS background/list images and generated content; and inject no raw error/path text. Preserve layout, component boundaries, dialog visibility, and non-sensitive status colors.
+
+Add a pixel determinism test where two otherwise identical failed application pages contain different injected secrets in text, inputs, attributes, images/canvas, and CSS generated/background content; after the masking path, their screenshot bytes must be identical and the source page must remain the target of capture. Deterministic/live prompts use public markers only.
+
+Keep raw Playwright output in a separate runner-owned temp directory and remove it in `finally`; never copy a raw trace, DOM, network body, image, or Playwright output into the upload root. Add an artifact-directory validator that permits only the five expected names, decompresses/revalidates `trace.zip`, verifies screenshot capture used the safe-overlay path, and scans every retained textual byte for injected secrets, runner roots, dedicated-home paths, and unknown absolute paths. Tests place an unsanitized ZIP/image and secret/path-bearing text in a candidate directory and prove publication is rejected rather than silently uploaded.
 
 - [ ] **Step 5: Run and commit**
 
 ```bash
 node --experimental-strip-types --test --test-concurrency=1 scripts/e2e-artifacts.test.mjs scripts/run-acp-e2e.test.mjs
-git add scripts/e2e-artifacts.mjs scripts/e2e-artifacts.test.mjs scripts/run-acp-e2e.mjs e2e/helpers/harness.ts
+git add scripts/e2e-artifacts.mjs scripts/e2e-artifacts.test.mjs scripts/run-acp-e2e.mjs e2e/helpers/harness.ts package.json package-lock.json
 git commit -m "test: redact ACP browser failure evidence"
 ```
 
@@ -308,7 +318,8 @@ Inject `spawn` and assert it is never called when:
 - `GROK_WEB_LIVE_E2E !== "1"`;
 - home is absent, relative, nonexistent, or equals the default operator `~/.grok`;
 - no real Grok binary is resolvable;
-- dedicated home lacks OAuth methods and a top-level official API key.
+- dedicated home lacks the exact official `grok.com` OAuth method and a top-level official API key;
+- `auth.json` contains only custom Provider credential IDs, which must not count as Grok authentication.
 
 Expected errors contain setup instructions but no secret values.
 
@@ -320,7 +331,7 @@ node --experimental-strip-types --test --test-concurrency=1 scripts/run-live-e2e
 
 - [ ] **Step 3: Implement guarded preflight and live environment**
 
-Resolve the real binary before replacing `GROK_HOME`, allowing an explicit `GROK_WEB_LIVE_E2E_GROK_BIN` for installations whose binary is outside the dedicated home. Reject the repository fixture path. Reuse `readGrokAuth(home)` and `hasGrokApiKey(home)` under `--experimental-strip-types` to check authentication without printing credentials.
+Resolve the real binary before replacing `GROK_HOME`, allowing an explicit `GROK_WEB_LIVE_E2E_GROK_BIN` for installations whose binary is outside the dedicated home. Reject the repository fixture path. Under `--experimental-strip-types`, accept authentication preflight only when `readGrokAuth(home).methods` contains the exact official method `grok.com` or `hasGrokApiKey(home)` finds the stage-A top-level official key. Other auth keys are custom Provider credentials and must not satisfy this gate. Never print credentials.
 
 Add:
 
