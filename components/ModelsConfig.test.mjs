@@ -330,6 +330,8 @@ test("add-provider picker keeps every provider entry available", () => {
 
   assert.doesNotMatch(picker, /oauthProviders\.filter\(\(p\) => !p\.loggedIn/);
   assert.doesNotMatch(picker, /apiKeyProviders\.filter\(\(p\) => !p\.configured/);
+  assert.match(picker, /oauthProviders\.filter\(\(p\) => !q \|\| p\.name\.toLowerCase\(\)\.includes\(q\)/);
+  assert.match(picker, /apiKeyProviders\.filter\(\(p\) => !q \|\| p\.displayName\.toLowerCase\(\)\.includes\(q\) \|\| p\.id\.toLowerCase\(\)\.includes\(q\)/);
   assert.match(picker, /onSelectOAuth\(p\.id\)/);
   assert.match(picker, /onSelectApiKey\(p\.id\)/);
   assert.match(picker, /onAddCustom\(\)/);
