@@ -9,7 +9,7 @@
 1. 让“自定义供应商”分组标题横向显示，同时保留折叠图标和可操作性。
 2. “添加 Provider”始终保留三种入口：
    - Grok OAuth
-   - xAI OAuth
+   - xAI API Key
    - 自定义 Provider
 3. 已连接或已配置的 OAuth 入口不再消失；点击后执行已有的登录/连接流程，不改变认证运行时行为。
 4. 保持现有模型配置 CRUD、认证状态、搜索、移动端布局和视觉系统不变。
@@ -24,14 +24,14 @@
 
 在 `AddProviderPicker` 中，将认证入口分成稳定的三类：
 
-- OAuth 列表中保留 Grok，并为 xAI 提供固定入口；如果运行时 OAuth provider 列表提供 xAI，则复用该 provider id，否则使用现有 xAI provider 语义。
-- OAuth 行不再因 `loggedIn` 被过滤，已连接状态通过现有详情页/登录流程处理。
+- OAuth 列表中保留 Grok，且不因 `loggedIn` 被过滤，已连接状态通过现有详情页/登录流程处理。
+- API Key 列表中保留 xAI，且不因 `configured` 被过滤，点击后进入现有 API Key 详情/更新流程。
 - 自定义 Provider 继续保留现有创建流程。
 
-不引入新的认证 API 或存储格式；只调整 Picker 的可见入口与选择回调。现有 API Key 认证列表不作为这组三项 OAuth/自定义入口的一部分，避免把 API Key 与用户要求的三种方式混淆。
+不引入新的认证 API 或存储格式；只调整 Picker 的可见入口与选择回调。这里的三种入口明确为现有能力：Grok OAuth、xAI API Key、自定义 Provider。
 
 ## 验证
 
 - 为分组标题 CSS 增加回归断言，防止固定宽度回归。
-- 为 Provider Picker 增加源码级回归断言，确认 Grok、xAI OAuth 和自定义入口始终存在。
+- 为 Provider Picker 增加源码级回归断言，确认 Grok OAuth、xAI API Key 和自定义入口始终存在。
 - 运行模型相关测试、类型检查/构建，并用浏览器检查中文标题的实际尺寸和 Picker 的三项入口。
