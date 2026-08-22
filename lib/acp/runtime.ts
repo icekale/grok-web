@@ -69,6 +69,7 @@ type SessionState = {
   configOptions: AcpConfigOption[];
   eventSequence: number;
   eventPromptGeneration?: number;
+  queuedPromptGenerations: number[];
 };
 
 export class AgentCapabilityError extends Error {
@@ -460,7 +461,11 @@ export class AgentRuntime {
         return this.getState(sessionId);
       case "prompt": {
         const generation = commandField(command, "promptGeneration");
-        if (typeof generation === "number") this.ensureSession(sessionId).eventPromptGeneration = generation;
+        if (typeof generation === "number") {
+          const session = this.ensureSession(sessionId);
+          if (session.busy) session.queuedPromptGenerations.push(generation);
+          else session.eventPromptGeneration = generation;
+        }
         return this.sendPrompt(
           sessionId,
           stringField(command.message),
@@ -474,14 +479,26 @@ export class AgentRuntime {
         return this.sendPrompt(sessionId, stringField(command.message), "followUp", commandImages(command));
       case "clear_queue":
         return this.clearQueue(sessionId);
-      case "queue_remove":
-        return this.mutateQueue(sessionId, () =>
-          this.ensureSession(sessionId).queue.remove(kindField(command), stringField(command.text)));
+      case "queue_remove": {
+        const session = this.ensureSession(sessionId);
+        const kind = kindField(command);
+        const text = stringField(command.text);
+        const index = kind === "followUp" ? session.queue.snapshot().followUp.indexOf(text) : -1;
+        session.queue.remove(kind, text);
+        if (index >= 0) session.queuedPromptGenerations.splice(index, 1);
+        this.emitQueue(sessionId);
+        return session.queue.snapshot();
+      }
       case "queue_edit":
         return this.mutateQueue(sessionId, () =>
           this.ensureSession(sessionId).queue.edit(kindField(command), stringField(command.text), stringField(command.replacement)));
       case "queue_steer_item": {
-        const text = this.ensureSession(sessionId).queue.take(kindField(command), stringField(command.text));
+        const session = this.ensureSession(sessionId);
+        const kind = kindField(command);
+        const textValue = stringField(command.text);
+        const index = kind === "followUp" ? session.queue.snapshot().followUp.indexOf(textValue) : -1;
+        const text = session.queue.take(kind, textValue);
+        if (index >= 0) session.queuedPromptGenerations.splice(index, 1);
         this.emitQueue(sessionId);
         if (text && this.isBusy(sessionId)) {
           await this.ensureProcess();
@@ -495,6 +512,7 @@ export class AgentRuntime {
         const session = this.ensureSession(sessionId);
         const items = [...session.queue.snapshot().steering, ...session.queue.snapshot().followUp];
         session.queue.clear();
+        session.queuedPromptGenerations = [];
         this.emitQueue(sessionId);
         let last: unknown = session.queue.snapshot();
         for (const item of items) {
@@ -775,6 +793,8 @@ export class AgentRuntime {
       if (stopReason !== "cancelled") {
         const next = session.queue.takeNext("followUp");
         if (next !== undefined) {
+          const nextGeneration = session.queuedPromptGenerations.shift();
+          if (nextGeneration !== undefined) session.eventPromptGeneration = nextGeneration;
           this.emit(sessionId, [{ type: "queue_update", ...session.queue.snapshot() }]);
           return await this.runPrompt(sessionId, next);
         }
@@ -788,6 +808,7 @@ export class AgentRuntime {
   private clearQueue(sessionId: string): QueueSnapshot {
     const session = this.ensureSession(sessionId);
     const snap = session.queue.clear();
+    session.queuedPromptGenerations = [];
     this.emitQueue(sessionId);
     return snap;
   }
@@ -1138,6 +1159,7 @@ export class AgentRuntime {
         queue: new SessionQueue(),
         configOptions: [],
         eventSequence: 0,
+        queuedPromptGenerations: [],
       };
       this.sessions.set(sessionId, session);
     }
