@@ -14,6 +14,12 @@ export function resolveGrokBin(): string {
   throw new Error(formatGrokMissingError());
 }
 
+export function grokAgentEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...source };
+  delete env.GROK_WEB_PASSWORD;
+  return env;
+}
+
 export function grokAgentArgs(): string[] {
   return ["agent", "stdio"];
 }

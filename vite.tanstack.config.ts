@@ -87,6 +87,7 @@ export default defineConfig(({ command }) => {
       nitro({
         preset: "node-server",
         output: { dir: outputDir },
+        plugins: ["src/plugins/acp-runtime-cleanup.ts"],
         compressPublicAssets: true,
         traceDeps: EXTERNAL_PACKAGES,
         exportConditions: ["node", "import", "production", "default"],

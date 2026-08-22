@@ -23,7 +23,7 @@ import { readModelsConfig } from "../models-config-store.ts";
 import { defaultGrokEffortLevel, GROK_EFFORT_LEVELS } from "../grok-effort-levels.ts";
 import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
-import { grokAgentArgs, resolveGrokBin } from "./process.ts";
+import { grokAgentArgs, grokAgentEnv, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
 import {
@@ -103,6 +103,7 @@ export class AgentRuntime {
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
+  private disposed = false;
 
   constructor(options?: {
     connect?: () => Promise<AcpConnection>;
@@ -113,6 +114,7 @@ export class AgentRuntime {
   }
 
   async ensureProcess(): Promise<void> {
+    if (this.disposed) throw new Error("Agent runtime is disposed");
     if (this.acp) return;
     const starting = this.starting ??= this.startProcess();
     try {
@@ -185,6 +187,49 @@ export class AgentRuntime {
     if (child && !child.killed) child.kill();
     this.child = undefined;
     await this.ensureProcess();
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.startupToken += 1;
+    const acp = this.acp;
+    const child = this.child;
+    if (acp) {
+      for (const [sessionId, session] of this.sessions) {
+        if (this.isSessionBashRunning(session)) {
+          try {
+            await this.killBashTerminals(sessionId);
+          } catch {
+            // Shutdown must continue even when a terminal has already vanished.
+          }
+        }
+        if (session.busy) {
+          try {
+            acp.sessionCancel(sessionId);
+          } catch {
+            // The transport may already be closing.
+          }
+        }
+      }
+    }
+    this.dropConnection();
+    try {
+      acp?.close();
+    } catch {
+      // Shutdown is best effort after state has been detached.
+    }
+    if (child && !child.killed) {
+      try {
+        child.kill();
+      } catch {
+        // The child may have exited between the check and kill.
+      }
+    }
+    this.child = undefined;
+    this.sessions.clear();
+    this.listeners.clear();
+    this.starting = undefined;
   }
 
   async fsWrite(path: string, content: string): Promise<void> {
@@ -896,7 +941,7 @@ export class AgentRuntime {
 
   private async connectDefault(): Promise<AcpConnection> {
     const bin = resolveGrokBin();
-    const child = spawn(bin, grokAgentArgs(), { stdio: ["pipe", "pipe", "inherit"] });
+    const child = spawn(bin, grokAgentArgs(), { stdio: ["pipe", "pipe", "inherit"], env: grokAgentEnv() });
     if (!child.stdin || !child.stdout) {
       child.kill();
       throw new Error("failed to open grok stdio");
@@ -1062,6 +1107,10 @@ export function setAgentRuntime(runtime: AgentRuntime | undefined): void {
 
 export function resetAgentRuntime(): void {
   setAgentRuntime(undefined);
+}
+
+export async function disposeAgentRuntime(): Promise<void> {
+  await peekAgentRuntime()?.dispose();
 }
 
 function stringField(value: unknown): string {
