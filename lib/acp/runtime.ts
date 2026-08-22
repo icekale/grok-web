@@ -68,6 +68,7 @@ type SessionState = {
   hasUserPrompt?: boolean;
   configOptions: AcpConfigOption[];
   eventSequence: number;
+  eventPromptGeneration?: number;
 };
 
 export class AgentCapabilityError extends Error {
@@ -152,7 +153,7 @@ export class AgentRuntime {
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
-  private readonly sequencedListeners = new Map<string, Set<(entry: { sequence: number; event: Record<string, unknown> }) => void>>();
+  private readonly sequencedListeners = new Map<string, Set<(entry: { sequence: number; event: Record<string, unknown>; promptGeneration?: number }) => void>>();
   private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
   private disposed = false;
 
@@ -457,13 +458,16 @@ export class AgentRuntime {
     switch (command.type) {
       case "get_state":
         return this.getState(sessionId);
-      case "prompt":
+      case "prompt": {
+        const generation = commandField(command, "promptGeneration");
+        if (typeof generation === "number") this.ensureSession(sessionId).eventPromptGeneration = generation;
         return this.sendPrompt(
           sessionId,
           stringField(command.message),
           promptBehavior(command),
           commandImages(command),
         );
+      }
       case "steer":
         return this.sendPrompt(sessionId, stringField(command.message), "steer", commandImages(command));
       case "follow_up":
@@ -625,7 +629,7 @@ export class AgentRuntime {
 
   subscribeSequenced(
     sessionId: string,
-    listener: (entry: { sequence: number; event: Record<string, unknown> }) => void,
+    listener: (entry: { sequence: number; event: Record<string, unknown>; promptGeneration?: number }) => void,
   ): () => void {
     let listeners = this.sequencedListeners.get(sessionId);
     if (!listeners) {
@@ -1149,7 +1153,11 @@ export class AgentRuntime {
       session.eventSequence += 1;
       for (const listener of [...(listeners ?? [])]) listener(event);
       for (const listener of [...(sequenced ?? [])]) {
-        listener({ sequence: session.eventSequence, event });
+        listener({
+          sequence: session.eventSequence,
+          event,
+          ...(session.eventPromptGeneration !== undefined ? { promptGeneration: session.eventPromptGeneration } : {}),
+        });
       }
     }
   }

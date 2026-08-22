@@ -79,12 +79,13 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         }
 
         if (command.type === "prompt") {
-          await runtime.send(sessionId, command as AgentCommand);
+          const promptGeneration = nextPromptGeneration(sessionId);
+          await runtime.send(sessionId, { ...command, promptGeneration } as AgentCommand);
           promptAccepted = true;
           return Response.json({
             success: true,
             sessionId,
-            data: { promptGeneration: nextPromptGeneration(sessionId) },
+            data: { promptGeneration },
             model,
             thinkingLevel,
           });
@@ -124,11 +125,12 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         }
 
         if (command.type === "prompt") {
-          await runtime.send(id, command);
+          const promptGeneration = nextPromptGeneration(id);
+          await runtime.send(id, { ...command, promptGeneration });
           promptAccepted = true;
           return Response.json({
             success: true,
-            data: { promptGeneration: nextPromptGeneration(id) },
+            data: { promptGeneration },
           });
         }
 

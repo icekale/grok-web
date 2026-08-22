@@ -10,7 +10,7 @@ export interface AgentEventStreamSession {
   readonly streamingMessage?: unknown;
   readonly contextUsage?: AgentEventStreamContextUsage | Promise<AgentEventStreamContextUsage | null> | null;
   snapshot?: () => Promise<Omit<SessionSnapshotEvent, "type" | "sessionId"> | SessionSnapshotEvent>;
-  onEvent(listener: (entry: AgentEventLike | { sequence: number; event: AgentEventLike }) => void): () => void;
+  onEvent(listener: (entry: AgentEventLike | { sequence: number; event: AgentEventLike; promptGeneration?: number }) => void): () => void;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -63,7 +63,7 @@ export function createAgentEventStream(
         enqueueText(`data: ${JSON.stringify(data)}\n\n`);
       };
       let streamPromptGeneration = getPromptGeneration(sessionId);
-      const forwardEvent = (event: AgentEventLike, snapshot: unknown = undefined) => {
+      const forwardEvent = (event: AgentEventLike, snapshot: unknown = undefined, eventPromptGeneration?: number) => {
         if (isEventIncludedInSnapshot(event, snapshot)) return;
         const clientEvent = toClientAgentEvent(event);
         if (clientEvent) {
@@ -71,7 +71,7 @@ export function createAgentEventStream(
           // the client drops terminal events older than its latest prompt.
           encode({
             ...clientEvent,
-            promptGeneration: Math.max(streamPromptGeneration, getPromptGeneration(sessionId)),
+            promptGeneration: eventPromptGeneration ?? Math.max(streamPromptGeneration, getPromptGeneration(sessionId)),
           });
         }
       };
@@ -82,18 +82,18 @@ export function createAgentEventStream(
           if (closed) return;
 
           const modernSnapshot = typeof session.snapshot === "function";
-          const bufferedEvents: Array<{ sequence: number; event: AgentEventLike }> = [];
+          const bufferedEvents: Array<{ sequence: number; event: AgentEventLike; promptGeneration?: number }> = [];
           let snapshotPublished = false;
-          const handleEvent = (entry: AgentEventLike | { sequence: number; event: AgentEventLike }) => {
-            const normalized: { sequence: number; event: AgentEventLike } = modernSnapshot
+          const handleEvent = (entry: AgentEventLike | { sequence: number; event: AgentEventLike; promptGeneration?: number }) => {
+            const normalized: { sequence: number; event: AgentEventLike; promptGeneration?: number } = modernSnapshot
               && entry && typeof entry === "object" && "event" in entry
-              ? entry as { sequence: number; event: AgentEventLike }
+              ? entry as { sequence: number; event: AgentEventLike; promptGeneration?: number }
               : { sequence: Number.MAX_SAFE_INTEGER, event: entry as AgentEventLike };
             if (!snapshotPublished) {
               bufferedEvents.push(normalized);
               return;
             }
-            forwardEvent(normalized.event);
+            forwardEvent(normalized.event, undefined, normalized.promptGeneration);
           };
 
           const stopListening = session.onEvent(handleEvent);
@@ -110,7 +110,9 @@ export function createAgentEventStream(
             streamPromptGeneration = Number(snapshot.promptGeneration ?? streamPromptGeneration);
             encode(snapshotEvent);
             for (const entry of bufferedEvents) {
-              if (entry.sequence > Number(snapshot.eventSequence ?? 0)) forwardEvent(entry.event);
+              if (entry.sequence > Number(snapshot.eventSequence ?? 0)) {
+                forwardEvent(entry.event, undefined, entry.promptGeneration);
+              }
             }
             snapshotPublished = true;
           } else {
