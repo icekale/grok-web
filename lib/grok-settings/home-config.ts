@@ -149,17 +149,6 @@ function splitTopLevelToml(text: string): { preamble: string; rest: string } {
   return { preamble: text.slice(0, match.index), rest: text.slice(match.index) };
 }
 
-function tomlSectionName(line: string): string | undefined {
-  const match = line.trim().match(/^\[([^\]]+)\]$/);
-  return match?.[1];
-}
-
-function isGrokApiKeySection(section: string | undefined): boolean {
-  if (!section) return true;
-  const name = section.replace(/^"+|"+$/g, "");
-  return name === "models" || name.startsWith("models.") || name === "model" || name.startsWith("model.");
-}
-
 function apiKeyLineHasValue(line: string): boolean {
   const match = line.match(/^api_key\s*=\s*(.*)$/);
   if (!match) return false;
@@ -170,16 +159,8 @@ function apiKeyLineHasValue(line: string): boolean {
 export function hasGrokApiKey(home = grokHome()): boolean {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return false;
-  let section: string | undefined;
-  for (const raw of readFileSync(file, "utf8").split(/\r?\n/)) {
-    const next = tomlSectionName(raw);
-    if (next !== undefined) {
-      section = next;
-      continue;
-    }
-    if (isGrokApiKeySection(section) && apiKeyLineHasValue(raw.trim())) return true;
-  }
-  return false;
+  const { preamble } = splitTopLevelToml(readFileSync(file, "utf8"));
+  return preamble.split(/\r?\n/).some((line) => apiKeyLineHasValue(line.trim()));
 }
 
 export function writeGrokApiKey(apiKey: string, home = grokHome()): void {
@@ -203,20 +184,13 @@ export function clearGrokAuth(home = grokHome()): void {
 export function clearGrokApiKey(home = grokHome()): void {
   const file = join(home, "config.toml");
   if (!existsSync(file)) return;
-  const lines = readFileSync(file, "utf8").split(/\r?\n/);
-  let section: string | undefined;
-  const kept: string[] = [];
-  for (const raw of lines) {
-    const next = tomlSectionName(raw);
-    if (next !== undefined) {
-      section = next;
-      kept.push(raw);
-      continue;
-    }
-    if (isGrokApiKeySection(section) && /^api_key\s*=/.test(raw.trim())) continue;
-    kept.push(raw);
-  }
-  writePrivateFileAtomicSync(file, kept.join("\n"));
+  const current = readFileSync(file, "utf8");
+  const { preamble, rest } = splitTopLevelToml(current);
+  const kept = preamble
+    .split(/\r?\n/)
+    .filter((line) => !/^api_key\s*=/.test(line.trim()))
+    .join("\n");
+  writePrivateFileAtomicSync(file, `${kept}${rest}`);
 }
 
 export function grokAccountConnected(home = grokHome()): boolean {
