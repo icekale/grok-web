@@ -21,7 +21,7 @@ export const Route = createRootRoute({
       { title: "Grok Web" },
       {
         name: "description",
-        content: "Grok Web",
+        content: "The web companion for Grok Build",
       },
       { name: "application-name", content: "Grok Web" },
       { name: "apple-mobile-web-app-capable", content: "yes" },

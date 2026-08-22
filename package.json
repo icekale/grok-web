@@ -1,7 +1,7 @@
 {
   "name": "grok-web",
   "version": "0.10.0",
-  "description": "Local browser workspace for Grok Build",
+  "description": "The web companion for Grok Build",
   "author": "icekale",
   "license": "MIT",
   "homepage": "https://github.com/icekale/grok-web#readme",

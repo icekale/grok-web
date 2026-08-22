@@ -1086,8 +1086,7 @@ pre, code {
 .codex-sidebar-search-wrap:focus-within { border-color: var(--text-dim); }
 .codex-sidebar-search-wrap input,
 .codex-project-rename,
-.codex-session-main input,
-.codex-worktree-create input {
+.codex-session-main input {
   min-width: 0;
   flex: 1;
   border: 0;
@@ -1457,8 +1456,6 @@ html.dark .codex-project-menu button.danger { color: #f87171; }
   font-size: var(--text-meta);
   cursor: pointer;
 }
-.codex-worktree-create { height: 28px; display: flex; align-items: center; padding-left: 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); }
-.codex-worktree-create input { font-size: var(--text-meta); }
 .codex-sidebar-footer {
   padding: 0;
   display: flex;

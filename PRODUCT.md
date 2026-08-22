@@ -14,13 +14,17 @@ Published at [icekale/grok-web](https://github.com/icekale/grok-web) so other Gr
 
 ## Product Purpose
 
-grok-web is the local browser workspace for Grok Build. It does not replace Grok. It sits in front of one long-lived `grok agent stdio` process and the existing `~/.grok` home, so TUI and web can continue the same sessions.
+grok-web is the web companion for Grok Build. It gives existing Grok Build users a browser workspace over the same projects, sessions, tools, settings, and `~/.grok` home they already use from the TUI.
 
-Success: a Grok TUI user can do their coding-agent work in the browser without a second session store, and another person can clone and run the repo the same way.
+It does not replace Grok Build, create a second agent runtime, or own a separate model backend. One long-lived `grok agent stdio` process remains the source of conversation behavior.
+
+Success: a Grok Build user can move between TUI and browser without forking session state, and another user can clone and run the same local companion.
 
 ## Positioning
 
-A single-operator, local Grok workspace in the browser, wired through official ACP — not a new agent, not a cloud Grok, and not a multi-tenant host. Neighboring chat UIs cannot truthfully claim they share Grok Build’s on-disk sessions and one `grok agent stdio` process.
+The web companion for Grok Build: local-first, single-operator, and wired through Grok ACP. Unlike a generic chat UI, grok-web shares Grok Build's on-disk sessions, authentication, tools, and configuration.
+
+This is an independent community project. It is not a cloud Grok service, multi-tenant host, or replacement agent runtime.
 
 ## Operating Context
 
@@ -38,12 +42,15 @@ Confirmed:
 - Loopback needs no login. Non-loopback bind requires a remote password; Basic username is `grok`.
 - No multi-tenant cloud, no sandbox farm, no browser-direct ACP, no rewrite of Grok itself.
 - Node `>= 22.19.0`. Stack already in repo: Vite, TanStack Start, local Node gateway. Env prefix `GROK_WEB_`.
-- Chat, session index, files, Git (including stage/discard/commit via ACP when available), worktrees, settings, auth, MCP, skills, subagent tree, compact, feedback, recap, prompt history. The sidebar is New task, Projects, Recent, then Worktrees when the selected project has them. Composer `/` offers `/rename` `/delete` `/export` `/skills` `/plugins` `/mcp`. Skills, plugins, and MCP opened that way are a Grok tools panel, not the Settings chrome. Sessions live under their project; Recent is a jump list of the same `~/.grok` sessions. Hiding a session from the sidebar is grok-web metadata. Settings → Models leads with Grok login and the ACP model list; custom OpenAI-compatible providers stay secondary and do not change live chat. Permission dialogs use the ACP tool title (for example `Execute \`ls\``) and the command or path, not a JSON dump.
+- Core workspace: chat, project/session index, files, Git, worktrees, subagent tree, compact, feedback, recap, and prompt history.
+- Grok configuration: login, ACP models, custom providers, skills, plugins, MCP, tool permissions, and remote password settings.
+- Navigation: New task, Projects, Recent, then Worktrees for the selected project. Recent is a jump list over the same `~/.grok` sessions, not a second session store.
+- Composer commands: `/rename`, `/delete`, `/export`, `/skills`, `/plugins`, and `/mcp`. Skills, plugins, and MCP open in the Grok tools panel.
 - Conversation protocol is Grok ACP. grok-web HTTP/SSE is the browser wire for this app, not a pi-web SSE compatibility contract.
 - Composer `!` is a normal prompt. Users run shell commands through the agent's terminal tool, same as the TUI.
 - Missing ACP methods surface as explicit errors. Local git/fs fallback is read-only.
 - Prompt images are sent as ACP `image` content blocks on `session/prompt`. Tool presets (`none|read-only|default|full`) appear only when ACP enumerates those `configOptions` ids. Extension custom UI is unsupported.
-- Custom providers in Settings can import and test models against an OpenAI-compatible base URL; the live chat model list still comes from Grok ACP.
+- Custom providers are Grok Build provider configuration stored through the existing models.json flow. grok-web keeps the complete import, edit, discovery, and connection-test UI; live chat models still come from Grok ACP.
 
 Distribution (0.x preview):
 

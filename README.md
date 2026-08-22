@@ -1,8 +1,10 @@
 # Grok Web
 
-Local browser workspace for [Grok Build](https://grok.com). It sits in front of one long-lived `grok agent` ACP process and the existing `~/.grok` home, so the TUI and the web UI continue the same sessions.
+**The web companion for [Grok Build](https://grok.com).**
 
-This is a community 0.x preview for a single operator on your machine. It is **not** an official xAI product, not affiliated with xAI, and not a hosted multi-tenant Grok. The browser never speaks ACP.
+Continue the same Grok Build projects, sessions, tools, and settings in the browser. grok-web runs in front of one long-lived `grok agent` ACP process and uses your existing `~/.grok` home, so the TUI and web UI share the same work.
+
+Built for local, single-operator use. This is an independent community project, not an xAI product or hosted Grok service.
 
 Source: [github.com/icekale/grok-web](https://github.com/icekale/grok-web). Chinese readme: [README.zh-CN.md](README.zh-CN.md).
 

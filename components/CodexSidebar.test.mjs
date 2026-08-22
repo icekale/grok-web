@@ -174,6 +174,7 @@ test("sidebar recomposition preserves worktree switching", () => {
   assert.match(sidebar, /generation !== worktreeRequestRef\.current/);
   assert.doesNotMatch(sidebar, /createWorktree/);
   assert.doesNotMatch(sidebar, /codex-worktree-create/);
+  assert.doesNotMatch(styles, /\.codex-worktree-create\b/);
   assert.match(sidebar, /removeWorktree/);
   assert.match(sidebar, /sidebar\.forceRemoveCheckout/);
   assert.match(sidebar, /\[worktreeOpen, setWorktreeOpen\] = useState\(false\)/);
