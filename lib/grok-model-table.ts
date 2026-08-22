@@ -41,36 +41,28 @@ export function settingsManagedPickerId(sectionName: string): string | undefined
   return id.includes("/") ? id : undefined;
 }
 
-function rewriteTomlSections(text: string, keep: (sectionName: string) => boolean): string {
-  const lines = text.split(/\r?\n/);
-  const out: string[] = [];
-  let sectionName: string | undefined;
-  let sectionLines: string[] = [];
+type TomlSectionRange = { start: number; end: number; name: string };
 
-  const flush = () => {
-    if (sectionName === undefined) return;
-    if (keep(sectionName)) {
-      out.push(`[${sectionName}]`, ...sectionLines);
-    }
-    sectionName = undefined;
-    sectionLines = [];
-  };
+function tomlSectionRanges(text: string): TomlSectionRange[] {
+  const matches = [...text.matchAll(/^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$/gm)];
+  return matches.map((match, index) => ({
+    start: match.index ?? 0,
+    end: matches[index + 1]?.index ?? text.length,
+    name: match[1].trim(),
+  }));
+}
 
-  for (const raw of lines) {
-    const name = raw.trim().match(/^\[([^\]]+)\]$/)?.[1];
-    if (name !== undefined) {
-      flush();
-      sectionName = name;
-      continue;
-    }
-    if (sectionName === undefined) out.push(raw);
-    else sectionLines.push(raw);
+function removeTomlSections(text: string, ids: Set<string>): { text: string; removed: string[] } {
+  const ranges = tomlSectionRanges(text).filter((range) => {
+    const pickerId = settingsManagedPickerId(range.name);
+    return pickerId !== undefined && ids.has(pickerId);
+  });
+  if (ranges.length === 0) return { text, removed: [] };
+  let next = text;
+  for (const range of [...ranges].reverse()) {
+    next = `${next.slice(0, range.start)}${next.slice(range.end)}`;
   }
-  flush();
-
-  let next = out.join("\n");
-  if (text.endsWith("\n") && !next.endsWith("\n")) next += "\n";
-  return next.replace(/\n{3,}/g, "\n\n");
+  return { text: next, removed: [...new Set(ranges.map((range) => settingsManagedPickerId(range.name)!))] };
 }
 
 export function grokConfigText(home = grokHome()): string {
@@ -106,22 +98,20 @@ export function syncSettingsModelsToGrokConfig(
   mkdirSync(home, { recursive: true });
   let text = existsSync(file) ? readFileSync(file, "utf8") : "";
   const wanted = new Set(rows.map((row) => grokSettingsPickerId(row, text)));
-  const removed: string[] = [];
-  const pruned = rewriteTomlSections(text, (sectionName) => {
-    const pickerId = settingsManagedPickerId(sectionName);
-    if (!pickerId || wanted.has(pickerId)) return true;
-    removed.push(pickerId);
-    return false;
-  });
-  if (removed.length > 0) text = pruned;
-  const wrote: string[] = [];
+  const removed = removeTomlSections(text, wanted);
+  text = removed.text;
+  const changed = new Set(removed.removed);
   for (const row of rows) {
     const pickerId = grokSettingsPickerId(row, text);
-    if (configHasModelSection(text, pickerId)) continue;
+    if (changed.has(pickerId)) {
+      // The old managed section was removed above; append its current rendering.
+    } else if (configHasModelSection(text, pickerId)) {
+      continue;
+    }
     const suffix = text.length === 0 || text.endsWith("\n") ? "" : "\n";
-    text = `${text}${suffix}\n${renderGrokModelTable(row, pickerId)}`;
-    wrote.push(pickerId);
+    text = `${text}${suffix}${suffix ? "" : "\n"}${renderGrokModelTable(row, pickerId)}`;
+    changed.add(pickerId);
   }
-  if (wrote.length > 0 || removed.length > 0) writePrivateFileAtomicSync(file, text);
-  return [...removed, ...wrote];
+  if (changed.size > 0) writePrivateFileAtomicSync(file, text);
+  return [...changed];
 }
