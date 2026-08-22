@@ -90,9 +90,8 @@ const server = spawn(serverCommand, serverArgs, {
   cwd: projectDir,
   stdio: ["ignore", "pipe", "pipe"],
   shell: false,
-  // Own process group so the CLI's own server child (spawned by pi-web.js)
-  // dies with the wrapper instead of becoming an orphan that keeps the
-  // smoke pipes open and prevents this script from exiting.
+  // Keep a private process group for last-resort cleanup only. The normal
+  // success path signals the wrapper so it can forward shutdown to Nitro.
   detached: process.platform !== "win32",
   env: {
     ...process.env,
@@ -246,10 +245,7 @@ try {
     skipped: routeSmoke.skipped,
   }));
 } finally {
-  if (process.platform !== "win32" && server.pid) {
-    try { process.kill(-server.pid, "SIGTERM"); } catch { /* group already gone */ }
-  }
-  server.kill();
+  if (!server.killed) server.kill("SIGTERM");
   // Close the pipe read ends so an orphaned grandchild holding the write ends
   // cannot keep this process's event loop alive.
   server.stdout?.destroy();
@@ -259,9 +255,9 @@ try {
     new Promise((resolve) => setTimeout(resolve, 5_000)),
   ]);
   if (server.exitCode === null) {
+    server.kill("SIGKILL");
     if (process.platform !== "win32" && server.pid) {
       try { process.kill(-server.pid, "SIGKILL"); } catch { /* group already gone */ }
     }
-    server.kill("SIGKILL");
   }
 }

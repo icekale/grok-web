@@ -77,6 +77,8 @@ async function main() {
   });
 
   let browserOpened = false;
+  let shuttingDown = false;
+  let forceExitTimer;
   const url = `http://${hostname}:${port}`;
 
   child.stdout.on("data", (chunk) => {
@@ -119,7 +121,31 @@ async function main() {
     }
   });
 
-  child.on("exit", (code) => process.exit(code ?? 0));
+  const exitFromChild = (code, signal) => {
+    if (forceExitTimer) clearTimeout(forceExitTimer);
+    process.exit(code ?? (signal ? 1 : 0));
+  };
+
+  function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (!child || child.killed) {
+      process.exit(0);
+      return;
+    }
+    child.once("exit", exitFromChild);
+    child.kill(signal);
+    forceExitTimer = setTimeout(() => {
+      if (!child.killed) child.kill("SIGKILL");
+    }, 5_000);
+    forceExitTimer.unref();
+  }
+
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  child.on("exit", (code, signal) => {
+    if (!shuttingDown) exitFromChild(code, signal);
+  });
 }
 
 main().catch((error) => {
