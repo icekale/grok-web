@@ -1183,6 +1183,57 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     if (!event || typeof event.type !== "string") return;
     switch (event.type) {
+      case "session_snapshot": {
+        const generation = typeof event.promptGeneration === "number" ? event.promptGeneration : undefined;
+        if (generation !== undefined && generation < lastPromptGenerationRef.current) break;
+        if (generation !== undefined) lastPromptGenerationRef.current = generation;
+        const snapshot = event as AgentEvent & {
+          busy?: unknown;
+          streamingMessage?: unknown;
+          queuedMessages?: unknown;
+          pendingPermissions?: unknown;
+          model?: { provider?: unknown; id?: unknown };
+          thinkingLevel?: unknown;
+        };
+        if (snapshot.contextUsage !== undefined) setContextUsage(snapshot.contextUsage as import("@/lib/pi-types").ContextUsage | null);
+        if (typeof snapshot.thinkingLevel === "string") setThinkingLevel(snapshot.thinkingLevel as ThinkingLevelOption);
+        if (snapshot.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(snapshot.queuedMessages));
+        if (snapshot.model && typeof snapshot.model.provider === "string" && typeof snapshot.model.id === "string") {
+          setCurrentModelOverride({ provider: snapshot.model.provider, modelId: snapshot.model.id });
+        }
+        if (Array.isArray(snapshot.pendingPermissions)) {
+          for (const request of snapshot.pendingPermissions) {
+            if (isRecord(request) && typeof request.id === "string" && typeof request.method === "string") {
+              handleExtensionUiRequest(request as ExtensionUiRequest);
+            }
+          }
+        }
+        if (snapshot.busy === true) {
+          cancelEventStreamGrace();
+          sdkAgentActiveRef.current = true;
+          agentRunningRef.current = true;
+          setAgentRunning(true);
+          setAgentPhase((prev) => prev ?? { kind: "waiting_model" });
+          const streamingMessage = snapshot.streamingMessage;
+          if (streamingMessage && isRecord(streamingMessage) && streamingMessage.role === "assistant" && !ignoreStreamSnapshotRef.current) {
+            dispatch({ type: "snapshot", message: streamingMessage as unknown as AgentMessage });
+            if (Array.isArray(streamingMessage.content) && streamingMessage.content.length > 0) setAgentPhase(null);
+          }
+        } else if (agentRunningRef.current && sessionIdRef.current) {
+          void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
+        }
+        break;
+      }
+      case "permission_resolved": {
+        if (typeof event.id !== "string") break;
+        setExtensionDialog((current) => (
+          current?.id === event.id
+            && (!event.sessionId || event.sessionId === sessionIdRef.current)
+            ? null
+            : current
+        ));
+        break;
+      }
       case "connected": {
         if (event.isStreaming === true) {
           cancelEventStreamGrace();
@@ -1508,7 +1559,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, clearConversationPlanWidget, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
+  }, [addNotice, cancelEventStreamGrace, clearConversationPlanWidget, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {

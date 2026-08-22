@@ -33,6 +33,15 @@ test("drops untyped agent events without an illegal break", () => {
   assert.doesNotMatch(handler, /\bbreak;/);
 });
 
+test("reconciles authoritative session snapshots and permission resolutions", () => {
+  const handler = source.slice(source.indexOf("  const handleAgentEvent = useCallback"), source.indexOf("  handleAgentEventRef.current"));
+  assert.match(handler, /case "session_snapshot"/);
+  assert.match(handler, /dispatch\(\{ type: "snapshot"/);
+  assert.match(handler, /pendingPermissions/);
+  assert.match(handler, /finishPromptWithoutStream/);
+  assert.match(handler, /case "permission_resolved"/);
+});
+
 test("applies streamed context usage from Grok session signals", () => {
   const usageSource = source.slice(
     source.indexOf('case "context_usage"'),
