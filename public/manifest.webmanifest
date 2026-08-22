@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Grok Web",
   "short_name": "Grok Web",
-  "description": "Local web interface for the Grok coding agent",
+  "description": "The web companion for Grok Build",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
