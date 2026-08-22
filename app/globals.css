@@ -3324,6 +3324,18 @@ html.dark .settings-inline-success { color: #4ade80; }
   font-size: var(--text-meta);
 }
 
+.models-settings-row[data-readonly="true"] {
+  cursor: default;
+}
+
+.models-settings-row[data-readonly="true"]:hover {
+  background: transparent;
+}
+
+.models-settings-live-row > :first-child {
+  flex: 0 0 auto;
+}
+
 .models-settings-provider-row {
   display: flex;
   align-items: center;

@@ -27,8 +27,7 @@ import {
   preferredModelsSelection,
   resolveModelsSelection,
 } from "./models-config/models-config-navigation";
-import { grokLiveChatModels } from "@/lib/composer-models";
-import { visibleGrokEffortLevels } from "@/lib/grok-effort-levels";
+import { composerModelLabel, grokLiveChatModels } from "@/lib/composer-models";
 import type { ModelsData } from "@/lib/models-cache";
 import type {
   ApiKeyProvider,
@@ -1790,8 +1789,8 @@ export function ModelsConfig({ cwd, onControllerChange }: ModelsConfigProps) {
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string; efforts: string[] }>>([]);
-  const [customOpen, setCustomOpen] = useState(false);
+  const [liveModels, setLiveModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [customOpen, setCustomOpen] = useState(true);
   const [query, setQuery] = useState("");
   const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
@@ -1865,10 +1864,7 @@ export function ModelsConfig({ cwd, onControllerChange }: ModelsConfigProps) {
         if (cancelled || !data) return;
         setLiveModels(grokLiveChatModels(data.modelList).map((model) => ({
           id: model.id,
-          name: model.name,
-          efforts: visibleGrokEffortLevels(
-            data.thinkingLevels[`grok:${model.id}`] ?? data.thinkingLevels[`${model.provider}:${model.id}`],
-          ),
+          name: composerModelLabel(model.id, model.name),
         })));
       })
       .catch(() => {
@@ -2235,11 +2231,7 @@ export function ModelsConfig({ cwd, onControllerChange }: ModelsConfigProps) {
           onRetryConfig={() => { if (!dirty) void loadConfig(); }}
         />
         <div className="models-settings-detail">
-          {loading ? null : detailContent ?? (
-            <div className="models-settings-detail-empty">
-              {t("models.liveChatHint")}
-            </div>
-          )}
+          {loading ? null : detailContent}
         </div>
       </div>
 

@@ -42,7 +42,18 @@ test("footer holds one add-provider command and empty state offers Grok sign-in"
 
 test("lists read-only Grok ACP models above custom providers", () => {
   assert.match(source, /aria-label=\{t\("models\.liveChat"\)\}/);
-  assert.match(source, /t\("models\.customProvidersHint"\)/);
+  assert.match(source, /t\("models\.customProviders"\)/);
+  assert.doesNotMatch(source, /models\.customProvidersHint/);
+});
+
+test("live Grok rows show the model name and omit effort", () => {
+  assert.match(source, /models-settings-live-row/);
+  assert.match(source, /models-settings-row-label/);
+  assert.doesNotMatch(source, /models\.liveChatHint/);
+  assert.doesNotMatch(source, /models\.liveEffort/);
+  assert.doesNotMatch(source, /efforts:/);
+  assert.doesNotMatch(source, /models-settings-live-effort/);
+  assert.doesNotMatch(styles, /\.models-settings-live-effort\s*\{/);
 });
 
 test("custom-provider group disclosure keeps its label horizontal", () => {

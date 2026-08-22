@@ -125,7 +125,6 @@ export function ProviderIcon({ id, size }: { id: string; size: number }) {
 export interface LiveChatModelRow {
   id: string;
   name: string;
-  efforts: string[];
 }
 
 export interface ModelsConfigNavigatorProps {
@@ -221,12 +220,10 @@ export function ModelsConfigNavigator({
             {filteredLive.length > 0 && (
               <div className="models-settings-group" role="group" aria-label={t("models.liveChat")}>
                 <div className="models-settings-group-label">{t("models.liveChat")}</div>
-                <p className="models-settings-group-hint">{t("models.liveChatHint")}</p>
                 {filteredLive.map((model) => (
-                  <div key={model.id} className="models-settings-row" data-readonly="true">
+                  <div key={model.id} className="models-settings-row models-settings-live-row" data-readonly="true">
                     <ProviderIcon id="grok" size={16} />
                     <span className="models-settings-row-label">{model.name}</span>
-                    <span className="models-settings-row-count">{t("models.liveEffort", { levels: model.efforts.join(" · ") })}</span>
                   </div>
                 ))}
               </div>
@@ -269,7 +266,6 @@ export function ModelsConfigNavigator({
                   <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
                   <span>{t("models.customProviders")}</span>
                 </button>
-                <p className="models-settings-group-hint">{t("models.customProvidersHint")}</p>
                 {customOpen && providers.map((provider) => {
                   const expanded = expandedProviders.has(provider.name);
                   const isProviderSelected = selection?.type === "provider" && selection.name === provider.name;

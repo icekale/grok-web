@@ -204,6 +204,10 @@ test("thinking level overrides keep explicit default, disabled, and custom contr
   assert.match(editor, /state === "string"/);
 });
 
+test("custom providers group starts expanded", () => {
+  assert.match(source, /const \[customOpen, setCustomOpen\] = useState\(true\)/);
+});
+
 test("ModelsConfig is a Settings-only master-detail surface", () => {
   assert.match(source, /export function ModelsConfig\(\{ cwd, onControllerChange \}: ModelsConfigProps\)/);
   assert.doesNotMatch(source, /embedded = false/);
@@ -214,6 +218,12 @@ test("ModelsConfig is a Settings-only master-detail surface", () => {
   // Old stacked mobile tree is gone.
   assert.doesNotMatch(source, /maxHeight: isMobile \? "40vh"/);
   assert.doesNotMatch(source, /flexDirection: isMobile \? "column" : "row"/);
+});
+
+test("live ACP models passed to the navigator do not include effort lists", () => {
+  assert.match(source, /name: composerModelLabel\(model\.id, model\.name\)/);
+  assert.doesNotMatch(source, /efforts: visibleGrokEffortLevels/);
+  assert.doesNotMatch(source, /visibleGrokEffortLevels\(/);
 });
 
 test("initial load stores both baseline and draft, and Save reloads the normalized document", () => {
