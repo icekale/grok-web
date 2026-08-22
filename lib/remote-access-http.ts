@@ -13,7 +13,10 @@ export async function GET(req: Request) {
   return Response.json(readRemoteAccessSnapshot(req));
 }
 
-export async function PUT(req: Request) {
+export async function PUT(
+  req: Request,
+  { peerAddress }: { peerAddress?: string } = {},
+) {
   if (!isApiRequestAllowed(req)) {
     return Response.json({ error: "Untrusted API request" }, { status: 403 });
   }
@@ -39,7 +42,7 @@ export async function PUT(req: Request) {
     const result = writeRemoteAccessConfig({
       allowedHosts: body.allowedHosts,
       password,
-      loopbackRequest: isLoopbackApiRequest(req),
+      loopbackRequest: isLoopbackApiRequest(req, peerAddress),
       request: req,
     });
     if (!result.ok) {
