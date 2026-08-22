@@ -2,6 +2,7 @@ import { readAcpTextFile, writeAcpTextFile } from "./client-fs.ts";
 import { isJsonRpcId, JsonRpcConn, type JsonRpcId } from "./jsonrpc.ts";
 import { buildAcpPrompt, parsePromptImages } from "./prompt-images.ts";
 import {
+  permissionTimedOut,
   resolvePermission,
   translatePermissionRequest,
   type PermissionUiRequest,
@@ -196,7 +197,7 @@ export class AcpConnection {
       .filter((pending) => pending.sessionId === sessionId)
       .map((pending) => ({
         ...pending.uiRequest,
-        options: pending.uiRequest.options ?? [],
+        options: (pending.uiRequest.options ?? []).map((option) => ({ ...option })),
         sessionId: pending.sessionId,
         expiresAt: pending.expiresAt,
       }));
@@ -212,12 +213,16 @@ export class AcpConnection {
     if (!pending) return { status: "already_resolved" };
     clearTimeout(pending.timer);
     this.pendingPermissions.delete(key);
-    this.rpc.respond(pending.requestId, resolvePermission(ui, pending.request, {
-      startedAt: pending.startedAt,
-      now: this.now(),
-      timeoutMs: this.permissionTimeoutMs,
-    }));
-    const result = ui.cancelled || ui.confirmed !== true ? "cancelled" : "confirmed";
+    const now = this.now();
+    const timedOut = permissionTimedOut(pending.startedAt, now, this.permissionTimeoutMs);
+    this.rpc.respond(pending.requestId, resolvePermission(
+      timedOut ? { cancelled: true } : ui,
+      pending.request,
+      { startedAt: pending.startedAt, now, timeoutMs: this.permissionTimeoutMs },
+    ));
+    const result = timedOut
+      ? "timed_out"
+      : (ui.cancelled || ui.confirmed !== true ? "cancelled" : "confirmed");
     this.emitPermissionResolution({ type: "permission_resolved", sessionId, id, result });
     return { status: "resolved" };
   }

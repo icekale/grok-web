@@ -49,6 +49,7 @@ test("reconciles authoritative session snapshots and permission resolutions", ()
   assert.match(handler, /pendingPermissions/);
   assert.match(handler, /finishPromptWithoutStream/);
   assert.match(handler, /case "permission_resolved"/);
+  assert.match(source, /typeof d\.context\.thinkingLevel === "string"/);
 });
 
 test("applies streamed context usage from Grok session signals", () => {

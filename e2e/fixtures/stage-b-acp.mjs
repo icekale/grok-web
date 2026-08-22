@@ -86,7 +86,11 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     const text = params.prompt?.[0]?.text ?? "";
     notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: text === "E2E_PARTIAL" ? "E2E_PAR" : "E2E_STREAM_OK" } } });
     if (text === "E2E_PARTIAL") {
-      notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "TIAL_OK" } } });
+      setTimeout(() => {
+        notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "TIAL_OK" } } });
+        result(id, { stopReason: "end_turn" });
+      }, 500);
+      return;
     }
     if (text === "E2E_APPROVAL") {
       const requestId = nextRequest++;

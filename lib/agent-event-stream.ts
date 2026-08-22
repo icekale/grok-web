@@ -69,7 +69,10 @@ export function createAgentEventStream(
         if (clientEvent) {
           // Stamp the generation that was current when the event was emitted;
           // the client drops terminal events older than its latest prompt.
-          encode({ ...clientEvent, promptGeneration: streamPromptGeneration });
+          encode({
+            ...clientEvent,
+            promptGeneration: Math.max(streamPromptGeneration, getPromptGeneration(sessionId)),
+          });
         }
       };
 

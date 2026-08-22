@@ -589,7 +589,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return current;
       });
       setError(null);
-      if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
+      if (typeof d.context.thinkingLevel === "string") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
 

@@ -21,6 +21,22 @@ async function deleteSession(page, sessionId: string): Promise<void> {
   await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
 }
 
+async function waitForEvent(page, sessionId: string, type: string): Promise<unknown> {
+  return page.evaluate(({ id, wantedType }) => new Promise((resolve, reject) => {
+    const source = new EventSource(new URL(`/api/agent/${encodeURIComponent(id)}/events`, location.origin).href);
+    const timer = setTimeout(() => { source.close(); reject(new Error(`${wantedType} timeout`)); }, 10_000);
+    source.onmessage = (event) => {
+      const parsed = JSON.parse(event.data);
+      if (parsed.type === wantedType) {
+        clearTimeout(timer);
+        source.close();
+        resolve(parsed);
+      }
+    };
+    source.onerror = () => { clearTimeout(timer); source.close(); reject(new Error(`SSE closed before ${wantedType}`)); };
+  }), { id: sessionId, wantedType: type });
+}
+
 async function waitForSnapshot(page, sessionId: string): Promise<unknown> {
   return page.evaluate((id) => new Promise((resolve, reject) => {
     const source = new EventSource(new URL(`/api/agent/${encodeURIComponent(id)}/events`, location.origin).href);
@@ -88,9 +104,12 @@ test("reconnects after partial assistant output without duplicating the prefix",
     });
     const snapshot = await snapshotPromise;
     expect((snapshot as { sessionId: string }).sessionId).toBe(sessionId);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const secondSnapshot = await waitForSnapshot(page, sessionId) as { sessionId: string; busy: boolean; streamingMessage?: { content?: Array<{ text?: string }> } };
+    expect(secondSnapshot.sessionId).toBe(sessionId);
+    expect(secondSnapshot.busy).toBe(true);
+    expect((secondSnapshot.streamingMessage?.content ?? []).map((block) => block.text ?? "").join("")).toContain("E2E_PAR");
     expect((await prompt).ok()).toBeTruthy();
-    const secondSnapshot = await waitForSnapshot(page, sessionId);
-    expect((secondSnapshot as { sessionId: string }).sessionId).toBe(sessionId);
   } finally {
     await deleteSession(page, sessionId);
   }
@@ -103,15 +122,26 @@ test("two browser tabs resolve one approval", async ({ page, browser }) => {
   try {
     await second.goto("/");
     await Promise.all([waitForSnapshot(page, sessionId), waitForSnapshot(second, sessionId)]);
+    const approvals = Promise.all([
+      waitForEvent(page, sessionId, "session_snapshot"),
+      waitForEvent(second, sessionId, "session_snapshot"),
+    ]);
     const prompt = page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
       data: { type: "prompt", message: "E2E_APPROVAL" },
     });
-    await expect.poll(() => fixtureLog().some((entry) => entry.method === "session/request_permission")).toBe(true);
+    const [firstSnapshot, secondSnapshot] = await approvals as [
+      { pendingPermissions?: Array<{ id?: string }> },
+      { pendingPermissions?: Array<{ id?: string }> },
+    ];
+    const firstApproval = { id: firstSnapshot.pendingPermissions?.[0]?.id ?? "" };
+    const secondApproval = { id: secondSnapshot.pendingPermissions?.[0]?.id ?? "" };
+    expect(firstApproval.id).toBeTruthy();
+    expect(firstApproval.id).toBe(secondApproval.id);
     const first = page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
-      data: { type: "extension_ui_response", id: "1", confirmed: true },
+      data: { type: "extension_ui_response", id: firstApproval.id, confirmed: true },
     });
     const secondResponse = await second.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
-      data: { type: "extension_ui_response", id: "1", cancelled: true },
+      data: { type: "extension_ui_response", id: secondApproval.id, cancelled: true },
     });
     const firstResponse = await first;
     expect((await prompt).ok()).toBeTruthy();
