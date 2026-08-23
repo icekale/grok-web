@@ -51,6 +51,7 @@
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\" \"src/**/*.test.mjs\" \"scripts/**/*.test.mjs\"",
     "test:e2e": "node scripts/run-acp-e2e.mjs",
     "test:e2e:acp": "node scripts/run-acp-e2e.mjs",
+    "test:e2e:live": "node --experimental-strip-types scripts/run-live-e2e.mjs",
     "test:e2e:stage-b": "playwright test e2e/stage-b-recovery.spec.ts --workers=1",
     "shot": "node scripts/update-readme-screenshot.mjs"
   },
