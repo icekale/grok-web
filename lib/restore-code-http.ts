@@ -67,11 +67,19 @@ export function createRestoreCodeHandlers(deps: RestoreDeps = {}) {
         if (body.confirm !== true) return Response.json({ status: "confirmation_required", ...preflight });
         const create = deps.createWorktree ?? ((id: string, source: string) => getAgentRuntime().worktreeCreate(id, source));
         const fork = deps.forkIntoCwd ?? ((id: string, source: string, cwd: string) => getAgentRuntime().forkSessionIntoCwd(id, source, cwd));
+        const remove = deps.removeWorktree ?? ((path: string) => getAgentRuntime().worktreeRemove(path));
         const created = await create(params.id, preflight.sourceCwd);
         const worktreePath = created.worktreePath;
         if (!worktreePath || !inside(worktreePath, [preflight.gitRoot])) throw Object.assign(new Error(`ACP returned an unsafe worktree path: ${worktreePath ?? "missing"}`), { status: 400, code: "restore_path_untrusted", residualPath: worktreePath });
-        const forked = await fork(params.id, preflight.sourceCwd, realpathSync(worktreePath));
-        return Response.json({ status: "created", ...preflight, worktreePath, newSessionId: forked.newSessionId });
+        try {
+          const forked = await fork(params.id, preflight.sourceCwd, realpathSync(worktreePath));
+          return Response.json({ status: "created", ...preflight, worktreePath, newSessionId: forked.newSessionId });
+        } catch (forkError) {
+          try { await remove(worktreePath); } catch (cleanupError) {
+            throw Object.assign(new Error(`Restore fork failed; residual worktree: ${worktreePath}`), { status: 500, code: "restore_cleanup_failed", residualPath: worktreePath, cause: cleanupError });
+          }
+          throw forkError;
+        }
       } catch (error) { return errorResponse(error); }
     },
   };

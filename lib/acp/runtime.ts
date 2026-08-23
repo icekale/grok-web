@@ -268,15 +268,23 @@ export class AgentRuntime {
         .filter((session) => session.loaded && session.cwd)
         .map((session) => ({ id: [...this.sessions.entries()].find(([, value]) => value === session)?.[0], cwd: session.cwd }))
         .filter((entry): entry is { id: string; cwd: string } => Boolean(entry.id && entry.cwd));
+      const listeners = new Map([...this.listeners].map(([id, set]) => [id, new Set(set)] as const));
+      const sequencedListeners = new Map([...this.sequencedListeners].map(([id, set]) => [id, new Set(set)] as const));
+      const restoreListeners = () => {
+        for (const [id, set] of listeners) this.listeners.set(id, set);
+        for (const [id, set] of sequencedListeners) this.sequencedListeners.set(id, set);
+      };
       store.write(candidate);
       try {
         await this.recycleProcess();
+        restoreListeners();
         for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
         return { status: "applied" as const, profile: candidate };
       } catch (candidateError) {
         store.write(previous);
         try {
           await this.recycleProcess();
+          restoreListeners();
           for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
         } catch (rollbackError) {
           return { status: "degraded" as const, error: sanitizeRuntimeError(candidateError), rollbackError: sanitizeRuntimeError(rollbackError) };
