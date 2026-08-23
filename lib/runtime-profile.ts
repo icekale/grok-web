@@ -71,7 +71,8 @@ export function validateRuntimeProfile(input: unknown, options: ProfileOptions =
   const deny = rules(input.deny, "deny");
   if (allow.some((rule) => deny.includes(rule))) throw new Error("allow and deny rules conflict");
   if (typeof input.disableWebSearch !== "boolean" || typeof input.disableSubagents !== "boolean") throw new Error("runtime profile toggles are invalid");
-  if (input.maxTurns !== null && (!Number.isInteger(input.maxTurns) || input.maxTurns < 1 || input.maxTurns > 1000)) throw new Error("maxTurns is out of bounds");
+  const maxTurns = input.maxTurns;
+  if (maxTurns !== null && (typeof maxTurns !== "number" || !Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 1000)) throw new Error("maxTurns is out of bounds");
   if (input.rules !== null && (typeof input.rules !== "string" || input.rules.trim().length === 0 || input.rules.length > 4000)) throw new Error("rules is invalid");
 
   let trustedProfilePath: string | null = null;
@@ -105,7 +106,7 @@ export function validateRuntimeProfile(input: unknown, options: ProfileOptions =
     deny,
     disableWebSearch: input.disableWebSearch,
     disableSubagents: input.disableSubagents,
-    maxTurns: input.maxTurns as number | null,
+    maxTurns: maxTurns as number | null,
     rules: input.rules as string | null,
   };
 }

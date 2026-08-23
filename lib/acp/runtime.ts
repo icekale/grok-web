@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { grokHome } from "../grok-home.ts";
+import { discoverGrokCapabilities } from "../grok-capabilities.ts";
+import { readRuntimeProfile, validateRuntimeProfile, writeRuntimeProfile, type RuntimeProfile } from "../runtime-profile.ts";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { historyUserText, mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
@@ -91,6 +93,10 @@ export class AgentCommandError extends Error {
   }
 }
 
+function sanitizeRuntimeError(error: unknown): string {
+  return String(error instanceof Error ? error.message : error).replace(/(?:[A-Za-z]:\\|\\\\|\/(?!\/))[^\s"'<>]*/g, "<path>").slice(0, 500);
+}
+
 function canonicalCwd(cwd: string): string {
   const resolved = resolve(cwd);
   try {
@@ -156,6 +162,7 @@ export class AgentRuntime {
   private readonly listeners = new Map<string, Set<SessionListener>>();
   private readonly sequencedListeners = new Map<string, Set<(entry: { sequence: number; event: Record<string, unknown>; promptGeneration?: number }) => void>>();
   private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
+  private profileApplyChain: Promise<unknown> = Promise.resolve();
   private disposed = false;
 
   constructor(options?: {
@@ -243,6 +250,38 @@ export class AgentRuntime {
     if (child && !child.killed) child.kill();
     this.child = undefined;
     await this.ensureProcess();
+  }
+
+  async applyRuntimeProfile(next: RuntimeProfile, store: { read: () => RuntimeProfile; write: (profile: RuntimeProfile) => void } = {
+    read: () => readRuntimeProfile(),
+    write: (profile) => { writeRuntimeProfile(profile); },
+  }): Promise<{ status: "applied" | "degraded"; profile?: RuntimeProfile; error?: string; rollbackError?: string }> {
+    const operation = this.profileApplyChain.then(async () => {
+      const candidate = validateRuntimeProfile(next);
+      if (this.listBusyIds().length > 0) throw new AgentCommandError(409, "runtime_busy", "Grok is busy");
+      const previous = store.read();
+      const recoverable = [...this.sessions.values()]
+        .filter((session) => session.loaded && session.cwd)
+        .map((session) => ({ id: [...this.sessions.entries()].find(([, value]) => value === session)?.[0], cwd: session.cwd }))
+        .filter((entry): entry is { id: string; cwd: string } => Boolean(entry.id && entry.cwd));
+      store.write(candidate);
+      try {
+        await this.recycleProcess();
+        for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
+        return { status: "applied" as const, profile: candidate };
+      } catch (candidateError) {
+        store.write(previous);
+        try {
+          await this.recycleProcess();
+          for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
+        } catch (rollbackError) {
+          return { status: "degraded" as const, error: sanitizeRuntimeError(candidateError), rollbackError: sanitizeRuntimeError(rollbackError) };
+        }
+        throw new AgentCommandError(503, "runtime_start_failed", sanitizeRuntimeError(candidateError));
+      }
+    });
+    this.profileApplyChain = operation.catch(() => undefined);
+    return operation;
   }
 
   async dispose(): Promise<void> {
@@ -1085,7 +1124,9 @@ export class AgentRuntime {
 
   private async connectDefault(): Promise<AcpConnection> {
     const bin = resolveGrokBin();
-    const child = spawn(bin, grokAgentArgs(), { stdio: ["pipe", "pipe", "inherit"], env: grokAgentEnv() });
+    const capabilities = await discoverGrokCapabilities(bin);
+    const profile = readRuntimeProfile();
+    const child = spawn(bin, grokAgentArgs(profile, capabilities), { stdio: ["pipe", "pipe", "inherit"], env: grokAgentEnv() });
     if (!child.stdin || !child.stdout) {
       child.kill();
       throw new Error("failed to open grok stdio");
