@@ -88,7 +88,7 @@ test("general ACP fixture is a fail-unknown, controllable JSON-RPC peer with saf
     const entries = readFileSync(fixture.logPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
     assert.ok(entries.length > 0);
     for (const entry of entries) {
-      assert.deepEqual(Object.keys(entry).sort(), ["cwdAlias", "method", "sessionId", "testId", "timestamp"]);
+      assert.deepEqual(Object.keys(entry).sort(), ["cwdAlias", "method", "sessionId", "status", "testId", "timestamp"]);
       assert.doesNotMatch(JSON.stringify(entry), /api.?key|password|token|secret/i);
       assert.notEqual(entry.cwdAlias, "/tmp/project-a");
       assert.notEqual(entry.cwdAlias, "/tmp/project-b");
