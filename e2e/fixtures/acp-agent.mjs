@@ -109,7 +109,7 @@ function finishPrompt(id, sessionId, text = "E2E_STREAM_OK") {
 function startPrompt(id, sessionId, text) {
   if (text === "E2E_PAUSE" || text === "E2E_PARTIAL" || text === "WAIT") {
     pausedPrompts.set(sessionId, { id, text });
-    notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: text === "WAIT" ? "" : "E2E_PAR" } } });
+    if (text !== "WAIT") setTimeout(() => notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "E2E_PAR" } } }), 100);
     if (text === "WAIT") return;
     return waitForControl(`${sessionId}:${id}`, (command) => {
       pausedPrompts.delete(sessionId);
