@@ -74,7 +74,12 @@ export function createRestoreCodeHandlers(deps: RestoreDeps = {}) {
   return {
     async POST(request: Request, params: { id: string }) {
       try {
-        const body = await request.json().catch(() => ({})) as RestoreRecord;
+        let body: RestoreRecord;
+        try {
+          body = await request.json() as RestoreRecord;
+        } catch {
+          return Response.json({ error: "Invalid JSON", code: "invalid_request" }, { status: 400 });
+        }
         const preflight = await preflightRestoreCode(params.id, deps);
         if (body.confirm !== true) return Response.json({ status: "confirmation_required", ...preflight });
         const create = deps.createWorktree ?? ((id: string, source: string) => getAgentRuntime().worktreeCreate(id, source));

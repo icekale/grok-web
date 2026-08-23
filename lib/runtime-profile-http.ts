@@ -2,7 +2,7 @@ import { grokHome } from "./grok-home.ts";
 import { discoverGrokCapabilities } from "./grok-capabilities.ts";
 import { getAgentRuntime } from "./acp/runtime.ts";
 import { resolveGrokBin } from "./acp/process.ts";
-import { readRuntimeProfile, validateRuntimeProfile, writeRuntimeProfile, type RuntimeProfile } from "./runtime-profile.ts";
+import { readRuntimeProfile, readRuntimeProfileStatus, validateRuntimeProfile, writeRuntimeProfile, type RuntimeProfile } from "./runtime-profile.ts";
 
 function capabilityJson(value: { version: string; globalFlags: Set<string>; agentFlags: Set<string>; stdioFlags: Set<string>; agents: unknown[]; warnings: string[] }) {
   return { ...value, globalFlags: [...value.globalFlags], agentFlags: [...value.agentFlags], stdioFlags: [...value.stdioFlags] };
@@ -15,6 +15,7 @@ function errorResponse(error: unknown): Response {
 
 export function createRuntimeProfileHandlers(deps: {
   readProfile?: () => RuntimeProfile;
+  readStatus?: () => { profile: RuntimeProfile; warnings: string[] };
   writeProfile?: (profile: RuntimeProfile) => void;
   apply?: (profile: RuntimeProfile) => Promise<{ status: string; profile?: RuntimeProfile; error?: string; rollbackError?: string }>;
   discover?: () => Promise<{ version: string; globalFlags: Set<string>; agentFlags: Set<string>; stdioFlags: Set<string>; agents: unknown[]; warnings: string[] }>;
@@ -25,11 +26,12 @@ export function createRuntimeProfileHandlers(deps: {
   const discover = deps.discover ?? (async () => discoverGrokCapabilities(resolveGrokBin()));
   return {
     async GET(_request: Request) {
+      const profileState = deps.readStatus ? deps.readStatus() : (deps.readProfile ? { profile: deps.readProfile(), warnings: [] } : readRuntimeProfileStatus());
       let capabilities;
       try { capabilities = await discover(); } catch (error) {
         capabilities = { version: "unknown", globalFlags: new Set<string>(), agentFlags: new Set<string>(), stdioFlags: new Set<string>(), agents: [], warnings: [error instanceof Error ? error.message.replace(/\/(?!\/)[^\s]+/g, "<path>") : "capability discovery unavailable"] };
       }
-      return Response.json({ profile: readProfile(), capabilities: capabilityJson(capabilities), restartRequired: false });
+      return Response.json({ profile: profileState.profile, capabilities: capabilityJson(capabilities), warnings: profileState.warnings, restartRequired: false });
     },
     async PUT(request: Request) {
       let body: unknown;

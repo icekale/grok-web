@@ -111,6 +111,8 @@ export function SettingsPage({
   const [skillsController, setSkillsController] = useState<SettingsSectionController | null>(null);
   const [pluginsController, setPluginsController] = useState<SettingsSectionController | null>(null);
   const [remoteController, setRemoteController] = useState<RemoteDraftController | null>(null);
+  const [runtimeDirty, setRuntimeDirty] = useState(false);
+  const [runtimeDiscardSignal, setRuntimeDiscardSignal] = useState(0);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingExit, setPendingExit] = useState<(() => void) | null>(null);
 
@@ -122,13 +124,13 @@ export function SettingsPage({
   // One exit-request path: every Settings close/navigation action goes through
   // here so unsaved custom model drafts are never lost silently.
   const requestCloseOrNavigate = useCallback((action: () => void) => {
-    if (modelsController?.dirty || remoteController?.dirty) {
+    if (modelsController?.dirty || remoteController?.dirty || runtimeDirty) {
       setPendingExit(() => action);
       setDiscardDialogOpen(true);
     } else {
       action();
     }
-  }, [modelsController, remoteController]);
+  }, [modelsController, remoteController, runtimeDirty]);
 
   const handleDiscardConfirm = useCallback(() => {
     const action = pendingExit;
@@ -136,6 +138,7 @@ export function SettingsPage({
     setPendingExit(null);
     setModelsController(null);
     setRemoteController(null);
+    setRuntimeDiscardSignal((value) => value + 1);
     modelsController?.discard();
     remoteController?.discard();
     action?.();
@@ -157,13 +160,13 @@ export function SettingsPage({
 
   const handleSettingsBack = useCallback((): boolean => {
     if (activeController?.handleBack()) return true;
-    if (modelsController?.dirty || remoteController?.dirty) {
+    if (modelsController?.dirty || remoteController?.dirty || runtimeDirty) {
       setPendingExit(() => close);
       setDiscardDialogOpen(true);
       return true;
     }
     return false;
-  }, [activeController, close, modelsController, remoteController]);
+  }, [activeController, close, modelsController, remoteController, runtimeDirty]);
 
   useEffect(() => {
     onRegisterSettingsBack(handleSettingsBack);
@@ -255,7 +258,7 @@ export function SettingsPage({
 
   let content: ReactNode;
   if (section === "runtime") {
-    content = <AgentRuntimeConfig />;
+    content = <AgentRuntimeConfig onDirtyChange={setRuntimeDirty} discardSignal={runtimeDiscardSignal} />;
   } else if (section === "general") {
     const themes: { id: ThemePreference; label: string; Icon: typeof Sun }[] = [
       { id: "light", label: t("settings.themeLight"), Icon: Sun },

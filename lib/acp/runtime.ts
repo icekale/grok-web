@@ -646,7 +646,7 @@ export class AgentRuntime {
         const modeId = stringField(command.modeId);
         if (!modeId) throw new Error("modeId is required");
         const session = this.ensureSession(sessionId);
-        if (session.modes.available.length > 0 && !session.modes.available.some((mode) => mode.id === modeId)) {
+        if (!session.modes.available.some((mode) => mode.id === modeId)) {
           throw new AgentCommandError(400, "mode_unadvertised", "ACP mode is not advertised");
         }
         await this.ensureProcess();

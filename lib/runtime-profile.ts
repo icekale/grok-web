@@ -111,17 +111,21 @@ export function validateRuntimeProfile(input: unknown, options: ProfileOptions =
   };
 }
 
-export function readRuntimeProfile(home = grokHome()): RuntimeProfile {
+export function readRuntimeProfileStatus(home = grokHome()): { profile: RuntimeProfile; warnings: string[] } {
   const path = runtimeProfilePath(home);
-  if (!existsSync(path)) return cloneDefault();
+  if (!existsSync(path)) return { profile: cloneDefault(), warnings: [] };
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!record(parsed)) return cloneDefault();
+    if (!record(parsed)) throw new Error("profile must be an object");
     const known = Object.fromEntries([...PROFILE_KEYS].filter((key) => key in parsed).map((key) => [key, parsed[key]]));
-    return validateRuntimeProfile(known, { home });
-  } catch {
-    return cloneDefault();
+    return { profile: validateRuntimeProfile(known, { home }), warnings: [] };
+  } catch (error) {
+    return { profile: cloneDefault(), warnings: [`runtime profile ignored: ${error instanceof Error ? error.message : "invalid profile"}`] };
   }
+}
+
+export function readRuntimeProfile(home = grokHome()): RuntimeProfile {
+  return readRuntimeProfileStatus(home).profile;
 }
 
 export function writeRuntimeProfile(profile: RuntimeProfile, home = grokHome(), options: Omit<ProfileOptions, "home"> = {}): RuntimeProfile {

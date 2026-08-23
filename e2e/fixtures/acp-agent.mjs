@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -227,7 +228,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (method === "_x.ai/git/worktree/create") {
     const sourcePath = params.sourcePath;
     const worktreePath = join(sourcePath, ".grok-web-e2e-restore");
-    mkdirSync(worktreePath, { recursive: true });
+    execFileSync("git", ["-C", sourcePath, "worktree", "add", "--detach", worktreePath, "HEAD"], { stdio: "ignore" });
     fixtureWorktrees.set(worktreePath, { path: worktreePath, branch: "restore/fixture" });
     result(id, { worktreePath });
     return;

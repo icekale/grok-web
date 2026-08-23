@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { authorizeProject, captureSafeFailureScreenshot } from "./helpers/harness";
 
 const enabled = process.env.GROK_WEB_LIVE_E2E === "1" && Boolean(process.env.GROK_WEB_LIVE_E2E_HOME);
@@ -52,6 +53,34 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId!)}/context`);
     expect(context.ok(), await context.text()).toBeTruthy();
     expect(JSON.stringify(await context.json())).toContain("LIVE_E2E_MARKER");
+
+    if (process.env.GROK_WEB_LIVE_E2E_MUTATIONS === "1") {
+      const profileResponse = await page.request.get("/api/runtime-profile");
+      expect(profileResponse.ok(), await profileResponse.text()).toBeTruthy();
+      const profileBody = await profileResponse.json() as { profile: Record<string, unknown>; capabilities: { globalFlags?: string[] } };
+      const stateResponse = await page.request.get(`/api/agent/${encodeURIComponent(sessionId)}`);
+      expect(stateResponse.ok(), await stateResponse.text()).toBeTruthy();
+      const stateBody = await stateResponse.json() as { state?: { modes?: { current?: string | null; available?: Array<{ id: string }> } } };
+      const modes = stateBody.state?.modes;
+      if (modes?.available?.length) {
+        const modeId = modes.current ?? modes.available[0].id;
+        const modeResponse = await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "set_standard_mode", modeId } });
+        expect(modeResponse.ok(), await modeResponse.text()).toBeTruthy();
+      }
+      if (profileBody.capabilities.globalFlags?.includes("--permission-mode")) {
+        const applied = await page.request.put("/api/runtime-profile", { data: profileBody.profile });
+        expect(applied.ok(), await applied.text()).toBeTruthy();
+      }
+      if (profileBody.capabilities.globalFlags?.includes("--restore-code") && profileBody.capabilities.globalFlags.includes("--worktree")) {
+        const restore = await page.request.post(`/api/sessions/${encodeURIComponent(sessionId)}/restore-code`, { data: { confirm: true } });
+        expect([200, 400, 403, 409, 501], await restore.text()).toContain(restore.status());
+        if (restore.status() === 200) {
+          const restored = await restore.json() as { newSessionId: string; worktreePath: string };
+          await page.request.delete(`/api/sessions/${encodeURIComponent(restored.newSessionId)}`);
+          try { execFileSync("git", ["-C", cwd, "worktree", "remove", "--force", restored.worktreePath], { stdio: "ignore" }); } catch { /* cleanup verification below catches residue */ }
+        }
+      }
+    }
 
     await page.reload();
     await expect(page.getByText("LIVE_E2E_MARKER", { exact: true })).toBeVisible();
