@@ -26,7 +26,12 @@ function parseRoots(value) {
 }
 function cwdAlias(cwd) {
   if (!cwd) return "<unknown-cwd>";
-  return roots.get(cwd) || "<fixture-cwd>";
+  for (const [root, alias] of roots) {
+    if (cwd === root || cwd.startsWith(`${root}/`)) return alias;
+  }
+  if (cwd.endsWith("/project-a")) return "<project-a>";
+  if (cwd.endsWith("/project-b")) return "<project-b>";
+  return "<fixture-cwd>";
 }
 function sessionFor(params = {}) {
   const id = params.sessionId ?? params.session_id;
@@ -189,7 +194,20 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (method === "_x.ai/mcp/list") { result(id, { servers: [{ name: `mcp-${params.session_id || "none"}`, source: "acp-e2e" }] }); return; }
   if (method === "_x.ai/plugins/list") { result(id, { plugins: [{ name: `plugin-${params.sessionId || "none"}`, enabled: true }] }); return; }
   if (method === "_x.ai/marketplace/list") { result(id, { sources: [] }); return; }
-  if (method === "_x.ai/models/list") { result(id, { result: { currentModelId: "grok-4.6", availableModels: [{ modelId: "grok-4.6", name: "Grok 4.6" }] } }); return; }
+  if (method === "_x.ai/models/list") {
+    result(id, { result: { currentModelId: "grok-4.6", availableModels: [{
+      modelId: "grok-4.6",
+      name: "Grok 4.6",
+      _meta: {
+        reasoningEffort: "high",
+        reasoningEfforts: [
+          { id: "off", label: "Off" },
+          { id: "high", label: "High", default: true },
+        ],
+      },
+    }] } });
+    return;
+  }
   if (method === "_x.ai/auth/check_subscription") { result(id, { authenticated: true }); return; }
   if (method === "_x.ai/git/worktree/list") { result(id, { worktrees: [] }); return; }
   if (method === "_x.ai/plugins/action" || method === "_x.ai/marketplace/action") { result(id, { status: "success" }); return; }

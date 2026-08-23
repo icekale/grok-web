@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 export function runnerProject(cwd: "a" | "b"): string {
   return cwd === "a" ? process.env.GROK_WEB_E2E_PROJECT_A || process.cwd() : process.env.GROK_WEB_E2E_PROJECT_B || process.cwd();
@@ -20,6 +20,11 @@ export async function createOwnedSession(page: Page, cwd: string): Promise<strin
 export async function closeOwnedSession(page: Page, sessionId: string): Promise<void> {
   const response = await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
   expect([200, 404], await response.text()).toContain(response.status());
+}
+
+export function releaseFixture(command = "release"): void {
+  const path = process.env.GROK_WEB_ACP_FIXTURE_CONTROL;
+  if (path) writeFileSync(path, `${command}\n`);
 }
 
 export function fixtureEntries(): Array<Record<string, unknown>> {
