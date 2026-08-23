@@ -55,6 +55,7 @@ function initGitProject(path, name) {
   writeFileSync(join(path, "README.md"), `ACP E2E ${name}\n`);
   execFileSync("git", ["-C", path, "add", "README.md"]);
   execFileSync("git", ["-C", path, "commit", "-qm", "fixture"]);
+  return execFileSync("git", ["-C", path, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 }
 
 export async function createAcpE2eResources() {
@@ -71,8 +72,14 @@ export async function createAcpE2eResources() {
   mkdirSync(artifactDir, { recursive: true });
   mkdirSync(rawOutputDir, { recursive: true });
   writeFileSync(controlPath, "");
-  initGitProject(projectA, "project-a");
+  const projectACommit = initGitProject(projectA, "project-a");
   initGitProject(projectB, "project-b");
+  const restoreSessionId = "acp-e2e-restore-session";
+  const restoreGroup = join(home, "sessions", encodeURIComponent(projectA));
+  const restoreSessionDir = join(restoreGroup, restoreSessionId);
+  mkdirSync(restoreSessionDir, { recursive: true });
+  writeFileSync(join(restoreGroup, ".cwd"), `${projectA}/.\n`);
+  writeFileSync(join(restoreSessionDir, "summary.json"), `${JSON.stringify({ info: { id: restoreSessionId }, created_at: new Date().toISOString(), last_active_at: new Date().toISOString(), num_chat_messages: 1, session_summary: "ACP restore fixture", git_root_dir: projectA, head_commit: projectACommit, head_branch: "master" })}\n`);
   const port = await allocateLoopbackPort();
   return {
     root,
@@ -85,6 +92,7 @@ export async function createAcpE2eResources() {
     rawOutputDir,
     logPath,
     controlPath,
+    restoreSessionId,
     cleanup: async ({ preserveArtifacts = false } = {}) => {
       if (!preserveArtifacts) rmSync(artifactDir, { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });

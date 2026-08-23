@@ -16,6 +16,7 @@ type AgentBody = {
 type SessionState = {
   model?: { provider?: unknown; id?: unknown };
   thinkingLevel?: unknown;
+  modes?: unknown;
 };
 
 export function createAgentHandlers(runtime: AgentRuntime): {
@@ -75,6 +76,7 @@ export function createAgentHandlers(runtime: AgentRuntime): {
             data: null,
             model,
             thinkingLevel,
+            modes: state.modes,
           });
         }
 
@@ -88,6 +90,7 @@ export function createAgentHandlers(runtime: AgentRuntime): {
             data: { promptGeneration },
             model,
             thinkingLevel,
+            modes: state.modes,
           });
         }
 

@@ -128,7 +128,7 @@ export function validateArtifactDirectory(directory, options = {}) {
   if (!screenshot.length) throw new Error("empty screenshot artifact");
   const screenshotText = screenshot.toString("latin1");
   if (!screenshotText.includes("E2E_SAFE_SCREENSHOT_V1")) throw new Error("screenshot was not captured through the safe overlay");
-  if (isUnsafe(screenshotText, options.secrets)) throw new Error("unsafe screenshot artifact");
+  if ((options.secrets ?? []).some((secret) => secret && screenshotText.includes(String(secret)))) throw new Error("unsafe screenshot artifact");
   return true;
 }
 

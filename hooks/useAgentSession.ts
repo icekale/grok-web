@@ -35,6 +35,7 @@ import {
   type ClientAssistantMessageEvent,
 } from "@/lib/streaming-message";
 import { createTextDeltaBatcher } from "@/lib/text-delta-batcher";
+import type { AcpModes } from "@/lib/acp/modes";
 
 export interface SessionData {
   sessionId: string;
@@ -77,6 +78,7 @@ type AgentStateResponse = {
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
   toolPresets?: ToolPreset[];
+  modes?: AcpModes;
 };
 
 export interface QueuedMessages {
@@ -361,6 +363,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
   const [toolsAdvertised, setToolsAdvertised] = useState<ToolPreset[]>([]);
+  const [modes, setModes] = useState<AcpModes>({ current: null, available: [] });
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
@@ -614,6 +617,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.toolPresets !== undefined) {
             setToolsAdvertised(liveState.toolPresets.filter(isToolPreset));
           }
+          if (liveState.modes !== undefined) setModes(liveState.modes);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -735,6 +739,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         sessionId: string;
         model?: SelectedModel | null;
         thinkingLevel?: ThinkingLevelOption;
+        modes?: AcpModes;
       };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
@@ -748,6 +753,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ) {
         setThinkingLevel(result.thinkingLevel);
       }
+      if (result.modes) setModes(result.modes);
       void loadTools(realId);
       return realId;
     })();
@@ -1778,6 +1784,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [activeLeafId, entryIds, loadContext, messages]);
 
+  const handleModeChange = useCallback(async (modeId: string) => {
+    const sid = sessionIdRef.current;
+    if (!sid || !modes.available.some((mode) => mode.id === modeId) || modes.current === modeId) return;
+    const previous = modes;
+    setModes({ ...modes, current: modeId });
+    try {
+      const result = await sendAgentCommand<{ modeId?: string }>(sid, { type: "set_standard_mode", modeId });
+      setModes((current) => ({ ...current, current: result?.modeId ?? modeId }));
+    } catch (error) {
+      setModes(previous);
+      addNotice({ type: "error", message: `Failed to change mode: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }, [addNotice, modes]);
+
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
     if (isNew) {
       const selectedModel = { provider, modelId };
@@ -2378,7 +2398,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, thinkingLevel,
+    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -2398,7 +2418,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleRecallQueue,
     handleQueueRemoveItem, handleQueueEditItem, handleQueueSteerItem, handleSteerAllQueued,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, handleThinkingLevelChange, handleModeChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning,

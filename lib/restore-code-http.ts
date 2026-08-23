@@ -1,4 +1,5 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { findGrokSession } from "./session-index.ts";
 import { getAgentRuntime } from "./acp/runtime.ts";
 import { discoverGrokCapabilities } from "./grok-capabilities.ts";
@@ -46,7 +47,15 @@ function worktreeRows(value: unknown): Array<{ path?: string; branch?: string }>
 export async function preflightRestoreCode(sessionId: string, deps: RestoreDeps = {}) {
   const session = await (deps.findSession ?? findGrokSession)(sessionId);
   if (!session) throw Object.assign(new Error("Session not found"), { status: 404, code: "session_not_found" });
-  const metadata = session as RestoreRecord;
+  let metadata = session as RestoreRecord;
+  if (typeof metadata.path === "string") {
+    try {
+      const parsed = JSON.parse(readFileSync(join(metadata.path, "summary.json"), "utf8")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = { ...metadata, ...(parsed as RestoreRecord) };
+    } catch {
+      // The indexed session remains useful for the 400 metadata response.
+    }
+  }
   const sourceCwd = typeof metadata.cwd === "string" ? metadata.cwd : "";
   const gitRoot = typeof metadata.git_root_dir === "string" ? metadata.git_root_dir : typeof metadata.projectRoot === "string" ? metadata.projectRoot : sourceCwd;
   const headCommit = metadata.head_commit ?? metadata.headCommit;

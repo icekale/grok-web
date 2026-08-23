@@ -51,6 +51,7 @@ import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { composerShowsToolPreset, type ToolPreset } from "@/lib/tool-presets";
+import type { AcpModes } from "@/lib/acp/modes";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -99,6 +100,8 @@ interface Props {
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
+  modes?: AcpModes;
+  onModeChange?: (modeId: string) => void;
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
@@ -689,7 +692,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = [], onToolPresetChange,
-  thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
+  thinkingLevel, onThinkingLevelChange, modes, onModeChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [],
   onSteerAllQueued, onQueueRemoveItem, onQueueEditItem, onQueueSteerItem,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -2546,6 +2549,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             position: "relative",
             gap: 2,
           }}>
+            {modes && modes.available.length > 0 && onModeChange && (
+              <label className="composer-chip" title="ACP mode">
+                <List size={12} aria-hidden="true" />
+                <select
+                  aria-label="ACP mode"
+                  value={modes.current ?? ""}
+                  disabled={isStreaming}
+                  onChange={(event) => onModeChange(event.target.value)}
+                  style={{ border: 0, background: "transparent", color: "inherit", font: "inherit", outline: 0, maxWidth: 120 }}
+                >
+                  {modes.available.map((mode) => <option key={mode.id} value={mode.id}>{mode.name}</option>)}
+                </select>
+              </label>
+            )}
             {onThinkingLevelChange && visibleThinkingLevels.length > 0 && (
               <div ref={thinkingMenuRef} style={{ position: "relative" }}>
                 <button

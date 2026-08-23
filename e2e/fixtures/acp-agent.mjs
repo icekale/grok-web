@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const scenario = process.env.GROK_WEB_ACP_FIXTURE_SCENARIO || "core";
 if (process.argv.includes("--version")) { process.stdout.write("grok-fixture 1.0.0\n"); process.exit(0); }
@@ -20,6 +20,7 @@ const cwdSessions = new Map();
 const sessions = new Map();
 const pendingPermissions = new Map();
 const pausedPrompts = new Map();
+const fixtureWorktrees = new Map();
 let nextSession = 1;
 let nextRequest = 1;
 
@@ -89,6 +90,7 @@ function snapshot(sessionId) {
   return {
     sessionId,
     configOptions: configOptions(session),
+    modes: { currentModeId: session?.mode ?? "default", availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }] },
     agentCapabilities: { promptCapabilities: { image: false } },
   };
 }
@@ -177,7 +179,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (method === "session/set_mode" || method === "session/set_config_option") {
     const target = sessionFor(params);
     const mode = params.modeId ?? params.value;
-    if (!target || !["default", "high", "off"].includes(mode)) {
+    const allowed = method === "session/set_mode" ? ["default", "plan"] : ["default", "high", "off"];
+    if (!target || !allowed.includes(mode)) {
       failure(id, "unsupported mode", -32602);
       return;
     }
@@ -218,7 +221,29 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "_x.ai/auth/check_subscription") { result(id, { authenticated: true }); return; }
-  if (method === "_x.ai/git/worktree/list") { result(id, { worktrees: [] }); return; }
+  if (method === "_x.ai/git/worktree/list") { result(id, { worktrees: [...fixtureWorktrees.values()] }); return; }
+  if (method === "_x.ai/git/worktree/create") {
+    const sourcePath = params.sourcePath;
+    const worktreePath = join(sourcePath, ".grok-web-e2e-restore");
+    mkdirSync(worktreePath, { recursive: true });
+    fixtureWorktrees.set(worktreePath, { path: worktreePath, branch: "restore/fixture" });
+    result(id, { worktreePath });
+    return;
+  }
+  if (method === "_x.ai/git/worktree/remove") {
+    const worktreePath = params.worktreePath;
+    fixtureWorktrees.delete(worktreePath);
+    try { rmSync(worktreePath, { recursive: true, force: true }); } catch {}
+    result(id, { status: "removed" });
+    return;
+  }
+  if (method === "_x.ai/session/fork") {
+    const source = sessionFor({ sessionId: params.sourceSessionId });
+    const forkedId = `acp-e2e-fork-${nextSession++}`;
+    sessions.set(forkedId, { id: forkedId, cwd: params.newCwd, mode: source?.mode ?? "default" });
+    result(id, { newSessionId: forkedId });
+    return;
+  }
   if (method === "_x.ai/plugins/action" || method === "_x.ai/marketplace/action") { result(id, { status: "success" }); return; }
 
   if (pendingResponse) {
