@@ -270,13 +270,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const content =
+  const content = displayUserMessageText(
     typeof message.content === "string"
       ? message.content
       : message.content
           .filter((b): b is TextContent => b?.type === "text")
           .map((b) => b.text)
-          .join("\n");
+          .join("\n"),
+  );
 
   const imageBlocks: ImageContent[] =
     typeof message.content === "string"
@@ -1585,6 +1586,11 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
       </div>
     </div>
   );
+}
+
+function displayUserMessageText(text: string): string {
+  const match = text.match(/^\s*The user sent a message while you were working:\s*<user_query>\s*([\s\S]*?)\s*<\/user_query>\s*Make sure to complete any unfinished tasks from previous turns\.\s*$/i);
+  return match ? match[1].trim() : text;
 }
 
 function getMessageText(content: CustomMessage["content"] | UserMessage["content"]): string {

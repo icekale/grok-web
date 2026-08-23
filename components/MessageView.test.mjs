@@ -40,6 +40,17 @@ test("renders user prompts as right-aligned compact bubbles without role labels"
   assert.doesNotMatch(html, />USER</);
 });
 
+test("unwraps the external interruption envelope in the user bubble", () => {
+  const html = renderMessage({
+    role: "user",
+    content: "The user sent a message while you were working:\n<user_query>\n我说的是 grok bot 没有公网 ip\n</user_query>\nMake sure to complete any unfinished tasks from previous turns.",
+    timestamp: Date.now(),
+  });
+  assert.match(html, /我说的是 grok bot 没有公网 ip/);
+  assert.doesNotMatch(html, /The user sent a message while you were working/);
+  assert.doesNotMatch(html, /&lt;user_query&gt;/);
+});
+
 test("fork action uses fork copy, not new-session wording", () => {
   assert.match(source, /i18n\.forkSession/);
   assert.match(source, /i18n\.forkSessionTitle/);
