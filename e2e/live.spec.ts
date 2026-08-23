@@ -99,8 +99,10 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
       }
       if (profileBody?.capabilities.globalFlags?.includes("--restore-code") && profileBody.capabilities.globalFlags.includes("--worktree")) {
         const restore = await page.request.post(`/api/sessions/${encodeURIComponent(sessionId)}/restore-code`, { data: { confirm: true } });
-        expect([200, 400, 403, 409, 501], await restore.text()).toContain(restore.status());
+        const restoreText = await restore.text();
+        expect([200, 400, 403, 409, 501], restoreText).toContain(restore.status());
         if (restore.status() === 200) {
+          const restored = JSON.parse(restoreText) as { newSessionId: string; worktreePath: string };
           restoredSessionId = restored.newSessionId;
           await deleteOwnedSession(page, restoredSessionId);
         }
