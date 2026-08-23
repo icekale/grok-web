@@ -37,7 +37,7 @@ export function preflightLiveE2e({ env = process.env, defaultHome = join(homedir
   const canonicalHome = realpathSync(home);
   const canonicalDefaultHome = existsSync(defaultHome) ? realpathSync(defaultHome) : resolve(defaultHome);
   if (canonicalHome === canonicalDefaultHome) throw new Error("Live E2E refuses the default operator Grok home; use a dedicated home.");
-  if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(home)) throw new Error("Live E2E refuses the repository ACP fixture as a Grok home.");
+  if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(canonicalHome)) throw new Error("Live E2E refuses the repository ACP fixture as a Grok home.");
   const binary = resolveBinary(home);
   if (!binary || !existsSync(binary)) throw new Error("No real Grok binary is resolvable; set GROK_WEB_LIVE_E2E_GROK_BIN.");
   const canonicalBinary = realpathSync(binary);

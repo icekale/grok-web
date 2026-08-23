@@ -62,10 +62,11 @@ export async function sanitizePageForScreenshot(page: Page): Promise<void> {
     while ((node = walker.nextNode())) textNodes.push(node as Text);
     for (const text of textNodes) if (text.data.trim()) text.data = placeholder;
     for (const input of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")) input.value = placeholder;
+    const safeAttributes = new Set(["class", "id", "role", "aria-hidden", "tabindex"]);
     for (const element of document.querySelectorAll<HTMLElement>("*")) {
-      for (const name of ["src", "href", "action", "poster", "data", "srcset", "style"]) element.removeAttribute(name);
-      element.removeAttribute("aria-label");
-      element.removeAttribute("title");
+      for (const attribute of [...element.attributes]) {
+        if (!safeAttributes.has(attribute.name)) element.removeAttribute(attribute.name);
+      }
     }
     for (const media of document.querySelectorAll("img, svg, canvas, video, iframe")) media.replaceChildren();
     const style = document.createElement("style");

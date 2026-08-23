@@ -26,7 +26,7 @@ export function redactE2eText(value, { roots = new Map(), secrets = [] } = {}) {
     .replace(/((?:api[_-]?key|password|token|secret|authorization))\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>")
     .replace(/([a-z][a-z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/gi, "$1://<redacted>@")
     .replace(/(?<![A-Za-z0-9_.-])\/(?!\/)[^\s"'<>]*/g, "<path>")
-    .replace(/(?:[A-Za-z]:\\)[^\s"'<>]*/g, "<path>");
+    .replace(/(?:[A-Za-z]:\\|\\\\)[^\s"'<>]*/g, "<path>");
   return output;
 }
 
@@ -50,7 +50,7 @@ function isRetainedTraceEntry(name) {
 }
 function isUnsafe(text, secrets = []) {
   return secrets.some((secret) => secret && text.includes(String(secret)))
-    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*["']?(?!<redacted>)[^\s,;"']+|(?<![A-Za-z0-9_.-])\/(?!\/)[^\s"'<>]+|[A-Za-z]:\\/i.test(text);
+    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*["']?(?!<redacted>)[^\s,;"']+|(?<![A-Za-z0-9_.-])\/(?!\/)[^\s"'<>]+|(?:[A-Za-z]:\\|\\\\)[^\s"'<>]+/i.test(text);
 }
 
 function boundedUnzip(input) {
