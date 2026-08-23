@@ -4,6 +4,7 @@ import test from "node:test";
 
 const shell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const settings = await readFile(new URL("./SettingsPage.tsx", import.meta.url), "utf8");
+const runtime = await readFile(new URL("./AgentRuntimeConfig.tsx", import.meta.url), "utf8");
 const picker = await readFile(new URL("./DirectoryPicker.tsx", import.meta.url), "utf8");
 
 test("daily Grok tools open a tools panel instead of Settings chrome", () => {
@@ -20,6 +21,11 @@ test("AppShell exposes one unified settings entry", () => {
   assert.match(shell, /<SettingsPage/);
   assert.equal((shell.match(/setSettingsOpen\(true\)/g) ?? []).length, 1);
   assert.doesNotMatch(shell, /<ModelsConfig|<SkillsConfig|<PluginsConfig/);
+});
+
+test("Agent Runtime renders persisted profile warnings", () => {
+  assert.match(runtime, /body\.warnings\?\.length/);
+  assert.match(runtime, /role="alert"/);
 });
 
 test("Agent Runtime owns the global permission profile", () => {
@@ -63,6 +69,8 @@ test("settings guards every exit path behind one discard confirmation", () => {
   assert.match(settings, /t\("models\.unsavedChanges"\)/);
   assert.match(settings, /t\("models\.keepEditing"\)/);
   assert.match(settings, /t\("models\.discard"\)/);
+  assert.match(settings, /setRuntimeDirty\(false\)/);
+  assert.match(settings, /setRuntimeDiscardSignal/);
 });
 
 test("Escape consumes Models layers before closing Settings", () => {

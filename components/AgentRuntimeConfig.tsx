@@ -24,6 +24,7 @@ export function AgentRuntimeConfig({ onDirtyChange, discardSignal }: { onDirtyCh
   const [draft, setDraft] = useState<RuntimeProfile>(DEFAULT_PROFILE);
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot>({ version: "unknown", globalFlags: [], agentFlags: [], agents: [] });
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const dirty = useMemo(() => JSON.stringify(saved) !== JSON.stringify(draft), [saved, draft]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -33,6 +34,7 @@ export function AgentRuntimeConfig({ onDirtyChange, discardSignal }: { onDirtyCh
     void fetch("/api/runtime-profile", { cache: "no-store" }).then((response) => response.json()).then((body) => {
       if (cancelled) return;
       if (body.profile) { setSaved(body.profile); setDraft(body.profile); }
+      if (body.warnings?.length) setWarning(body.warnings.join(" "));
       if (body.capabilities) setCapabilities(body.capabilities);
     }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { cancelled = true; };
@@ -56,6 +58,7 @@ export function AgentRuntimeConfig({ onDirtyChange, discardSignal }: { onDirtyCh
   return (
     <div className="settings-form-page" data-testid="agent-runtime-config">
       <div className="settings-form-heading"><h3>Agent Runtime</h3><p>Global Grok Build runtime profile · detected {capabilities.version}</p></div>
+      {warning && <div className="settings-inline-error" role="alert">{warning}</div>}
       {error && <div className="settings-inline-error" role="alert">{error}</div>}
       {has("--agent") && <label className="settings-form-section"><span>Agent</span><select value={draft.agent ?? ""} onChange={(event) => set("agent", event.target.value || null)}><option value="">Default</option>{capabilities.agents.map((agent) => <option key={agent.name} value={agent.name}>{agent.name}</option>)}</select></label>}
       {capabilities.agentFlags.includes("--agent-profile") && <label className="settings-form-section"><span>Agent profile path</span><input value={draft.agentProfilePath ?? ""} onChange={(event) => set("agentProfilePath", event.target.value || null)} placeholder="Trusted absolute path" /></label>}

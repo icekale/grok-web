@@ -138,6 +138,7 @@ export function SettingsPage({
     setPendingExit(null);
     setModelsController(null);
     setRemoteController(null);
+    setRuntimeDirty(false);
     setRuntimeDiscardSignal((value) => value + 1);
     modelsController?.discard();
     remoteController?.discard();
