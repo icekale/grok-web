@@ -78,10 +78,11 @@ export function createRestoreCodeHandlers(deps: RestoreDeps = {}) {
           const forked = await fork(params.id, preflight.sourceCwd, realpathSync(worktreePath));
           return Response.json({ status: "created", ...preflight, worktreePath, newSessionId: forked.newSessionId });
         } catch (forkError) {
-          if (methodNotFound(forkError)) unsupported("ACP session fork is not supported");
+          const forkUnsupported = methodNotFound(forkError);
           try { await remove(worktreePath); } catch (cleanupError) {
             throw Object.assign(new Error(`Restore fork failed; residual worktree: ${worktreePath}`), { status: 500, code: "restore_cleanup_failed", residualPath: worktreePath, cause: cleanupError });
           }
+          if (forkUnsupported) unsupported("ACP session fork is not supported");
           throw forkError;
         }
       } catch (error) {
