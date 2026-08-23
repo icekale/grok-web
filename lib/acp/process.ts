@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { GrokCapabilities } from "../grok-capabilities.ts";
+import { DEFAULT_RUNTIME_PROFILE, type RuntimeProfile } from "../runtime-profile.ts";
 import { grokHome } from "../grok-home.ts";
 
 export function formatGrokMissingError(): string {
@@ -20,6 +22,43 @@ export function grokAgentEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.Pr
   return env;
 }
 
-export function grokAgentArgs(): string[] {
-  return ["agent", "stdio"];
+function requireGlobal(capabilities: GrokCapabilities, flag: string): void {
+  if (!capabilities.globalFlags.has(flag)) throw new Error(`Grok does not advertise ${flag}`);
+}
+function requireAgent(capabilities: GrokCapabilities, flag: string): void {
+  if (!capabilities.agentFlags.has(flag)) throw new Error(`Grok agent does not advertise ${flag}`);
+}
+
+export function grokAgentArgs(profile: RuntimeProfile = DEFAULT_RUNTIME_PROFILE, capabilities?: GrokCapabilities): string[] {
+  if (!capabilities) return ["agent", "stdio"];
+  const args: string[] = [];
+  if (profile.agent) {
+    requireGlobal(capabilities, "--agent");
+    if (!capabilities.agents.some((agent) => agent.name === profile.agent)) throw new Error(`Unknown Grok Agent: ${profile.agent}`);
+    args.push("--agent", profile.agent);
+  }
+  if (profile.sandbox) {
+    requireGlobal(capabilities, "--sandbox");
+    args.push("--sandbox", profile.sandbox);
+  }
+  if (profile.permissionMode !== "default") {
+    requireGlobal(capabilities, "--permission-mode");
+    args.push("--permission-mode", profile.permissionMode);
+  }
+  for (const rule of profile.allow) {
+    requireGlobal(capabilities, "--allow");
+    args.push("--allow", rule);
+  }
+  for (const rule of profile.deny) {
+    requireGlobal(capabilities, "--deny");
+    args.push("--deny", rule);
+  }
+  if (profile.disableWebSearch) { requireGlobal(capabilities, "--disable-web-search"); args.push("--disable-web-search"); }
+  if (profile.disableSubagents) { requireGlobal(capabilities, "--no-subagents"); args.push("--no-subagents"); }
+  if (profile.maxTurns !== null) { requireGlobal(capabilities, "--max-turns"); args.push("--max-turns", String(profile.maxTurns)); }
+  if (profile.rules !== null) { requireGlobal(capabilities, "--rules"); args.push("--rules", profile.rules); }
+  args.push("agent");
+  if (profile.agentProfilePath) { requireAgent(capabilities, "--agent-profile"); args.push("--agent-profile", profile.agentProfilePath); }
+  args.push("stdio");
+  return args;
 }
