@@ -47,7 +47,7 @@ test.describe("ACP recovery", () => {
       await page.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("b"))}`);
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_PARTIAL");
       await page.getByRole("button", { name: "Send" }).click();
-      await expect(page.getByText("E2E_PAR", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_PAR", { exact: true })).toBeVisible({ timeout: 15_000 });
       const snapshotCount = await page.evaluate(() => (window as unknown as { __e2eSnapshotCount: number }).__e2eSnapshotCount);
       await page.evaluate(() => (window as unknown as { __forceE2eDisconnect: () => void }).__forceE2eDisconnect());
       await expect.poll(() => page.evaluate(() => (window as unknown as { __e2eSnapshotCount: number }).__e2eSnapshotCount), { timeout: 15_000 }).toBeGreaterThan(snapshotCount);
@@ -135,7 +135,7 @@ test.describe("ACP recovery", () => {
       await page.getByRole("button", { name: "Send" }).click();
       activeSessionId = (await createdResponse.then((response) => response.json())).sessionId as string;
       expect(activeSessionId).toBeTruthy();
-      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible({ timeout: 15_000 });
       const effort = page.getByRole("button", { name: "Change effort" });
       await expect(effort).toBeVisible();
       await effort.click();

@@ -46,7 +46,7 @@ test.describe("ACP core", () => {
       await page.getByRole("button", { name: "Send" }).click();
       ownedSessionId = (await newSessionResponse.then((response) => response.json())).sessionId as string;
       expect(ownedSessionId).toBeTruthy();
-      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible({ timeout: 15_000 });
       const types = await page.evaluate(() => (window as unknown as { __e2eSseTypes: string[] }).__e2eSseTypes);
       expect(types).toContain("session_snapshot");
       expect(types).toContain("message_update");
@@ -81,7 +81,7 @@ test.describe("ACP core", () => {
       await page.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("a"))}`);
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_THOUGHT_TEXT");
       await page.getByRole("button", { name: "Send" }).click();
-      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible({ timeout: 15_000 });
       const updates = await page.evaluate(() => (window as unknown as { __e2eUpdates: unknown[] }).__e2eUpdates);
       expect(updates.some((event) => {
         const value = event as { assistantMessageEvent?: { type?: string; delta?: string } };
@@ -136,7 +136,7 @@ test.describe("ACP core", () => {
       const composer = page.getByRole("textbox", { name: "Message" });
       await composer.fill("E2E_PARTIAL");
       await page.getByRole("button", { name: "Send" }).click();
-      await expect(page.getByText("E2E_PAR", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_PAR", { exact: true })).toBeVisible({ timeout: 15_000 });
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeHidden();
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();

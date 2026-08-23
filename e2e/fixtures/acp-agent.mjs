@@ -64,11 +64,9 @@ function result(id, value) { send({ jsonrpc: "2.0", id, result: value }); }
 function failure(id, message, code = -32601) { send({ jsonrpc: "2.0", id, error: { code, message } }); }
 function notify(method, params) { send({ jsonrpc: "2.0", method, params }); }
 function sessionIdFor(cwd) {
-  const existing = cwdSessions.get(cwd);
-  if (existing) return existing;
   const id = `acp-e2e-${nextSession++}`;
   const session = { id, cwd, mode: "default" };
-  cwdSessions.set(cwd, id);
+  cwdSessions.set(`${cwd}:${id}`, id);
   sessions.set(id, session);
   return id;
 }
@@ -173,13 +171,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "session/close") {
+    const closed = sessions.get(params.sessionId);
+    if (closed && cwdSessions.get(closed.cwd) === params.sessionId) cwdSessions.delete(closed.cwd);
+    sessions.delete(params.sessionId);
+    pausedPrompts.delete(params.sessionId);
     result(id, { _meta: { "x.ai/closeOutcome": "closed" }, outcome: "closed" });
     return;
   }
   if (method === "session/set_mode" || method === "session/set_config_option") {
     const target = sessionFor(params);
     const mode = params.modeId ?? params.value;
-    const allowed = method === "session/set_mode" ? ["default", "plan"] : ["default", "high", "off"];
+    const allowed = ["default", "high", "off", "plan"];
     if (!target || !allowed.includes(mode)) {
       failure(id, "unsupported mode", -32602);
       return;
