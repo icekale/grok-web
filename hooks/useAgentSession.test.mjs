@@ -52,6 +52,14 @@ test("reconciles authoritative session snapshots and permission resolutions", ()
   assert.match(source, /typeof d\.context\.thinkingLevel === "string"/);
 });
 
+test("does not settle a local prompt from the idle preflight snapshot", () => {
+  const snapshotSource = source.slice(
+    source.indexOf('case "session_snapshot"'),
+    source.indexOf('case "permission_resolved"'),
+  );
+  assert.match(snapshotSource, /else if \(agentRunningRef\.current && !rpcPromptPendingRef\.current && sessionIdRef\.current\)/);
+});
+
 test("applies streamed context usage from Grok session signals", () => {
   const usageSource = source.slice(
     source.indexOf('case "context_usage"'),

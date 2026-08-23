@@ -1226,7 +1226,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             dispatch({ type: "snapshot", message: streamingMessage as unknown as AgentMessage });
             if (Array.isArray(streamingMessage.content) && streamingMessage.content.length > 0) setAgentPhase(null);
           }
-        } else if (agentRunningRef.current && sessionIdRef.current) {
+        } else if (agentRunningRef.current && !rpcPromptPendingRef.current && sessionIdRef.current) {
+          // The initial idle snapshot can arrive between the optimistic UI
+          // update and the prompt RPC; that prompt is not settled yet.
           void finishPromptWithoutStream(sessionIdRef.current, promptRunIdRef.current);
         }
         break;
