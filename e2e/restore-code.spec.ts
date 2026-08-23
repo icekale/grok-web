@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { closeOwnedSession, createOwnedSession, fixtureMethods, runnerProject, authorizeProject } from "./helpers/harness";
 
 test.skip(process.env.GROK_WEB_E2E_ISOLATED !== "1", "run through deterministic ACP E2E runner");
@@ -39,7 +39,7 @@ test("restores a historical session into a fixture-owned worktree without changi
     worktreePath = body.worktreePath;
     expect(body.status).toBe("created");
     expect(existsSync(body.worktreePath)).toBeTruthy();
-    expect(execFileSync("git", ["-C", body.worktreePath, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim()).toBe(body.worktreePath);
+    expect(realpathSync(execFileSync("git", ["-C", body.worktreePath, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim())).toBe(realpathSync(body.worktreePath));
     expect(readFileSync(`${cwd}/README.md`, "utf8")).toBe(source);
     expect(fixtureMethods()).toEqual(expect.arrayContaining(["_x.ai/git/worktree/list", "_x.ai/git/worktree/create", "_x.ai/session/fork"]));
     await page.request.delete(`/api/sessions/${encodeURIComponent(body.newSessionId)}`);
