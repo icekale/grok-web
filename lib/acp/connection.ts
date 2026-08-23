@@ -107,6 +107,7 @@ export class AcpConnection {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly permissionHandlers = new Set<(event: PermissionUiRequest) => void>();
   private readonly permissionResolutionHandlers = new Set<(event: PermissionResolution) => void>();
+  private readonly modeUpdateHandlers = new Set<(sessionId: string, modeId: string) => void>();
   private readonly fuzzyWaiters = new Map<string, (matches: Array<{ path: string; type?: string; name?: string }>) => void>();
   availableCommands: Array<{ name: string; description?: string }> = [];
 
@@ -609,6 +610,10 @@ export class AcpConnection {
     }).then((raw) => unwrapResult(raw) as never);
   }
 
+  onCurrentModeUpdate(handler: (sessionId: string, modeId: string) => void): () => void {
+    this.modeUpdateHandlers.add(handler);
+    return () => this.modeUpdateHandlers.delete(handler);
+  }
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
       if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
@@ -616,6 +621,9 @@ export class AcpConnection {
       }
       const commands = readAvailableCommands({ update: params.update });
       if (commands.length > 0) this.availableCommands = commands;
+      if (isRecord(params.update) && params.update.sessionUpdate === "current_mode_update" && typeof params.update.currentModeId === "string") {
+        for (const modeHandler of this.modeUpdateHandlers) modeHandler(params.sessionId, params.update.currentModeId);
+      }
       handler(params.sessionId, params.update);
     });
   }

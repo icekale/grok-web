@@ -12,6 +12,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { ConversationPlan, getConversationPlanWidget } from "./ConversationPlan";
+import { AcpPlanView } from "./AcpPlanView";
 import { filterSubagentWidgets, isPiSubagentWidgetKey } from "./ExtensionWidgets";
 import { DesktopSubagentWidgetCard } from "./SubagentSessions";
 import { GoalPanel } from "./GoalPanel";
@@ -292,7 +293,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   const {
     data, loading, error, messages, entryIds, liveToolResults, streamState,
-    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, toolsAdvertised, modes, thinkingLevel,
+    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -1044,6 +1045,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               </div>
             )}
 
+            {acpPlan ? <AcpPlanView plan={acpPlan} /> : null}
             {activeConversationPlanWidget ? (
               <ConversationPlan
                 key={session?.id ?? "conversation-plan"}

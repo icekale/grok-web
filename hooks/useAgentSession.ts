@@ -36,6 +36,7 @@ import {
 } from "@/lib/streaming-message";
 import { createTextDeltaBatcher } from "@/lib/text-delta-batcher";
 import type { AcpModes } from "@/lib/acp/modes";
+import type { AcpPlan } from "@/lib/acp/plan";
 
 export interface SessionData {
   sessionId: string;
@@ -79,6 +80,7 @@ type AgentStateResponse = {
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
   toolPresets?: ToolPreset[];
   modes?: AcpModes;
+  plan?: AcpPlan | null;
 };
 
 export interface QueuedMessages {
@@ -364,6 +366,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
   const [toolsAdvertised, setToolsAdvertised] = useState<ToolPreset[]>([]);
   const [modes, setModes] = useState<AcpModes>({ current: null, available: [] });
+  const [acpPlan, setAcpPlan] = useState<AcpPlan | null>(null);
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
@@ -618,6 +621,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setToolsAdvertised(liveState.toolPresets.filter(isToolPreset));
           }
           if (liveState.modes !== undefined) setModes(liveState.modes);
+          if (liveState.plan !== undefined) setAcpPlan(liveState.plan);
+          if (liveState.plan !== undefined) setAcpPlan(liveState.plan);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -740,6 +745,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         model?: SelectedModel | null;
         thinkingLevel?: ThinkingLevelOption;
         modes?: AcpModes;
+        plan?: AcpPlan | null;
       };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
@@ -754,6 +760,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setThinkingLevel(result.thinkingLevel);
       }
       if (result.modes) setModes(result.modes);
+      if (result.plan !== undefined) setAcpPlan(result.plan);
       void loadTools(realId);
       return realId;
     })();
@@ -1204,6 +1211,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         };
         if (snapshot.contextUsage !== undefined) setContextUsage(snapshot.contextUsage as import("@/lib/pi-types").ContextUsage | null);
         if (typeof snapshot.thinkingLevel === "string") setThinkingLevel(snapshot.thinkingLevel as ThinkingLevelOption);
+        if (snapshot.plan && isRecord(snapshot.plan)) setAcpPlan(snapshot.plan as unknown as AcpPlan);
         if (snapshot.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(snapshot.queuedMessages));
         if (snapshot.model && typeof snapshot.model.provider === "string" && typeof snapshot.model.id === "string") {
           setCurrentModelOverride({ provider: snapshot.model.provider, modelId: snapshot.model.id });
@@ -1233,6 +1241,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
       }
+      case "plan_update":
+        if (isRecord(event.plan)) setAcpPlan(event.plan as unknown as AcpPlan);
+        break;
       case "permission_resolved": {
         if (typeof event.id !== "string") break;
         setExtensionDialog((current) => (
@@ -2252,6 +2263,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (session) {
       sessionIdRef.current = session.id;
       setToolsAdvertised([]);
+      setAcpPlan(null);
       loadSession(session.id, true, !opts.readOnlyHistory).then((agentState) => {
         void loadTools(session.id);
         if (agentState?.running) {
@@ -2284,6 +2296,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.toolPresets !== undefined) {
             setToolsAdvertised(agentState.state.toolPresets.filter(isToolPreset));
           }
+          if (agentState.state.plan !== undefined) setAcpPlan(agentState.state.plan);
         }
       });
     }
@@ -2400,7 +2413,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, thinkingLevel,
+    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,

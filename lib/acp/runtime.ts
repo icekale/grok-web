@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { grokHome } from "../grok-home.ts";
-import { discoverGrokCapabilities } from "../grok-capabilities.ts";
+import { discoverGrokCapabilities, type GrokCapabilities } from "../grok-capabilities.ts";
 import { readRuntimeProfile, validateRuntimeProfile, writeRuntimeProfile, type RuntimeProfile } from "../runtime-profile.ts";
 import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { historyUserText, mapUpdatesJsonl } from "../history-map.ts";
@@ -28,7 +28,8 @@ import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, grokAgentEnv, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
-import { readAcpModes, type AcpModes } from "./modes.ts";
+import { readAcpCurrentModeUpdate, readAcpModeState, type AcpModeSource, type AcpModes } from "./modes.ts";
+import { readAcpPlanUpdate, type AcpPlan } from "./plan.ts";
 import {
   advertisedToolPresets,
   applyConfigOptionUpdate,
@@ -71,6 +72,8 @@ type SessionState = {
   hasUserPrompt?: boolean;
   configOptions: AcpConfigOption[];
   modes: AcpModes;
+  modeSource: AcpModeSource | null;
+  plan?: AcpPlan;
   eventSequence: number;
   eventPromptGeneration?: number;
   queuedPromptGenerations: Array<number | undefined>;
@@ -98,6 +101,14 @@ export class AgentCommandError extends Error {
 function sanitizeRuntimeError(error: unknown): string {
   return String(error instanceof Error ? error.message : error).replace(/(?:[A-Za-z]:\\|\\\\|\/(?!\/))[^\s"'<>]*/g, "<path>").slice(0, 500);
 }
+
+function fallbackModeId(mode: RuntimeProfile["permissionMode"]): string {
+  if (mode === "plan") return "plan";
+  if (mode === "auto") return "auto";
+  if (mode === "bypassPermissions") return "bypassPermissions";
+  return "default";
+}
+
 
 function canonicalCwd(cwd: string): string {
   const resolved = resolve(cwd);
@@ -150,6 +161,8 @@ function extraAcpReadRoots(): string[] {
 export class AgentRuntime {
   private readonly connectFn: () => Promise<AcpConnection>;
   private readonly resolveEntries: typeof resolveSessionEntries;
+  private readonly configuredCapabilities?: GrokCapabilities;
+  private cliCapabilities: GrokCapabilities | undefined;
   private acp: AcpConnection | undefined;
   private connectionGeneration = 0;
   private startupToken = 0;
@@ -165,14 +178,18 @@ export class AgentRuntime {
   private readonly sequencedListeners = new Map<string, Set<(entry: { sequence: number; event: Record<string, unknown>; promptGeneration?: number }) => void>>();
   private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
   private profileApplyChain: Promise<unknown> = Promise.resolve();
+  private modeProbeBySession = new Map<string, Promise<void>>();
   private disposed = false;
 
   constructor(options?: {
     connect?: () => Promise<AcpConnection>;
     resolveEntries?: typeof resolveSessionEntries;
+    capabilities?: GrokCapabilities;
   }) {
     this.connectFn = options?.connect ?? (() => this.connectDefault());
     this.resolveEntries = options?.resolveEntries ?? resolveSessionEntries;
+    this.configuredCapabilities = options?.capabilities;
+    this.cliCapabilities = options?.capabilities;
   }
 
   async ensureProcess(): Promise<void> {
@@ -203,7 +220,9 @@ export class AgentRuntime {
     session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
     session.thinkingLevel = selectedGrokEffort(created) ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]);
     session.configOptions = readAcpConfigOptions(created);
-    session.modes = readAcpModes(created);
+    const modeState = readAcpModeState(created);
+    session.modes = modeState.modes;
+    session.modeSource = modeState.source;
     return created.sessionId;
   }
 
@@ -226,7 +245,11 @@ export class AgentRuntime {
     if (effort) session.thinkingLevel = effort;
     const options = readAcpConfigOptions(loaded);
     if (options.length > 0) session.configOptions = options;
-    session.modes = readAcpModes(loaded);
+    const modeState = readAcpModeState(loaded);
+    if (modeState.source || modeState.modes.available.length > 0) {
+      session.modes = modeState.modes;
+      session.modeSource = modeState.source;
+    }
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
@@ -247,6 +270,7 @@ export class AgentRuntime {
 
   async recycleProcess(): Promise<void> {
     const child = this.child;
+    this.modeProbeBySession.clear();
     this.sessions.clear();
     this.listeners.clear();
     this.sequencedListeners.clear();
@@ -335,6 +359,7 @@ export class AgentRuntime {
       ]);
     }
     this.child = undefined;
+    this.modeProbeBySession.clear();
     this.sessions.clear();
     this.listeners.clear();
     this.sequencedListeners.clear();
@@ -528,7 +553,6 @@ export class AgentRuntime {
         await this.ensureProcess();
         const generation = commandField(command, "promptGeneration");
         const behavior = promptBehavior(command);
-        const session = this.ensureSession(sessionId);
         return this.sendPrompt(
           sessionId,
           stringField(command.message),
@@ -650,8 +674,19 @@ export class AgentRuntime {
           throw new AgentCommandError(400, "mode_unadvertised", "ACP mode is not advertised");
         }
         await this.ensureProcess();
-        await this.requireAcp().sessionSetMode(sessionId, modeId);
-        session.modes = { ...session.modes, current: modeId };
+        if (session.modeSource?.type === "config") {
+          const result = await this.requireAcp().sessionSetConfigOption(sessionId, session.modeSource.configId, modeId);
+          const readback = readAcpModeState(result);
+          if (readback.modes.current !== modeId || readback.modes.available.length === 0) {
+            throw new AgentCommandError(502, "mode_readback_unavailable", "ACP mode change was not confirmed");
+          }
+          session.configOptions = readAcpConfigOptions(result);
+          session.modes = readback.modes;
+          session.modeSource = readback.source ?? session.modeSource;
+        } else {
+          await this.requireAcp().sessionSetMode(sessionId, modeId);
+          session.modes = { ...session.modes, current: modeId };
+        }
         return { modeId };
       }
       case "set_thinking_level": {
@@ -803,6 +838,61 @@ export class AgentRuntime {
     return ids.length;
   }
 
+  private async verifyFallbackModes(sessionId: string, session: SessionState): Promise<void> {
+    if (session.modes.available.length > 0 || session.modeSource || !(this.cliCapabilities ?? this.configuredCapabilities)?.globalFlags.has("--permission-mode")) return;
+    const existing = this.modeProbeBySession.get(sessionId);
+    if (existing) return existing;
+    const probe = (async () => {
+      const acp = this.requireAcp();
+      const profileMode = fallbackModeId(readRuntimeProfile().permissionMode);
+      let resolveUpdate: ((modeId: string) => void) | undefined;
+      let expectedMode = "";
+      const unsubscribe = acp.onCurrentModeUpdate((updatedSessionId, modeId) => {
+        if (updatedSessionId === sessionId && modeId === expectedMode) resolveUpdate?.(modeId);
+      });
+      const setAndReadBack = async (modeId: string): Promise<void> => {
+        expectedMode = modeId;
+        const readback = new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolveUpdate = undefined;
+            reject(new AgentCommandError(502, "mode_readback_unavailable", "ACP mode change was not confirmed"));
+          }, 2_000);
+          resolveUpdate = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolveUpdate = undefined;
+            resolve();
+          };
+        });
+        await acp.sessionSetMode(sessionId, modeId);
+        await readback;
+      };
+      try {
+        await setAndReadBack("plan");
+        if (profileMode !== "plan") await setAndReadBack(profileMode);
+        session.modes = {
+          current: profileMode,
+          available: [
+            { id: "default", name: "Normal" },
+            { id: "plan", name: "Plan" },
+            { id: "auto", name: "Auto" },
+            { id: "bypassPermissions", name: "Always-approve" },
+          ],
+        };
+        session.modeSource = { type: "rpc" };
+      } finally {
+        unsubscribe();
+      }
+    })();
+    const safeProbe = probe.catch(() => undefined);
+    this.modeProbeBySession.set(sessionId, safeProbe);
+    await safeProbe;
+  }
+
   private async getState(sessionId: string): Promise<{
     isStreaming: boolean;
     isPromptRunning: boolean;
@@ -812,10 +902,14 @@ export class AgentRuntime {
     queuedMessages: QueueSnapshot;
     toolPresets: ToolPreset[];
     modes?: AcpModes;
+    plan?: AcpPlan;
     contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null };
   }> {
     const session = this.sessions.get(sessionId);
     const promptBusy = session?.busy === true;
+    if (session && !promptBusy && session.modes.available.length === 0) {
+      await this.verifyFallbackModes(sessionId, session);
+    }
     const contextUsage = await readSessionContextUsage(sessionId);
     return {
       isStreaming: promptBusy,
@@ -826,6 +920,7 @@ export class AgentRuntime {
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
       toolPresets: advertisedToolPresets(session?.configOptions ?? []),
       ...(session?.modes.available.length ? { modes: session.modes } : {}),
+      ...(session?.plan ? { plan: session.plan } : {}),
       ...(contextUsage ? { contextUsage } : {}),
     };
   }
@@ -1144,7 +1239,21 @@ export class AgentRuntime {
     this.unsubUpdate = acp.onSessionUpdate((sessionId, update) => {
       const session = this.ensureSession(sessionId);
       session.configOptions = applyConfigOptionUpdate(session.configOptions, update);
-      this.emit(sessionId, session.mapper.push(update));
+      const plan = readAcpPlanUpdate(update);
+      if (plan) session.plan = plan;
+      const modeUpdate = readAcpCurrentModeUpdate(update);
+      if (modeUpdate) {
+        session.modes = session.modes.available.length > 0
+          ? { ...session.modes, current: modeUpdate }
+          : { current: modeUpdate, available: [] };
+      }
+      const modeState = readAcpModeState({ configOptions: session.configOptions });
+      if (modeState.source?.type === "config") {
+        session.modes = modeState.modes;
+        session.modeSource = modeState.source;
+      }
+      const mapped = session.mapper.push(update);
+      this.emit(sessionId, plan ? [{ type: "plan_update", plan }, ...mapped] : mapped);
       if (update && typeof update === "object" && "sessionUpdate" in update
         && (update as { sessionUpdate?: unknown }).sessionUpdate === "turn_completed") {
         void readSessionContextUsage(sessionId).then((usage) => {
@@ -1165,6 +1274,7 @@ export class AgentRuntime {
   private async connectDefault(): Promise<AcpConnection> {
     const bin = resolveGrokBin();
     const capabilities = await discoverGrokCapabilities(bin);
+    this.cliCapabilities = capabilities;
     const profile = readRuntimeProfile();
     const child = spawn(bin, grokAgentArgs(profile, capabilities), { stdio: ["pipe", "pipe", "inherit"], env: grokAgentEnv() });
     if (!child.stdin || !child.stdout) {
@@ -1250,6 +1360,7 @@ export class AgentRuntime {
         queue: new SessionQueue(),
         configOptions: [],
         modes: { current: null, available: [] },
+        modeSource: null,
         eventSequence: 0,
         queuedPromptGenerations: [],
       };

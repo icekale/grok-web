@@ -61,6 +61,8 @@ function translatePermissionOptions(params: unknown): PermissionUiOption[] | und
 }
 
 function permissionTitle(title: string, kind: string, input: Record<string, unknown>): string {
+  const canonical = grokCanonicalToolName(title, kind).toLowerCase();
+  if (canonical === "exit_plan_mode" || /\b(plan|implementation)\b.*\b(approve|approval|review)\b/i.test(title)) return "Approve plan";
   if (isHumanToolTitle(title)) return title;
   const command = commandValue(input);
   if (command && (grokCanonicalToolName(title, kind) === "bash" || !title)) {
@@ -75,6 +77,8 @@ function permissionTitle(title: string, kind: string, input: Record<string, unkn
 }
 
 function permissionMessage(title: string, kind: string, input: Record<string, unknown>): string {
+  const canonical = grokCanonicalToolName(title, kind).toLowerCase();
+  if (canonical === "exit_plan_mode") return firstString(input.content, input.message, "Review the plan before implementation.");
   const command = commandValue(input);
   if (command) return command;
   const path = pathValue(input);
