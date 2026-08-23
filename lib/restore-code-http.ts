@@ -4,10 +4,11 @@ import { getAgentRuntime } from "./acp/runtime.ts";
 import { discoverGrokCapabilities } from "./grok-capabilities.ts";
 import { resolveGrokBin } from "./acp/process.ts";
 
+type RestoreRecord = Record<string, unknown>;
 type RestoreDeps = {
-  findSession?: (id: string) => Promise<any>;
-  readCapabilities?: () => Promise<any>;
-  listWorktrees?: () => Promise<any>;
+  findSession?: (id: string) => Promise<RestoreRecord | null>;
+  readCapabilities?: () => Promise<{ globalFlags: Set<string> }>;
+  listWorktrees?: () => Promise<unknown>;
   createWorktree?: (sessionId: string, sourcePath: string) => Promise<{ worktreePath?: string }>;
   forkIntoCwd?: (sessionId: string, sourceCwd: string, newCwd: string) => Promise<{ newSessionId: string }>;
   removeWorktree?: (path: string) => Promise<unknown>;
@@ -15,8 +16,9 @@ type RestoreDeps = {
 };
 
 function errorResponse(error: unknown): Response {
-  const status = typeof error === "object" && error !== null && typeof (error as any).status === "number" ? (error as any).status : 400;
-  const code = typeof error === "object" && error !== null && typeof (error as any).code === "string" ? (error as any).code : "restore_invalid";
+  const value = error && typeof error === "object" ? error as RestoreRecord : {};
+  const status = typeof value.status === "number" ? value.status : 400;
+  const code = typeof value.code === "string" ? value.code : "restore_invalid";
   return Response.json({ error: error instanceof Error ? error.message : String(error), code }, { status });
 }
 function unsupported(message: string): never {
@@ -34,16 +36,17 @@ function inside(target: string, roots: string[]): boolean {
 }
 function worktreeRows(value: unknown): Array<{ path?: string; branch?: string }> {
   if (Array.isArray(value)) return value as Array<{ path?: string; branch?: string }>;
-  if (value && typeof value === "object" && Array.isArray((value as any).worktrees)) return (value as any).worktrees;
+  if (value && typeof value === "object" && Array.isArray((value as RestoreRecord).worktrees)) return (value as RestoreRecord).worktrees as Array<{ path?: string; branch?: string }>;
   return [];
 }
 
 export async function preflightRestoreCode(sessionId: string, deps: RestoreDeps = {}) {
   const session = await (deps.findSession ?? findGrokSession)(sessionId);
   if (!session) throw Object.assign(new Error("Session not found"), { status: 404, code: "session_not_found" });
-  const sourceCwd = session.cwd as string;
-  const gitRoot = typeof session.git_root_dir === "string" ? session.git_root_dir : typeof session.projectRoot === "string" ? session.projectRoot : sourceCwd;
-  const headCommit = session.head_commit ?? session.headCommit;
+  const metadata = session as RestoreRecord;
+  const sourceCwd = typeof metadata.cwd === "string" ? metadata.cwd : "";
+  const gitRoot = typeof metadata.git_root_dir === "string" ? metadata.git_root_dir : typeof metadata.projectRoot === "string" ? metadata.projectRoot : sourceCwd;
+  const headCommit = metadata.head_commit ?? metadata.headCommit;
   if (!sourceCwd || !gitRoot || !headCommit || !existsSync(sourceCwd)) throw Object.assign(new Error("Historical session lacks Git restore metadata"), { status: 400, code: "restore_metadata_missing" });
   if (!inside(sourceCwd, [...(deps.trustedRoots ?? []), gitRoot])) throw Object.assign(new Error("Restore path is not trusted"), { status: 403, code: "restore_path_untrusted" });
   const capabilities = await (deps.readCapabilities ?? (async () => discoverGrokCapabilities(resolveGrokBin())))();
@@ -59,7 +62,7 @@ export function createRestoreCodeHandlers(deps: RestoreDeps = {}) {
   return {
     async POST(request: Request, params: { id: string }) {
       try {
-        const body = await request.json().catch(() => ({}));
+        const body = await request.json().catch(() => ({})) as RestoreRecord;
         const preflight = await preflightRestoreCode(params.id, deps);
         if (body.confirm !== true) return Response.json({ status: "confirmation_required", ...preflight });
         const create = deps.createWorktree ?? ((id: string, source: string) => getAgentRuntime().worktreeCreate(id, source));
