@@ -24,7 +24,7 @@ test("AppShell exposes one unified settings entry", () => {
 
 test("Agent Runtime owns the global permission profile", () => {
   assert.match(settings, /id: "runtime"/);
-  assert.match(settings, /<AgentRuntimeConfig \/>/);
+  assert.match(settings, /<AgentRuntimeConfig onDirtyChange=\{setRuntimeDirty\}/);
   assert.doesNotMatch(settings, /savePermissionMode/);
 });
 
@@ -54,7 +54,7 @@ test("vision toolkit is not shown in Settings", () => {
 
 test("settings guards every exit path behind one discard confirmation", () => {
   assert.match(settings, /const requestCloseOrNavigate = useCallback\(/);
-  assert.match(settings, /if \(modelsController\?\.dirty \|\| remoteController\?\.dirty\)/);
+  assert.match(settings, /if \(modelsController\?\.dirty \|\| remoteController\?\.dirty \|\| runtimeDirty\)/);
   assert.match(settings, /setPendingExit\(\(\) => action\)/);
   assert.match(settings, /setDiscardDialogOpen\(true\)/);
   assert.match(settings, /onClose=\{\(\) => requestCloseOrNavigate\(close\)\}/);
