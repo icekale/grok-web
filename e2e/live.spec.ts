@@ -13,23 +13,23 @@ test.describe.configure({ mode: "serial" });
 test("runs one bounded authenticated Grok browser turn and verifies persisted history", async ({ page }) => {
   const cwd = process.env.GROK_WEB_E2E_PROJECT_A;
   if (!cwd) throw new Error("live runner did not provide a temporary Git cwd");
-  await page.goto(`/?cwd=${encodeURIComponent(cwd)}`);
-  await authorizeProject(page, cwd);
-  const promptResponse = page.waitForResponse((response) => response.url().includes("/api/agent/") && !response.url().endsWith("/new") && response.request().method() === "POST");
-  await page.getByRole("textbox", { name: "Message" }).fill("LIVE_E2E_MARKER");
-  await page.getByRole("button", { name: "Send" }).click();
-  const prompt = await promptResponse;
-  expect(prompt.ok(), await prompt.text()).toBeTruthy();
-
-  const sessions = await page.request.get("/api/sessions").then((response) => response.json());
-  const owned = (sessions.sessions ?? []).find((session: { cwd?: string }) => session.cwd === cwd);
-  expect(owned?.id).toBeTruthy();
-  const sessionId = owned.id as string;
+  let sessionId: string | undefined;
   try {
-    const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId)}/context`);
+    await page.goto(`/?cwd=${encodeURIComponent(cwd)}`);
+    await authorizeProject(page, cwd);
+    const promptResponse = page.waitForResponse((response) => response.url().includes("/api/agent/") && !response.url().endsWith("/new") && response.request().method() === "POST");
+    await page.getByRole("textbox", { name: "Message" }).fill("LIVE_E2E_MARKER");
+    await page.getByRole("button", { name: "Send" }).click();
+    const prompt = await promptResponse;
+    expect(prompt.ok(), await prompt.text()).toBeTruthy();
+
+    const sessions = await page.request.get("/api/sessions").then((response) => response.json());
+    const owned = (sessions.sessions ?? []).find((session: { cwd?: string }) => session.cwd === cwd);
+    sessionId = owned?.id as string | undefined;
+    expect(sessionId).toBeTruthy();
+    const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId!)}/context`);
     expect(context.ok(), await context.text()).toBeTruthy();
-    const body = await context.json();
-    expect(JSON.stringify(body)).toContain("LIVE_E2E_MARKER");
+    expect(JSON.stringify(await context.json())).toContain("LIVE_E2E_MARKER");
 
     await page.reload();
     await expect(page.getByText("LIVE_E2E_MARKER", { exact: true })).toBeVisible();
@@ -38,11 +38,19 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
       if (response.status() === 200) expect(await response.json()).toBeTruthy();
     }
   } finally {
-    const abort = await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "abort" }, timeout: 5_000 });
-    expect([200, 404], await abort.text()).toContain(abort.status());
-    const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`, { timeout: 5_000 });
-    expect([200, 404], await deleted.text()).toContain(deleted.status());
+    const sessions = await page.request.get("/api/sessions").then((response) => response.json());
+    const ownedIds = new Set<string>();
+    for (const session of sessions.sessions ?? []) {
+      if ((sessionId && session.id === sessionId) || session.cwd === cwd) ownedIds.add(String(session.id));
+    }
+    if (sessionId) ownedIds.add(sessionId);
+    for (const ownedId of ownedIds) {
+      const abort = await page.request.post(`/api/agent/${encodeURIComponent(ownedId)}`, { data: { type: "abort" }, timeout: 5_000 });
+      expect([200, 404], await abort.text()).toContain(abort.status());
+      const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(ownedId)}`, { timeout: 5_000 });
+      expect([200, 404], await deleted.text()).toContain(deleted.status());
+    }
     const remaining = await page.request.get("/api/sessions").then((response) => response.json());
-    expect((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => session.id === sessionId || session.cwd === cwd)).toBe(false);
+    expect((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => ownedIds.has(String(session.id)) || session.cwd === cwd)).toBe(false);
   }
 });

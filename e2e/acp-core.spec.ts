@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   closeOwnedSession,
   createOwnedSession,
+  fixtureEntries,
   fixtureMethods,
   runnerProject,
   captureSafeFailureScreenshot,
@@ -103,16 +104,19 @@ test.describe("ACP core", () => {
   });
 
   test("approves and denies permission requests from the actual dialog", async ({ page }) => {
-    for (const [message, button] of [["E2E_APPROVAL", "Confirm"], ["E2E_APPROVAL", "Cancel"]] as const) {
+    for (const [message, button, expectedStatus] of [["E2E_APPROVAL", "Confirm", "allowed"], ["E2E_APPROVAL", "Cancel", "rejected"]] as const) {
       const sessionId = await createOwnedSession(page, runnerProject("a"));
       try {
         await page.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("a"))}`);
         await page.getByRole("textbox", { name: "Message" }).fill(message);
+        const beforePermissions = fixtureEntries().filter((entry) => entry.method === "permission_response").length;
         await page.getByRole("button", { name: "Send" }).click();
         await expect(page.getByText("Grok needs permission", { exact: true })).toBeVisible();
         await page.getByRole("button", { name: button, exact: true }).click();
         await expect(page.getByText("Grok needs permission", { exact: true })).toBeHidden();
-        await expect.poll(() => fixtureMethods().filter((method) => method === "permission_response").length).toBeGreaterThan(0);
+        await expect.poll(() => fixtureEntries().filter((entry) => entry.method === "permission_response").length).toBeGreaterThan(beforePermissions);
+        const responses = fixtureEntries().filter((entry) => entry.method === "permission_response");
+        expect(responses.at(-1)?.status).toBe(expectedStatus);
       } finally {
         await closeOwnedSession(page, sessionId);
       }

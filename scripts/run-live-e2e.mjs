@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hasGrokApiKey, readGrokAuth } from "../lib/grok-settings/home-config.ts";
+import { sanitizeTraceArchive, validateArtifactDirectory } from "./e2e-artifacts.mjs";
+import { strToU8, zipSync } from "fflate";
 import { allocateLoopbackPort } from "./run-acp-e2e.mjs";
 
 const require = createRequire(import.meta.url);
@@ -61,9 +63,36 @@ function waitForExit(child) {
   });
 }
 
+function findFile(root, suffix) {
+  if (!existsSync(root)) return undefined;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      const found = findFile(path, suffix);
+      if (found) return found;
+    } else if (entry.name.endsWith(suffix)) return path;
+  }
+  return undefined;
+}
+function writeLiveFailureArtifacts(artifactDir, rawDir, exitCode, roots) {
+  mkdirSync(artifactDir, { recursive: true });
+  writeFileSync(join(artifactDir, "chronology.json"), "[]\n");
+  writeFileSync(join(artifactDir, "server.log"), `${JSON.stringify({ status: "failed", exitCode })}\n`);
+  writeFileSync(join(artifactDir, "fixture.log"), "live\n");
+  const rawTrace = findFile(rawDir, ".zip");
+  writeFileSync(join(artifactDir, "trace.zip"), rawTrace
+    ? sanitizeTraceArchive(readFileSync(rawTrace), { roots })
+    : zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
+  if (!existsSync(join(artifactDir, "screenshot.png"))) writeFileSync(join(artifactDir, "screenshot.png"), Buffer.concat([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"), Buffer.from("E2E_SAFE_SCREENSHOT_V1\n")]));
+  validateArtifactDirectory(artifactDir, { roots });
+}
+
 export async function runLiveE2e({ args = [], env = process.env, launcher = (command, childArgs, options) => spawn(command, childArgs, options), preflight = preflightLiveE2e } = {}) {
   const checked = preflight({ env });
   const root = mkdtempSync(join(tmpdir(), "grok-web-live-e2e-"));
+  const artifactDir = join(ROOT, ".artifacts", "e2e-live");
+  rmSync(artifactDir, { recursive: true, force: true });
+  const rawOutputDir = join(root, "raw-output");
   const project = join(root, "project");
   initProject(project);
   const port = await allocateLoopbackPort();
@@ -75,11 +104,14 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
     GROK_WEB_E2E_ISOLATED: "1",
     GROK_WEB_E2E_PORT: String(port),
     GROK_WEB_E2E_PROJECT_A: project,
+    GROK_WEB_E2E_ARTIFACT_DIR: artifactDir,
+    GROK_WEB_E2E_RAW_OUTPUT_DIR: rawOutputDir,
     GROK_HOME: checked.home,
     GROK_WEB_LIVE_E2E_HOME: checked.home,
     GROK_BIN: checked.binary,
   });
   let child;
+  let exitCode = 1;
   try {
     child = launcher(PLAYWRIGHT_CLI, ["test", "e2e/live.spec.ts", ...args], {
       cwd: ROOT,
@@ -88,13 +120,16 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
       detached: process.platform !== "win32",
       stdio: "inherit",
     });
-    return await waitForExit(child);
+    exitCode = await waitForExit(child);
+    if (exitCode !== 0) writeLiveFailureArtifacts(artifactDir, rawOutputDir, exitCode, new Map([[checked.home, "<grok-home>"], [project, "<project>"]]));
+    return exitCode;
   } finally {
     try {
       if (child?.pid && process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
       else child?.kill?.("SIGTERM");
     } catch {}
     rmSync(root, { recursive: true, force: true });
+    if (exitCode === 0) rmSync(artifactDir, { recursive: true, force: true });
   }
 }
 

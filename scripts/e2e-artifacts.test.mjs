@@ -39,7 +39,7 @@ test("redactE2eText masks credentials and runner paths", () => {
     "apiKey=sk-live-secret password: hidden token=abc",
     "https://user:password@example.com/private",
     "/tmp/a/file.ts /tmp/home/auth.json /tmp/fixture/acp-agent.mjs",
-    "/Users/person/private/repo/file.ts",
+    "/Users/person/private/repo/file.ts /tmp/other-user/file.ts /var/log/private.log",
   ].join("\n");
   const redacted = redactE2eText(text, { roots, secrets: ["super-secret-token", "private"] });
   assert.doesNotMatch(redacted, /super-secret-token|dXNlcjpwYXNz|sk-live-secret|hidden|abc|user:password|\/Users\/person/);

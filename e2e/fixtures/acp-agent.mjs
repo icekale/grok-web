@@ -37,7 +37,7 @@ function sessionFor(params = {}) {
   const id = params.sessionId ?? params.session_id;
   return id ? sessions.get(id) : undefined;
 }
-function log(method, params = {}, session = sessionFor(params)) {
+function log(method, params = {}, session = sessionFor(params), status = "") {
   if (!logPath) return;
   const cwd = params.cwd || session?.cwd;
   mkdirSync(dirname(logPath), { recursive: true });
@@ -45,6 +45,7 @@ function log(method, params = {}, session = sessionFor(params)) {
     cwdAlias: cwdAlias(cwd),
     method,
     sessionId: session?.id || params.sessionId || params.session_id || "",
+    status,
     testId,
     timestamp: Date.now(),
   })}\n`);
@@ -144,7 +145,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const pendingResponse = id !== undefined && message.result
     ? [...pendingPermissions.values()].find((item) => item.requestId === id)
     : undefined;
-  log(method || (pendingResponse ? "permission_response" : "rpc_response"), params, pendingResponse ? sessions.get(pendingResponse.sessionId) : session);
+  log(method || (pendingResponse ? "permission_response" : "rpc_response"), params, pendingResponse ? sessions.get(pendingResponse.sessionId) : session, pendingResponse ? (message.result?.outcome?.outcome === "selected" ? "allowed" : "rejected") : "");
 
   if (method === "initialize") {
     result(id, { protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: false } } });

@@ -63,13 +63,13 @@ export async function sanitizePageForScreenshot(page: Page): Promise<void> {
     for (const text of textNodes) if (text.data.trim()) text.data = placeholder;
     for (const input of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")) input.value = placeholder;
     for (const element of document.querySelectorAll<HTMLElement>("*")) {
-      for (const name of ["src", "href", "action", "poster", "data", "srcset"]) element.removeAttribute(name);
+      for (const name of ["src", "href", "action", "poster", "data", "srcset", "style"]) element.removeAttribute(name);
       element.removeAttribute("aria-label");
       element.removeAttribute("title");
     }
     for (const media of document.querySelectorAll("img, svg, canvas, video, iframe")) media.replaceChildren();
     const style = document.createElement("style");
-    style.textContent = "*::before,*::after{content:none!important;background-image:none!important} img,svg,canvas,video,iframe{visibility:hidden!important}";
+    style.textContent = "*::before,*::after{content:none!important;background:none!important;background-image:none!important} *,*::marker{background:none!important;background-image:none!important;list-style-image:none!important} img,svg,canvas,video,iframe{visibility:hidden!important}";
     document.head.append(style);
     document.documentElement.setAttribute("data-e2e-safe-screenshot", "1");
   });
@@ -79,6 +79,7 @@ export async function captureSafeFailureScreenshot(page: Page, path: string): Pr
   await sanitizePageForScreenshot(page);
   expect(await page.locator("html").getAttribute("data-e2e-safe-screenshot")).toBe("1");
   await page.screenshot({ path, animations: "disabled" });
+  appendFileSync(path, "E2E_SAFE_SCREENSHOT_V1\n");
 }
 
 export function appendChronology(path: string, event: Record<string, unknown>): void {

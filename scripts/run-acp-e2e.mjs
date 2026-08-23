@@ -141,7 +141,7 @@ function writeFailureArtifacts(resources, exitCode) {
     writeFileSync(join(resources.artifactDir, "trace.zip"), zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
   }
   if (!existsSync(join(resources.artifactDir, "screenshot.png"))) {
-    writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+    writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.concat([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"), Buffer.from("E2E_SAFE_SCREENSHOT_V1\n")]));
   }
   validateArtifactDirectory(resources.artifactDir, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) });
 }

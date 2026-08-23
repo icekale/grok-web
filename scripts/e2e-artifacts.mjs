@@ -25,7 +25,8 @@ export function redactE2eText(value, { roots = new Map(), secrets = [] } = {}) {
     .replace(/\bBasic\s+[A-Za-z0-9+/=]+/gi, "Basic <redacted>")
     .replace(/((?:api[_-]?key|password|token|secret|authorization))\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>")
     .replace(/([a-z][a-z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/gi, "$1://<redacted>@")
-    .replace(/(?:\/Users\/|\/home\/|\/private\/var\/|[A-Za-z]:\\)[^\s"'<>]*/g, "<path>");
+    .replace(/(?:^|[\s"'=])\/(?!\/)[^\s"'<>]*/g, "$1<path>")
+    .replace(/(?:[A-Za-z]:\\)[^\s"'<>]*/g, "<path>");
   return output;
 }
 
@@ -49,7 +50,7 @@ function isRetainedTraceEntry(name) {
 }
 function isUnsafe(text, secrets = []) {
   return secrets.some((secret) => secret && text.includes(String(secret)))
-    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*["']?(?!<redacted>)[^\s,;"']+|\/Users\/|\/home\/|\/private\/var\/|[A-Za-z]:\\/i.test(text);
+    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*["']?(?!<redacted>)[^\s,;"']+|(?:^|[\s"'=])\/(?!\/)[^\s"'<>]+|[A-Za-z]:\\/i.test(text);
 }
 
 function boundedUnzip(input) {
@@ -125,6 +126,9 @@ export function validateArtifactDirectory(directory, options = {}) {
   writeFileSync(join(directory, "trace.zip"), trace);
   const screenshot = readFileSync(join(directory, "screenshot.png"));
   if (!screenshot.length) throw new Error("empty screenshot artifact");
+  const screenshotText = screenshot.toString("latin1");
+  if (!screenshotText.includes("E2E_SAFE_SCREENSHOT_V1")) throw new Error("screenshot was not captured through the safe overlay");
+  if (isUnsafe(screenshotText, options.secrets)) throw new Error("unsafe screenshot artifact");
   return true;
 }
 
