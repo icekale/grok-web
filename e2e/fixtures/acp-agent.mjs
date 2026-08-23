@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+import { createInterface } from "node:readline";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+const scenario = process.env.GROK_WEB_ACP_FIXTURE_SCENARIO || "core";
+const logPath = process.env.GROK_WEB_ACP_FIXTURE_LOG || process.env.GROK_WEB_STAGE_B_LOG;
+const controlPath = process.env.GROK_WEB_ACP_FIXTURE_CONTROL;
+const testId = process.env.GROK_WEB_ACP_FIXTURE_TEST_ID || "acp-e2e";
+const roots = parseRoots(process.env.GROK_WEB_ACP_FIXTURE_ROOTS);
+const cwdSessions = new Map();
+const sessions = new Map();
+const pendingPermissions = new Map();
+const pausedPrompts = new Map();
+let nextSession = 1;
+let nextRequest = 1;
+
+function parseRoots(value) {
+  if (!value) return new Map();
+  try {
+    const parsed = JSON.parse(value);
+    return new Map(Object.entries(parsed));
+  } catch {
+    return new Map();
+  }
+}
+function cwdAlias(cwd) {
+  if (!cwd) return "<unknown-cwd>";
+  return roots.get(cwd) || "<fixture-cwd>";
+}
+function sessionFor(params = {}) {
+  const id = params.sessionId ?? params.session_id;
+  return id ? sessions.get(id) : undefined;
+}
+function log(method, params = {}, session = sessionFor(params)) {
+  if (!logPath) return;
+  const cwd = params.cwd || session?.cwd;
+  mkdirSync(dirname(logPath), { recursive: true });
+  appendFileSync(logPath, `${JSON.stringify({
+    cwdAlias: cwdAlias(cwd),
+    method,
+    sessionId: session?.id || params.sessionId || params.session_id || "",
+    testId,
+    timestamp: Date.now(),
+  })}\n`);
+}
+function send(value) { process.stdout.write(`${JSON.stringify(value)}\n`); }
+function result(id, value) { send({ jsonrpc: "2.0", id, result: value }); }
+function failure(id, message, code = -32601) { send({ jsonrpc: "2.0", id, error: { code, message } }); }
+function notify(method, params) { send({ jsonrpc: "2.0", method, params }); }
+function sessionIdFor(cwd) {
+  const existing = cwdSessions.get(cwd);
+  if (existing) return existing;
+  const id = `acp-e2e-${nextSession++}`;
+  const session = { id, cwd, mode: "default" };
+  cwdSessions.set(cwd, id);
+  sessions.set(id, session);
+  return id;
+}
+function configOptions(session) {
+  return [{
+    id: "mode",
+    name: "Thinking",
+    type: "select",
+    currentValue: session?.mode ?? "default",
+    options: [
+      { value: "default", name: "Default" },
+      { value: "high", name: "High" },
+      { value: "off", name: "Off" },
+    ],
+  }];
+}
+function snapshot(sessionId) {
+  const session = sessions.get(sessionId);
+  return {
+    sessionId,
+    configOptions: configOptions(session),
+    agentCapabilities: { promptCapabilities: { image: false } },
+  };
+}
+function waitForControl(key, callback) {
+  const timer = setInterval(() => {
+    if (!controlPath || !existsSync(controlPath)) return;
+    let command = "";
+    try { command = readFileSync(controlPath, "utf8").trim(); } catch { return; }
+    if (!command) return;
+    clearInterval(timer);
+    callback(command);
+  }, 20);
+}
+function finishPrompt(id, sessionId, text = "E2E_STREAM_OK") {
+  notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+  result(id, { stopReason: "end_turn" });
+}
+function startPrompt(id, sessionId, text) {
+  if (text === "E2E_PAUSE" || text === "E2E_PARTIAL" || text === "WAIT") {
+    pausedPrompts.set(sessionId, { id, text });
+    notify("session/update", { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: text === "WAIT" ? "" : "E2E_PAR" } } });
+    if (text === "WAIT") return;
+    return waitForControl(`${sessionId}:${id}`, (command) => {
+      pausedPrompts.delete(sessionId);
+      if (command === "cancel") {
+        result(id, { stopReason: "cancelled" });
+        return;
+      }
+      finishPrompt(id, sessionId, text === "E2E_PARTIAL" ? "TIAL_OK" : "E2E_STREAM_OK");
+    });
+  }
+  if (text === "E2E_THOUGHT_TEXT" || text === "E2E_TEXT_MARKER") {
+    notify("session/update", { sessionId, update: { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "E2E_THINKING" } } });
+    finishPrompt(id, sessionId, "E2E_STREAM_OK");
+    return;
+  }
+  if (text === "E2E_TOOL") {
+    notify("session/update", { sessionId, update: { sessionUpdate: "tool_call", toolCallId: "e2e-tool-1", title: "run_terminal_command", rawInput: { command: "echo E2E_TOOL" } } });
+    notify("session/update", { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "e2e-tool-1", status: "in_progress", title: "Running fixture" } });
+    notify("session/update", { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "e2e-tool-1", status: "completed", content: [{ type: "content", content: { type: "text", text: "E2E_TOOL_OK" } }] } });
+    result(id, { stopReason: "end_turn" });
+    return;
+  }
+  if (text === "E2E_APPROVAL") {
+    const requestId = nextRequest++;
+    pendingPermissions.set(`${sessionId}:${requestId}`, { requestId, sessionId, promptId: id });
+    send({ jsonrpc: "2.0", id: requestId, method: "session/request_permission", params: {
+      sessionId,
+      toolCall: { title: "Allow fixture", kind: "execute", rawInput: { command: "echo E2E" } },
+      options: [{ optionId: "allow-once", label: "Allow once", kind: "allow_once" }, { optionId: "reject-once", label: "Reject", kind: "reject_once" }],
+    } });
+    return;
+  }
+  finishPrompt(id, sessionId, text === "E2E_TEXT_MARKER" ? "E2E_STREAM_OK" : "E2E_STREAM_OK");
+}
+
+createInterface({ input: process.stdin }).on("line", (line) => {
+  let message;
+  try { message = JSON.parse(line); } catch { return; }
+  const { id, method, params = {} } = message;
+  const session = sessionFor(params);
+  const pendingResponse = id !== undefined && message.result
+    ? [...pendingPermissions.values()].find((item) => item.requestId === id)
+    : undefined;
+  log(method || (pendingResponse ? "permission_response" : "rpc_response"), params, pendingResponse ? sessions.get(pendingResponse.sessionId) : session);
+
+  if (method === "initialize") {
+    result(id, { protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: false } } });
+    return;
+  }
+  if (method === "session/new") {
+    const sessionId = sessionIdFor(params.cwd);
+    result(id, snapshot(sessionId));
+    return;
+  }
+  if (method === "session/load") {
+    const sessionId = params.sessionId;
+    if (!sessions.has(sessionId)) sessions.set(sessionId, { id: sessionId, cwd: params.cwd, mode: "default" });
+    result(id, snapshot(sessionId));
+    return;
+  }
+  if (method === "session/close") {
+    result(id, { _meta: { "x.ai/closeOutcome": "closed" }, outcome: "closed" });
+    return;
+  }
+  if (method === "session/set_mode" || method === "session/set_config_option") {
+    const target = sessionFor(params);
+    const mode = params.modeId ?? params.value;
+    if (!target || !["default", "high", "off"].includes(mode)) {
+      failure(id, "unsupported mode", -32602);
+      return;
+    }
+    target.mode = mode;
+    result(id, snapshot(target.id));
+    notify("session/update", { sessionId: target.id, update: { sessionUpdate: "config_option_update", configOptions: configOptions(target) } });
+    return;
+  }
+  if (method === "session/set_model") { result(id, { _meta: { model: { Ok: params.modelId || "grok-4.6" } } }); return; }
+  if (method === "session/prompt") {
+    startPrompt(id, params.sessionId, params.prompt?.[0]?.text ?? "");
+    return;
+  }
+  if (method === "session/cancel") {
+    const waiting = pausedPrompts.get(params.sessionId);
+    if (waiting) {
+      pausedPrompts.delete(params.sessionId);
+      result(waiting.id, { stopReason: "cancelled" });
+    }
+    result(id, { stopReason: "cancelled" });
+    return;
+  }
+  if (method === "_x.ai/mcp/list") { result(id, { servers: [{ name: `mcp-${params.session_id || "none"}`, source: "acp-e2e" }] }); return; }
+  if (method === "_x.ai/plugins/list") { result(id, { plugins: [{ name: `plugin-${params.sessionId || "none"}`, enabled: true }] }); return; }
+  if (method === "_x.ai/marketplace/list") { result(id, { sources: [] }); return; }
+  if (method === "_x.ai/models/list") { result(id, { result: { currentModelId: "grok-4.6", availableModels: [{ modelId: "grok-4.6", name: "Grok 4.6" }] } }); return; }
+  if (method === "_x.ai/auth/check_subscription") { result(id, { authenticated: true }); return; }
+  if (method === "_x.ai/git/worktree/list") { result(id, { worktrees: [] }); return; }
+  if (method === "_x.ai/plugins/action" || method === "_x.ai/marketplace/action") { result(id, { status: "success" }); return; }
+
+  if (pendingResponse) {
+    pendingPermissions.delete(`${pendingResponse.sessionId}:${pendingResponse.requestId}`);
+    result(pendingResponse.promptId, { stopReason: "end_turn" });
+    return;
+  }
+  failure(id, `Method not found: ${method}`);
+});
+
+if (scenario === "fail-unknown") {
+  // The default handler already rejects every method outside the explicit contract.
+}

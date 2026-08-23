@@ -5,7 +5,7 @@ import { once } from "node:events";
 import test from "node:test";
 
 function startFixture() {
-  const child = spawn(process.execPath, [fileURLToPath(new URL("../e2e/fixtures/stage-b-acp.mjs", import.meta.url))], { stdio: ["pipe", "pipe", "inherit"] });
+  const child = spawn(process.execPath, [fileURLToPath(new URL("../e2e/fixtures/acp-agent.mjs", import.meta.url))], { stdio: ["pipe", "pipe", "inherit"] });
   let buffer = "";
   const messages = [];
   child.stdout.on("data", (chunk) => {
@@ -43,8 +43,8 @@ test("stage B fixture allocates distinct cwd sessions and fails unknown methods"
     const b = await request("session/new", { cwd: "/tmp/stage-b-b" });
     assert.notEqual(a.sessionId, b.sessionId);
     await request("_x.ai/mcp/list", { session_id: a.sessionId });
-    assert.deepEqual(messages.find((message) => message.method === undefined && message.result?.servers)?.result.servers, [{ name: `mcp-${a.sessionId}`, source: "stage-b" }]);
-    await assert.rejects(request("stage-b/unknown"), /Unknown method/);
+    assert.deepEqual(messages.find((message) => message.method === undefined && message.result?.servers)?.result.servers, [{ name: `mcp-${a.sessionId}`, source: "acp-e2e" }]);
+    await assert.rejects(request("stage-b/unknown"), /Method not found/);
   } finally {
     child.kill();
     await once(child, "exit").catch(() => {});

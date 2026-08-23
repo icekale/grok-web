@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const enabled = process.env.GROK_WEB_STAGE_B_E2E === "1";
-test.skip(!enabled, "set GROK_WEB_STAGE_B_E2E=1 with GROK_BIN pointing at the Stage B fixture");
+test.skip(!enabled, "set GROK_WEB_STAGE_B_E2E=1 with GROK_BIN pointing at the ACP fixture");
 test.describe.configure({ mode: "serial" });
 
 const projectA = process.env.GROK_WEB_STAGE_B_PROJECT_A || process.cwd();
@@ -75,13 +75,13 @@ test("routes MCP and Plugins through distinct cwd-owned sessions", async ({ page
       const pluginsText = await plugins.text();
       expect(mcp.ok(), mcpText).toBeTruthy();
       expect(plugins.ok(), pluginsText).toBeTruthy();
-      const mcpSources = (JSON.parse(mcpText).packages ?? []).map((pkg: { source?: string }) => pkg.source).filter((source: string) => source?.startsWith("mcp-stage-b-"));
-      const pluginSources = (JSON.parse(pluginsText).packages ?? []).map((pkg: { source?: string }) => pkg.source).filter((source: string) => source?.startsWith("plugin-stage-b-"));
+      const mcpSources = (JSON.parse(mcpText).packages ?? []).map((pkg: { source?: string }) => pkg.source).filter((source: string) => source?.startsWith("mcp-acp-e2e-"));
+      const pluginSources = (JSON.parse(pluginsText).packages ?? []).map((pkg: { source?: string }) => pkg.source).filter((source: string) => source?.startsWith("plugin-acp-e2e-"));
       expect(mcpSources.length, mcpText).toBeGreaterThan(0);
       expect(pluginSources.length, pluginsText).toBeGreaterThan(0);
       const listed = await page.request.get("/api/sessions");
       for (const session of (await listed.json()).sessions ?? []) {
-        if (String(session.id).startsWith("stage-b-")) sessions.push(session.id);
+        if (String(session.id).startsWith("acp-e2e-")) sessions.push(session.id);
       }
     }
     const workspaceCalls = fixtureLog().filter((entry) => ["_x.ai/mcp/list", "_x.ai/plugins/list", "_x.ai/marketplace/list"].includes(entry.method));
