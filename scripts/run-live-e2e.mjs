@@ -63,6 +63,33 @@ function initProject(path) {
   execFileSync("git", ["-C", path, "commit", "-qm", "live e2e fixture"]);
 }
 
+function listWorktreeIds(home, binary) {
+  const output = execFileSync(binary, ["worktree", "list"], { env: { ...process.env, GROK_HOME: home }, encoding: "utf8" });
+  return new Set(output.split(/\r?\n/).map((line) => line.trim().split(/\s+/)[0]).filter((id) => id && id !== "ID"));
+}
+
+async function cleanupOwnedLiveHome(home, binary, project, initialWorktreeIds = new Set()) {
+  const canonicalProject = realpathSync(project);
+  const sessionDir = join(home, "sessions", encodeURIComponent(canonicalProject));
+  rmSync(sessionDir, { recursive: true, force: true });
+  const env = { ...process.env, GROK_HOME: home };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    for (const id of listWorktreeIds(home, binary)) {
+      if (!initialWorktreeIds.has(id)) execFileSync(binary, ["worktree", "rm", "-f", id], { env, stdio: "ignore" });
+    }
+    for (const entry of readdirSync(join(home, "worktrees"), { withFileTypes: true })) {
+      if (entry.isDirectory() && readdirSync(join(home, "worktrees", entry.name)).length === 0) rmSync(join(home, "worktrees", entry.name), { recursive: true, force: true });
+    }
+    const remainingIds = [...listWorktreeIds(home, binary)].filter((id) => !initialWorktreeIds.has(id));
+    if (remainingIds.length === 0) {
+      if (existsSync(sessionDir)) throw new Error(`Live E2E session files remain under ${sessionDir}`);
+      return;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+  }
+  throw new Error("Live E2E worktree residue remains in the dedicated home");
+}
+
 function waitForExit(child) {
   return new Promise((resolveExit) => {
     child.once("exit", (code, signal) => resolveExit(typeof code === "number" ? code : signal ? 128 : 1));
@@ -99,7 +126,7 @@ function writeLiveFailureArtifacts(artifactDir, rawDir, exitCode, roots) {
   }
 }
 
-export async function runLiveE2e({ args = [], env = process.env, launcher = (command, childArgs, options) => spawn(command, childArgs, options), preflight = preflightLiveE2e } = {}) {
+export async function runLiveE2e({ args = [], env = process.env, launcher = (command, childArgs, options) => spawn(command, childArgs, options), preflight = preflightLiveE2e, cleanup = cleanupOwnedLiveHome, snapshotWorktrees = listWorktreeIds } = {}) {
   const checked = preflight({ env });
   const artifactDir = join(ROOT, ".artifacts", "e2e-live");
   rmSync(artifactDir, { recursive: true, force: true });
@@ -108,11 +135,14 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
   let rawOutputDir;
   let child;
   let exitCode = 1;
+  let cleanupError;
+  let initialWorktreeIds = new Set();
   try {
     root = mkdtempSync(join(tmpdir(), "grok-web-live-e2e-"));
     rawOutputDir = join(root, "raw-output");
     project = join(root, "project");
     initProject(project);
+    initialWorktreeIds = snapshotWorktrees(checked.home, checked.binary);
     const port = await allocateLoopbackPort();
     const runEnv = { ...env };
     delete runEnv.GROK_WEB_PASSWORD;
@@ -143,10 +173,17 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
       if (child?.pid && process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
       else child?.kill?.("SIGTERM");
     } catch {}
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_000));
+    try {
+      if (project) await cleanup(checked.home, checked.binary, project, initialWorktreeIds);
+    } catch (error) {
+      cleanupError = error;
+    }
     if (root) {
       rmSync(root, { recursive: true, force: true });
       if (existsSync(root)) throw new Error(`Live E2E cleanup left residual path: ${root}`);
     }
+    if (cleanupError) throw cleanupError;
     if (exitCode === 0) {
       rmSync(artifactDir, { recursive: true, force: true });
       if (existsSync(artifactDir)) throw new Error(`Live E2E cleanup left artifact path: ${artifactDir}`);

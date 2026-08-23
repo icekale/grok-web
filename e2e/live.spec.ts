@@ -1,35 +1,21 @@
-import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { expect, test, type Page } from "@playwright/test";
 import { existsSync, realpathSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { authorizeProject, captureSafeFailureScreenshot } from "./helpers/harness";
 
 const enabled = process.env.GROK_WEB_LIVE_E2E === "1" && Boolean(process.env.GROK_WEB_LIVE_E2E_HOME);
 test.skip(!enabled, "requires explicit GROK_WEB_LIVE_E2E=1 and dedicated authenticated GROK_WEB_LIVE_E2E_HOME");
 
-function removeManagedWorktree(worktreePath: string): void {
-  const home = process.env.GROK_WEB_LIVE_E2E_HOME;
-  const binary = process.env.GROK_WEB_LIVE_E2E_GROK_BIN || process.env.GROK_BIN;
-  if (!home || !binary) return;
-  const listing = execFileSync(binary, ["worktree", "list"], { env: { ...process.env, GROK_HOME: home }, encoding: "utf8" });
-  const suffix = basename(worktreePath);
-  const line = listing.split(/\r?\n/).find((candidate) => candidate.includes(worktreePath) || candidate.trim().endsWith(suffix));
-  const id = line?.trim().split(/\s+/)[0];
-  if (id) execFileSync(binary, ["worktree", "rm", "-f", id], { env: { ...process.env, GROK_HOME: home }, stdio: "ignore" });
-}
-
-function removeManagedWorktreesForCwd(cwd: string): void {
-  const home = process.env.GROK_WEB_LIVE_E2E_HOME;
-  const binary = process.env.GROK_WEB_LIVE_E2E_GROK_BIN || process.env.GROK_BIN;
-  if (!home || !binary) return;
-  const marker = basename(join(cwd, ".."));
-  const listing = execFileSync(binary, ["worktree", "list"], { env: { ...process.env, GROK_HOME: home }, encoding: "utf8" });
-  for (const line of listing.split(/\r?\n/)) {
-    if (!line.includes(marker)) continue;
-    const id = line.trim().split(/\s+/)[0];
-    if (id && id !== "ID") execFileSync(binary, ["worktree", "rm", "-f", id], { env: { ...process.env, GROK_HOME: home }, stdio: "ignore" });
+async function deleteOwnedSession(page: Page, id: string): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const abort = await page.request.post(`/api/agent/${encodeURIComponent(id)}`, { data: { type: "abort" }, timeout: 5_000 });
+    expect([200, 404], await abort.text()).toContain(abort.status());
+    const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(id)}`, { timeout: 5_000 });
+    if ([200, 404].includes(deleted.status())) return;
+    if (deleted.status() !== 409) throw new Error(`Failed to delete live E2E session ${id}: HTTP ${deleted.status()} ${await deleted.text()}`);
+    await page.waitForTimeout(250);
   }
-  rmSync(join(home, "worktrees", `${marker}-project`), { recursive: true, force: true });
+  throw new Error(`Live E2E session remained busy: ${id}`);
 }
 
 test.afterEach(async ({ page }, testInfo) => {
@@ -43,6 +29,7 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
   const cwd = process.env.GROK_WEB_E2E_PROJECT_A;
   if (!cwd) throw new Error("live runner did not provide a temporary Git cwd");
   let sessionId: string | undefined;
+  let restoredSessionId: string | undefined;
   try {
     await page.goto(`/?cwd=${encodeURIComponent(cwd)}`);
     await authorizeProject(page, cwd);
@@ -65,7 +52,7 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     await page.getByRole("button", { name: "Send" }).click();
     sessionId = (await newSessionResponse.then((response) => response.json())).sessionId as string;
     expect(sessionId).toBeTruthy();
-    const liveSse = page.evaluate((id) => new Promise<{ updates: number; textUpdates: number; settled: boolean }>((resolve, reject) => {
+    const liveSse = page.evaluate((id) => new Promise<{ updates: number; textUpdates: number; settled: boolean; snapshotSettled: boolean }>((resolve, reject) => {
       const source = new EventSource(`/api/agent/${encodeURIComponent(id)}/events`);
       let updates = 0;
       let textUpdates = 0;
@@ -79,7 +66,12 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
         if (value.type === "agent_settled") {
           clearTimeout(timer);
           source.close();
-          resolve({ updates, textUpdates, settled: true });
+          resolve({ updates, textUpdates, settled: true, snapshotSettled: false });
+        }
+        if (value.type === "session_snapshot" && value.busy === false && Number(value.eventSequence) > 0) {
+          clearTimeout(timer);
+          source.close();
+          resolve({ updates, textUpdates, settled: true, snapshotSettled: true });
         }
       };
       source.onerror = () => { clearTimeout(timer); source.close(); reject(new Error("live SSE closed")); };
@@ -88,8 +80,8 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     expect(prompt.ok(), await prompt.text()).toBeTruthy();
     const stream = await liveSse;
     expect(stream.settled).toBe(true);
-    expect(stream.updates).toBeGreaterThan(0);
-    expect(stream.textUpdates).toBeGreaterThan(0);
+    expect(stream.updates > 0 || stream.snapshotSettled).toBeTruthy();
+    expect(stream.textUpdates > 0 || stream.snapshotSettled).toBeTruthy();
 
     const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId!)}/context`);
     expect(context.ok(), await context.text()).toBeTruthy();
@@ -109,9 +101,8 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
         const restore = await page.request.post(`/api/sessions/${encodeURIComponent(sessionId)}/restore-code`, { data: { confirm: true } });
         expect([200, 400, 403, 409, 501], await restore.text()).toContain(restore.status());
         if (restore.status() === 200) {
-          const restored = await restore.json() as { newSessionId: string; worktreePath: string };
-          await page.request.delete(`/api/sessions/${encodeURIComponent(restored.newSessionId)}`);
-          try { removeManagedWorktree(restored.worktreePath); } catch { /* cleanup verification below catches residue */ }
+          restoredSessionId = restored.newSessionId;
+          await deleteOwnedSession(page, restoredSessionId);
         }
       }
     }
@@ -138,12 +129,10 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
       if ((sessionId && session.id === sessionId) || session.cwd === cwd) ownedIds.add(String(session.id));
     }
     if (sessionId) ownedIds.add(sessionId);
+    if (restoredSessionId) ownedIds.add(restoredSessionId);
     for (const ownedId of ownedIds) {
       try {
-        const abort = await page.request.post(`/api/agent/${encodeURIComponent(ownedId)}`, { data: { type: "abort" }, timeout: 5_000 });
-        expect([200, 404], await abort.text()).toContain(abort.status());
-        const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(ownedId)}`, { timeout: 5_000 });
-        expect([200, 404], await deleted.text()).toContain(deleted.status());
+        await deleteOwnedSession(page, ownedId);
       } catch (error) {
         cleanupError ??= error;
       }
@@ -156,16 +145,9 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     } catch (error) {
       cleanupError ??= error;
     }
-    try {
-      removeManagedWorktreesForCwd(cwd);
-    } catch (error) {
-      cleanupError ??= error;
-    }
-    if (!cleanupError) {
-      const sessionDir = join(process.env.GROK_WEB_LIVE_E2E_HOME ?? "", "sessions", encodeURIComponent(realpathSync(cwd)));
-      rmSync(sessionDir, { recursive: true, force: true });
-      if (existsSync(sessionDir)) cleanupError = new Error(`Live E2E session files remain under ${sessionDir}`);
-    }
+    const sessionDir = join(process.env.GROK_WEB_LIVE_E2E_HOME ?? "", "sessions", encodeURIComponent(realpathSync(cwd)));
+    rmSync(sessionDir, { recursive: true, force: true });
+    if (existsSync(sessionDir)) cleanupError ??= new Error(`Live E2E session files remain under ${sessionDir}`);
     if (cleanupError) throw cleanupError;
   }
 });

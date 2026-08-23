@@ -55,7 +55,7 @@ test("live child environment pins the dedicated home", async () => {
     launchedEnv = options.env;
     return { pid: undefined, once(event, callback) { if (event === "exit") queueMicrotask(() => callback(0, null)); return this; }, kill() {} };
   };
-  const code = await runLiveE2e({ env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home }, launcher, preflight: () => ({ home, binary: process.execPath }) });
+  const code = await runLiveE2e({ env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home }, launcher, preflight: () => ({ home, binary: process.execPath }), cleanup: () => {}, snapshotWorktrees: () => new Set() });
   assert.equal(code, 0);
   assert.equal(launchedEnv.GROK_HOME, home);
 });
