@@ -99,7 +99,7 @@ assert.match(source, /defaultThinkingDetailsExpanded: false/);
 
 - [ ] **Step 5: 更新 ACP 浏览器场景的可见性断言**
 
-在 `e2e/acp-core.spec.ts` 的 `E2E_TOOL` 场景中，发送后直接断言工具名和 `E2E_TOOL_OK` 可见，不再先点击 `button.chat-process-summary` 才能看到工具；保留过程摘要断言只用于已完成历史回合的场景。
+`E2E_TOOL` 夹具会很快完成整轮，因此浏览器场景验证完成态的混合行为：发送后等待 `button.chat-process-summary`，点击一次后直接断言工具名、命令和 `E2E_TOOL_OK` 可见。流式阶段无需点击的行为由 `MessageView.test.mjs` 的实时结果断言覆盖；若要在浏览器层观察中途状态，应使用带暂停控制的夹具场景，不把瞬时完成的 `E2E_TOOL` 当作流式时序测试。
 
 - [ ] **Step 6: 运行测试确认 RED**
 

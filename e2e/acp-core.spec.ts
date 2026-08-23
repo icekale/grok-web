@@ -101,8 +101,9 @@ test.describe("ACP core", () => {
       const processToggle = page.locator("button.chat-process-summary");
       await expect(processToggle).toBeVisible();
       await processToggle.click();
-      await expect(page.getByText("bash", { exact: true })).toBeVisible();
-      await expect(page.getByText("echo E2E_TOOL", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: /bash echo E2E_TOOL/ })).toBeVisible();
+      await expect(page.locator("pre").filter({ hasText: "echo E2E_TOOL" })).toBeVisible();
+      await expect(page.getByText("E2E_TOOL_OK", { exact: true })).toBeVisible();
       await expect(processToggle).toContainText("Processed");
     } finally {
       await closeOwnedSession(page, sessionId);
