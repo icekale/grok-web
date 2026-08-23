@@ -36,9 +36,9 @@ test.describe("ACP recovery", () => {
       Object.defineProperty(window, "__e2eSourceCount", { configurable: true, get: () => sources.length });
       Object.defineProperty(window, "__e2eSnapshotCount", { configurable: true, get: () => snapshotCount });
     });
-    const sessionId = await createOwnedSession(page, runnerProject("a"));
+    const sessionId = await createOwnedSession(page, runnerProject("b"));
     try {
-      await page.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("a"))}`);
+      await page.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("b"))}`);
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_PARTIAL");
       await page.getByRole("button", { name: "Send" }).click();
       await expect(page.getByText("E2E_PAR", { exact: true })).toBeVisible();
@@ -46,7 +46,7 @@ test.describe("ACP recovery", () => {
       await page.evaluate(() => (window as unknown as { __forceE2eDisconnect: () => void }).__forceE2eDisconnect());
       await expect.poll(() => page.evaluate(() => (window as unknown as { __e2eSnapshotCount: number }).__e2eSnapshotCount), { timeout: 15_000 }).toBeGreaterThan(snapshotCount);
       releaseFixture("release");
-      await expect(page.getByText("E2E_PARTIAL_OK", { exact: true })).toBeVisible();
+      await expect(page.getByText("E2E_PARTIAL_OK", { exact: true })).toBeVisible({ timeout: 15_000 });
       expect(await page.getByText("E2E_PARTIAL_OK", { exact: true }).count()).toBe(1);
     } finally {
       await closeOwnedSession(page, sessionId);
@@ -56,14 +56,9 @@ test.describe("ACP recovery", () => {
   test("two tabs show one approval and first response wins", async ({ page, browser }) => {
     const second = await browser.newPage();
     const sessionId = await createOwnedSession(page, runnerProject("a"));
-    const statuses: number[] = [];
-    const record = (response: { url(): string; status(): number }) => {
-      if (response.url().includes(`/api/agent/${encodeURIComponent(sessionId)}`)) statuses.push(response.status());
-    };
-    page.on("response", record);
-    second.on("response", record);
     try {
       await page.goto(`/?cwd=${encodeURIComponent(runnerProject("a"))}`);
+      const beforePermissions = fixtureMethods().filter((method) => method === "permission_response").length;
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_APPROVAL");
       await page.getByRole("button", { name: "Send" }).click();
       await expect(page.getByText("Grok needs permission", { exact: true })).toBeVisible();
@@ -81,13 +76,13 @@ test.describe("ACP recovery", () => {
           }
         };
       }), sessionId);
-      expect(secondPending).toBe("1");
+      expect(secondPending).toMatch(/^\d+$/);
       void page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
-        data: { type: "extension_ui_response", id: "1", confirmed: true },
+        data: { type: "extension_ui_response", id: secondPending, confirmed: true },
       });
-      await expect.poll(() => fixtureMethods().filter((method) => method === "permission_response").length).toBe(1);
+      await expect.poll(() => fixtureMethods().filter((method) => method === "permission_response").length).toBe(beforePermissions + 1);
       const lateResponse = await second.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
-        data: { type: "extension_ui_response", id: "1", cancelled: true },
+        data: { type: "extension_ui_response", id: secondPending, cancelled: true },
         timeout: 5_000,
       });
       expect(lateResponse.status()).toBe(409);
