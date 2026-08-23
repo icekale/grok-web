@@ -27,6 +27,10 @@ function defaultBinary(home, env) {
   }
 }
 
+function isOfficialGrokAuthMethod(method) {
+  return method === "grok.com" || /^https:\/\/auth\.x\.ai::[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(method);
+}
+
 export function preflightLiveE2e({ env = process.env, defaultHome = join(homedir(), ".grok"), resolveBinary = (home) => defaultBinary(home, env), readAuth = readGrokAuth, hasApiKey = hasGrokApiKey } = {}) {
   if (env.GROK_WEB_LIVE_E2E !== "1") throw new Error("Set GROK_WEB_LIVE_E2E=1 to opt into live E2E.");
   const homeValue = env.GROK_WEB_LIVE_E2E_HOME;
@@ -43,7 +47,7 @@ export function preflightLiveE2e({ env = process.env, defaultHome = join(homedir
   const canonicalBinary = realpathSync(binary);
   if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(canonicalBinary)) throw new Error("Live E2E refuses the repository ACP fixture binary.");
   const auth = readAuth(canonicalHome);
-  if (!auth.methods.includes("grok.com") && !hasApiKey(canonicalHome)) {
+  if (!auth.methods.some(isOfficialGrokAuthMethod) && !hasApiKey(canonicalHome)) {
     throw new Error("Dedicated Grok home is not authenticated: use grok.com OAuth or the official top-level API key.");
   }
   return { home: canonicalHome, binary: canonicalBinary };

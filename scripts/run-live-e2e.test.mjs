@@ -42,6 +42,12 @@ test("live preflight accepts exact grok.com auth or the top-level official key",
   }
 });
 
+test("live preflight accepts the current official auth.x.ai device credential", () => {
+  const home = homeWithAuth(["https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"]);
+  const result = preflightLiveE2e({ env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home }, resolveBinary: () => process.execPath });
+  assert.equal(result.home, realpathSync(home));
+});
+
 test("live child environment pins the dedicated home", async () => {
   const home = homeWithAuth(["grok.com"]);
   let launchedEnv;
