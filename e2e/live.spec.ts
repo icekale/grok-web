@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { authorizeProject } from "./helpers/harness";
+import { authorizeProject, captureSafeFailureScreenshot } from "./helpers/harness";
 
 const enabled = process.env.GROK_WEB_LIVE_E2E === "1" && Boolean(process.env.GROK_WEB_LIVE_E2E_HOME);
 test.skip(!enabled, "requires explicit GROK_WEB_LIVE_E2E=1 and dedicated authenticated GROK_WEB_LIVE_E2E_HOME");
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const artifactDir = process.env.GROK_WEB_E2E_ARTIFACT_DIR;
+  if (artifactDir) await captureSafeFailureScreenshot(page, `${artifactDir}/screenshot.png`).catch(() => undefined);
+});
 test.describe.configure({ mode: "serial" });
 
 test("runs one bounded authenticated Grok browser turn and verifies persisted history", async ({ page }) => {
@@ -33,7 +38,11 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
       if (response.status() === 200) expect(await response.json()).toBeTruthy();
     }
   } finally {
-    await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "abort" }, timeout: 5_000 }).catch(() => undefined);
-    await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`, { timeout: 5_000 }).catch(() => undefined);
+    const abort = await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "abort" }, timeout: 5_000 });
+    expect([200, 404], await abort.text()).toContain(abort.status());
+    const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`, { timeout: 5_000 });
+    expect([200, 404], await deleted.text()).toContain(deleted.status());
+    const remaining = await page.request.get("/api/sessions").then((response) => response.json());
+    expect((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => session.id === sessionId || session.cwd === cwd)).toBe(false);
   }
 });

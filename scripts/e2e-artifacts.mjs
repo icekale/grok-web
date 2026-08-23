@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
 export const EXPECTED_ARTIFACTS = ["chronology.json", "server.log", "fixture.log", "trace.zip", "screenshot.png"];
+const MAX_TRACE_INPUT_BYTES = 20 * 1024 * 1024;
+const MAX_TRACE_ENTRIES = 100;
+const MAX_TRACE_OUTPUT_BYTES = 20 * 1024 * 1024;
 
 function rootEntries(roots = new Map()) {
   return [...(roots instanceof Map ? roots.entries() : Object.entries(roots))]
@@ -46,22 +49,57 @@ function isRetainedTraceEntry(name) {
 }
 function isUnsafe(text, secrets = []) {
   return secrets.some((secret) => secret && text.includes(String(secret)))
-    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*(?!<redacted>)[^\s,;]+|\/Users\/|\/home\/|\/private\/var\/|[A-Za-z]:\\/i.test(text);
+    || /Bearer\s+(?!<redacted>)[A-Za-z0-9._~+/=-]+|Basic\s+(?!<redacted>)[A-Za-z0-9+/=]+|(?:api[_-]?key|password|token|secret|authorization)\s*[:=]\s*["']?(?!<redacted>)[^\s,;"']+|\/Users\/|\/home\/|\/private\/var\/|[A-Za-z]:\\/i.test(text);
+}
+
+function boundedUnzip(input) {
+  if (input.length > MAX_TRACE_INPUT_BYTES) throw new Error("trace input exceeds size limit");
+  const entries = unzipSync(input);
+  const names = Object.keys(entries);
+  if (names.length > MAX_TRACE_ENTRIES) throw new Error("trace contains too many entries");
+  const bytes = names.reduce((sum, name) => sum + entries[name].length, 0);
+  if (bytes > MAX_TRACE_OUTPUT_BYTES) throw new Error("trace output exceeds size limit");
+  return entries;
+}
+function sanitizeTraceValue(value, key, options) {
+  if (typeof value === "string") {
+    return /prompt|text|value|body|content|input|output|message|title|url|path|source|cookie|header|secret|token|password|authorization|api[_-]?key/i.test(key)
+      ? "<redacted>"
+      : redactE2eText(value, options);
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeTraceValue(item, key, options));
+  if (value && typeof value === "object") {
+    const output = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+      if (/resource|screenshot|source|body/i.test(childKey)) continue;
+      output[childKey] = sanitizeTraceValue(childValue, childKey, options);
+    }
+    return output;
+  }
+  return value;
+}
+function sanitizeTraceText(text, options) {
+  return text.split(/\r?\n/).filter(Boolean).map((line) => {
+    try {
+      return JSON.stringify(sanitizeTraceValue(JSON.parse(line), "", options));
+    } catch {
+      return redactE2eText(line, options);
+    }
+  }).join("\n") + (text.endsWith("\n") ? "\n" : "");
 }
 
 export function sanitizeTraceArchive(input, options = {}) {
-  const entries = unzipSync(input);
+  const entries = boundedUnzip(input);
   const retained = {};
   for (const [name, bytes] of Object.entries(entries)) {
     if (!isRetainedTraceEntry(name)) continue;
-    const text = strFromU8(bytes);
-    const redacted = redactE2eText(text, options);
+    const redacted = sanitizeTraceText(strFromU8(bytes), options);
     if (isUnsafe(redacted, options.secrets)) throw new Error(`unsafe trace entry: ${name}`);
     retained[name] = strToU8(redacted);
   }
   if (!Object.keys(retained).length) throw new Error("trace contains no safe metadata");
   const output = zipSync(retained, { level: 6 });
-  const reopened = unzipSync(output);
+  const reopened = boundedUnzip(output);
   for (const [name, bytes] of Object.entries(reopened)) {
     const text = strFromU8(bytes);
     if (isUnsafe(text, options.secrets)) throw new Error(`unsafe sanitized trace: ${name}`);
@@ -76,9 +114,14 @@ export function validateArtifactDirectory(directory, options = {}) {
   for (const name of ["chronology.json", "server.log", "fixture.log"]) {
     const text = readFileSync(join(directory, name), "utf8");
     const redacted = redactE2eText(text, options);
-    if (isUnsafe(redacted, options.secrets)) throw new Error(`unsafe artifact: ${name}`);
+    if (text !== redacted || isUnsafe(redacted, options.secrets)) throw new Error(`unsafe artifact: ${name}`);
   }
-  const trace = sanitizeTraceArchive(readFileSync(join(directory, "trace.zip")), options);
+  const rawTrace = readFileSync(join(directory, "trace.zip"));
+  const rawEntries = boundedUnzip(rawTrace);
+  for (const [name, bytes] of Object.entries(rawEntries)) {
+    if (isRetainedTraceEntry(name) && isUnsafe(strFromU8(bytes), options.secrets)) throw new Error(`unsafe artifact: ${name}`);
+  }
+  const trace = sanitizeTraceArchive(rawTrace, options);
   writeFileSync(join(directory, "trace.zip"), trace);
   const screenshot = readFileSync(join(directory, "screenshot.png"));
   if (!screenshot.length) throw new Error("empty screenshot artifact");

@@ -75,6 +75,7 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
     GROK_WEB_E2E_ISOLATED: "1",
     GROK_WEB_E2E_PORT: String(port),
     GROK_WEB_E2E_PROJECT_A: project,
+    GROK_HOME: checked.home,
     GROK_WEB_LIVE_E2E_HOME: checked.home,
     GROK_BIN: checked.binary,
   });

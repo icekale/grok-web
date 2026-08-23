@@ -48,18 +48,18 @@ test("redactE2eText masks credentials and runner paths", () => {
 
 test("sanitizeTraceArchive drops bodies/resources and revalidates retained strings", () => {
   const input = zipSync({
-    "trace.trace": strToU8(JSON.stringify({ title: "<project-a>/run", secret: "Bearer trace-secret" })),
+    "trace.trace": strToU8(JSON.stringify({ title: "<project-a>/run", secret: "Bearer trace-secret", apiKey: "quoted-trace-secret" })),
     "trace.network": strToU8(JSON.stringify({ url: "https://user:pass@example.com", body: "private" })),
     "resources/secret.txt": strToU8("apiKey=trace-secret"),
     "screenshot/shot.png": new Uint8Array([1, 2, 3]),
     "test-source.ts": strToU8("/Users/person/private/repo"),
   });
-  const output = sanitizeTraceArchive(input, { roots, secrets: ["trace-secret", "private"] });
+  const output = sanitizeTraceArchive(input, { roots, secrets: ["trace-secret", "quoted-trace-secret", "private"] });
   const entries = unzipSync(output);
   assert.deepEqual(Object.keys(entries), ["trace.trace"]);
   const trace = strFromU8(entries["trace.trace"]);
   assert.doesNotMatch(trace, /trace-secret/);
-  assert.match(trace, /<project-a>\/run/);
+  assert.doesNotMatch(trace, /<project-a>\/run/);
 });
 
 test("validateArtifactDirectory rejects extra files and unsafe retained trace data", () => {

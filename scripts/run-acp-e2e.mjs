@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { strToU8, zipSync } from "fflate";
-import { redactE2eText, validateArtifactDirectory } from "./e2e-artifacts.mjs";
+import { redactE2eText, sanitizeTraceArchive, validateArtifactDirectory } from "./e2e-artifacts.mjs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
@@ -117,14 +117,32 @@ function terminateProcessGroup(child) {
   }
 }
 
+function findFile(root, suffix) {
+  if (!existsSync(root)) return undefined;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      const found = findFile(path, suffix);
+      if (found) return found;
+    } else if (entry.name.endsWith(suffix)) return path;
+  }
+  return undefined;
+}
 function writeFailureArtifacts(resources, exitCode) {
   mkdirSync(resources.artifactDir, { recursive: true });
   writeFileSync(join(resources.artifactDir, "chronology.json"), "[]\n");
   writeFileSync(join(resources.artifactDir, "server.log"), `${JSON.stringify({ status: "failed", exitCode })}\n`);
   const fixtureLog = existsSync(resources.logPath) ? readFileSync(resources.logPath, "utf8") : "";
   writeFileSync(join(resources.artifactDir, "fixture.log"), redactE2eText(fixtureLog, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) }));
-  writeFileSync(join(resources.artifactDir, "trace.zip"), zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
-  writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+  const rawTrace = findFile(resources.rawOutputDir, ".zip");
+  if (rawTrace) {
+    writeFileSync(join(resources.artifactDir, "trace.zip"), sanitizeTraceArchive(readFileSync(rawTrace), { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) }));
+  } else {
+    writeFileSync(join(resources.artifactDir, "trace.zip"), zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
+  }
+  if (!existsSync(join(resources.artifactDir, "screenshot.png"))) {
+    writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+  }
   validateArtifactDirectory(resources.artifactDir, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) });
 }
 

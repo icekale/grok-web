@@ -42,6 +42,18 @@ test("live preflight accepts exact grok.com auth or the top-level official key",
   }
 });
 
+test("live child environment pins the dedicated home", async () => {
+  const home = homeWithAuth(["grok.com"]);
+  let launchedEnv;
+  const launcher = (_command, _args, options) => {
+    launchedEnv = options.env;
+    return { pid: undefined, once(event, callback) { if (event === "exit") queueMicrotask(() => callback(0, null)); return this; }, kill() {} };
+  };
+  const code = await runLiveE2e({ env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home }, launcher, preflight: () => ({ home, binary: process.execPath }) });
+  assert.equal(code, 0);
+  assert.equal(launchedEnv.GROK_HOME, home);
+});
+
 test("runLiveE2e never spawns when preflight fails", async () => {
   let spawned = false;
   await assert.rejects(runLiveE2e({ env: {}, launcher: () => { spawned = true; throw new Error("must not spawn"); } }), /GROK_WEB_LIVE_E2E/);

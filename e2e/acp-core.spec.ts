@@ -4,10 +4,16 @@ import {
   createOwnedSession,
   fixtureMethods,
   runnerProject,
+  captureSafeFailureScreenshot,
 } from "./helpers/harness";
 
 const enabled = process.env.GROK_WEB_E2E_ISOLATED === "1";
 test.skip(!enabled, "run through npm run test:e2e:acp");
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const artifactDir = process.env.GROK_WEB_E2E_ARTIFACT_DIR;
+  if (artifactDir) await captureSafeFailureScreenshot(page, `${artifactDir}/screenshot.png`).catch(() => undefined);
+});
 test.describe("ACP core", () => {
   test.describe.configure({ mode: "serial" });
 

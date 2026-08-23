@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   authorizeProject,
+  captureSafeFailureScreenshot,
   closeOwnedSession,
   createOwnedSession,
   fixtureEntries,
@@ -11,6 +12,11 @@ import {
 
 const enabled = process.env.GROK_WEB_E2E_ISOLATED === "1";
 test.skip(!enabled, "run through npm run test:e2e:acp");
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const artifactDir = process.env.GROK_WEB_E2E_ARTIFACT_DIR;
+  if (artifactDir) await captureSafeFailureScreenshot(page, `${artifactDir}/screenshot.png`).catch(() => undefined);
+});
 test.describe("ACP recovery", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -56,13 +62,17 @@ test.describe("ACP recovery", () => {
   test("two tabs show one approval and first response wins", async ({ page, browser }) => {
     const second = await browser.newPage();
     const sessionId = await createOwnedSession(page, runnerProject("a"));
+    let activeSessionId = sessionId;
     try {
       await page.goto(`/?cwd=${encodeURIComponent(runnerProject("a"))}`);
       const beforePermissions = fixtureMethods().filter((method) => method === "permission_response").length;
+      const createdResponse = page.waitForResponse((response) => response.url().endsWith("/api/agent/new") && response.request().method() === "POST");
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_APPROVAL");
       await page.getByRole("button", { name: "Send" }).click();
+      activeSessionId = (await createdResponse.then((response) => response.json())).sessionId as string;
+      expect(activeSessionId).toBeTruthy();
       await expect(page.getByText("Grok needs permission", { exact: true })).toBeVisible();
-      await second.goto(`/?session=${encodeURIComponent(sessionId)}&cwd=${encodeURIComponent(runnerProject("a"))}`);
+      await second.goto(`/?session=${encodeURIComponent(activeSessionId)}&cwd=${encodeURIComponent(runnerProject("a"))}`);
       const secondPending = await second.evaluate((id) => new Promise<string>((resolve, reject) => {
         const source = new EventSource(`/api/agent/${encodeURIComponent(id)}/events`);
         const timer = setTimeout(() => { source.close(); reject(new Error("second tab pending permission timeout")); }, 15_000);
@@ -75,21 +85,21 @@ test.describe("ACP recovery", () => {
             resolve(pending);
           }
         };
-      }), sessionId);
+      }), activeSessionId);
       expect(secondPending).toMatch(/^\d+$/);
-      void page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
+      void page.request.post(`/api/agent/${encodeURIComponent(activeSessionId)}`, {
         data: { type: "extension_ui_response", id: secondPending, confirmed: true },
       });
       await expect.poll(() => fixtureMethods().filter((method) => method === "permission_response").length).toBe(beforePermissions + 1);
-      const lateResponse = await second.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, {
+      const lateResponse = await second.request.post(`/api/agent/${encodeURIComponent(activeSessionId)}`, {
         data: { type: "extension_ui_response", id: secondPending, cancelled: true },
         timeout: 5_000,
       });
       expect(lateResponse.status()).toBe(409);
     } finally {
-      await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "abort" }, timeout: 3_000 }).catch(() => undefined);
+      await page.request.post(`/api/agent/${encodeURIComponent(activeSessionId)}`, { data: { type: "abort" }, timeout: 3_000 }).catch(() => undefined);
       await second.close();
-      await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`, { timeout: 3_000 }).catch(() => undefined);
+      await page.request.delete(`/api/sessions/${encodeURIComponent(activeSessionId)}`, { timeout: 3_000 }).catch(() => undefined);
     }
   });
 
@@ -105,15 +115,26 @@ test.describe("ACP recovery", () => {
     }
     const entries = fixtureEntries().slice(before).filter((entry) => ["_x.ai/mcp/list", "_x.ai/plugins/list"].includes(String(entry.method)));
     expect(new Set(entries.map((entry) => entry.cwdAlias)).size).toBeGreaterThanOrEqual(2);
-    expect(new Set(entries.map((entry) => entry.sessionId)).size).toBeGreaterThanOrEqual(2);
+    const ownedIds = new Set(entries.map((entry) => String(entry.sessionId)).filter((id) => id.startsWith("acp-e2e-")));
+    expect(ownedIds.size).toBeGreaterThanOrEqual(2);
+    for (const sessionId of ownedIds) {
+      const response = await page.request.delete(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      expect([200, 404], await response.text()).toContain(response.status());
+    }
+    const remaining = await page.request.get("/api/sessions").then((response) => response.json());
+    expect((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => ownedIds.has(String(session.id)) || [runnerProject("a"), runnerProject("b")].includes(session.cwd))).toBe(false);
   });
 
   test("accepts advertised off/high modes and rolls back unsupported mode", async ({ page }) => {
     const sessionId = await createOwnedSession(page, runnerProject("a"));
+    let activeSessionId = sessionId;
     try {
       await page.goto(`/?cwd=${encodeURIComponent(runnerProject("a"))}`);
+      const createdResponse = page.waitForResponse((response) => response.url().endsWith("/api/agent/new") && response.request().method() === "POST");
       await page.getByRole("textbox", { name: "Message" }).fill("E2E_TEXT_MARKER");
       await page.getByRole("button", { name: "Send" }).click();
+      activeSessionId = (await createdResponse.then((response) => response.json())).sessionId as string;
+      expect(activeSessionId).toBeTruthy();
       await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
       const effort = page.getByRole("button", { name: "Change effort" });
       await expect(effort).toBeVisible();
@@ -121,11 +142,11 @@ test.describe("ACP recovery", () => {
       await expect(page.getByText("Off", { exact: true })).toBeVisible();
       await page.getByText("Off", { exact: true }).click();
       await expect.poll(() => fixtureMethods().filter((method) => method === "session/set_mode").length).toBeGreaterThan(0);
-      const response = await page.request.post(`/api/agent/${encodeURIComponent(sessionId)}`, { data: { type: "set_thinking_level", level: "max" } });
+      const response = await page.request.post(`/api/agent/${encodeURIComponent(activeSessionId)}`, { data: { type: "set_thinking_level", level: "max" } });
       expect(response.ok()).toBeFalsy();
       await expect(effort).toContainText("Off");
     } finally {
-      await closeOwnedSession(page, sessionId);
+      await closeOwnedSession(page, activeSessionId);
     }
   });
 });
