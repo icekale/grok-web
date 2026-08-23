@@ -4,6 +4,14 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const scenario = process.env.GROK_WEB_ACP_FIXTURE_SCENARIO || "core";
+if (process.argv.includes("--version")) { process.stdout.write("grok-fixture 1.0.0\n"); process.exit(0); }
+if (process.argv.includes("--help")) {
+  if (process.argv.includes("stdio")) process.stdout.write("--leader-socket <PATH>\n");
+  else if (process.argv.includes("agent")) process.stdout.write("--agent-profile <PATH>\n");
+  else process.stdout.write("--agent <NAME> --sandbox <PROFILE> --permission-mode <MODE> --allow <RULE> --deny <RULE> --disable-web-search --no-subagents --max-turns <N> --rules <RULES> --restore-code --worktree [<WORKTREE>]\n");
+  process.exit(0);
+}
+if (process.argv.includes("inspect")) { process.stdout.write(JSON.stringify({ agents: [{ name: "builder", description: "Fixture builder", source: { kind: "fixture" } }] }) + "\n"); process.exit(0); }
 const logPath = process.env.GROK_WEB_ACP_FIXTURE_LOG || process.env.GROK_WEB_STAGE_B_LOG;
 const controlPath = process.env.GROK_WEB_ACP_FIXTURE_CONTROL;
 const testId = process.env.GROK_WEB_ACP_FIXTURE_TEST_ID || "acp-e2e";
