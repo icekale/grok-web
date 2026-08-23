@@ -231,6 +231,11 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
     envSkip("PUT /api/remote-access", "write operation; covered by unit tests only");
     await probe("GET", "/api/settings", [200]);
     envSkip("PUT /api/settings", "write operation; covered by unit tests only");
+    await probe("GET", "/api/runtime-profile", [200]);
+    await probe("PUT", "/api/runtime-profile", [400], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
     await probe("GET", `/api/skills?cwd=${encodeURIComponent(fixtureDir)}`, [200, 400]);
     await probe("PATCH", "/api/skills", [400], {
       headers: { "content-type": "application/json" },

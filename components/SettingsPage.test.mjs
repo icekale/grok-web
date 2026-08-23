@@ -22,12 +22,10 @@ test("AppShell exposes one unified settings entry", () => {
   assert.doesNotMatch(shell, /<ModelsConfig|<SkillsConfig|<PluginsConfig/);
 });
 
-test("general settings can change Grok permission mode", () => {
-  assert.match(settings, /settings\.permissionMode/);
-  assert.match(settings, /\/api\/settings/);
-  assert.match(settings, /permissionMode: mode/);
-  assert.match(settings, /always-approve/);
-  assert.match(settings, /<Shield /);
+test("Agent Runtime owns the global permission profile", () => {
+  assert.match(settings, /id: "runtime"/);
+  assert.match(settings, /<AgentRuntimeConfig \/>/);
+  assert.doesNotMatch(settings, /savePermissionMode/);
 });
 
 test("settings embeds the model, skill, plugin, and remote modules", () => {
@@ -36,7 +34,7 @@ test("settings embeds the model, skill, plugin, and remote modules", () => {
   assert.match(settings, /onControllerChange=\{setPluginsController\}/);
   assert.doesNotMatch(settings, /VisionToolkitConfig/);
   assert.match(settings, /<RemoteAccessConfig onControllerChange=\{setRemoteController\} \/>/);
-  assert.match(settings, /export type SettingsSection = "general" \| "remote" \| "archived" \| "models" \| "skills" \| "plugins" \| "marketplace" \| "mcp"/);
+  assert.match(settings, /export type SettingsSection = "general" \| "runtime" \| "remote" \| "archived" \| "models" \| "skills" \| "plugins" \| "marketplace" \| "mcp"/);
   assert.doesNotMatch(settings, /id: "project"/);
 });
 

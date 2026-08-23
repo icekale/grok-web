@@ -16,7 +16,6 @@ import {
   Moon,
   Cable,
   Plug,
-  Shield,
   SlidersHorizontal,
   Sun,
   Volume2,
@@ -35,8 +34,9 @@ import { PluginsConfig } from "./PluginsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { RemoteAccessConfig, type RemoteDraftController } from "./RemoteAccessConfig";
 import { DialogShell } from "./DialogShell";
+import { AgentRuntimeConfig } from "./AgentRuntimeConfig";
 
-export type SettingsSection = "general" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp";
+export type SettingsSection = "general" | "runtime" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp";
 export type SettingsVariant = "settings" | "tools";
 
 const TOOL_NAV_SECTIONS: SettingsSection[] = ["skills", "plugins", "mcp"];
@@ -72,6 +72,7 @@ function SectionIcon({ section }: { section: SettingsSection }) {
     plugins: Plug,
     marketplace: Plug,
     mcp: Cable,
+    runtime: SlidersHorizontal,
   };
   const Icon = icons[section];
   return <Icon size={16} strokeWidth={1.8} aria-hidden="true" />;
@@ -112,8 +113,6 @@ export function SettingsPage({
   const [remoteController, setRemoteController] = useState<RemoteDraftController | null>(null);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingExit, setPendingExit] = useState<(() => void) | null>(null);
-  const [permissionMode, setPermissionMode] = useState<"ask" | "auto" | "always-approve">("ask");
-  const [permissionSaving, setPermissionSaving] = useState(false);
 
   const close = useCallback(() => {
     onModelsChanged();
@@ -155,45 +154,6 @@ export function SettingsPage({
   useEffect(() => {
     closeButtonRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/settings", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
-      .then((body: { permissionMode?: string } | null) => {
-        if (cancelled) return;
-        if (body?.permissionMode === "auto" || body?.permissionMode === "always-approve" || body?.permissionMode === "ask") {
-          setPermissionMode(body.permissionMode);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const savePermissionMode = useCallback(async (mode: "ask" | "auto" | "always-approve") => {
-    if (permissionSaving || mode === permissionMode) return;
-    const previous = permissionMode;
-    setPermissionMode(mode);
-    setPermissionSaving(true);
-    try {
-      const response = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ permissionMode: mode }),
-      });
-      const body = await response.json().catch(() => ({})) as { permissionMode?: string; error?: string };
-      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
-      if (body.permissionMode === "auto" || body.permissionMode === "always-approve" || body.permissionMode === "ask") {
-        setPermissionMode(body.permissionMode);
-      }
-    } catch {
-      setPermissionMode(previous);
-    } finally {
-      setPermissionSaving(false);
-    }
-  }, [permissionMode, permissionSaving]);
 
   const handleSettingsBack = useCallback((): boolean => {
     if (activeController?.handleBack()) return true;
@@ -278,6 +238,7 @@ export function SettingsPage({
 
   const allSections: { id: SettingsSection; label: string; disabled: boolean }[] = [
     { id: "general", label: t("settings.general"), disabled: false },
+    { id: "runtime", label: "Agent Runtime", disabled: false },
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
     { id: "plugins", label: t("common.plugins"), disabled: !cwd },
@@ -293,7 +254,9 @@ export function SettingsPage({
     : t("common.settings");
 
   let content: ReactNode;
-  if (section === "general") {
+  if (section === "runtime") {
+    content = <AgentRuntimeConfig />;
+  } else if (section === "general") {
     const themes: { id: ThemePreference; label: string; Icon: typeof Sun }[] = [
       { id: "light", label: t("settings.themeLight"), Icon: Sun },
       { id: "dark", label: t("settings.themeDark"), Icon: Moon },
@@ -332,28 +295,6 @@ export function SettingsPage({
           <button className="settings-switch" type="button" role="switch" aria-checked={tokenSpeedEnabled} onClick={onTokenSpeedToggle} title={t("settings.tokenSpeed")}>
             <span /><Gauge size={15} aria-hidden="true" />
           </button>
-        </section>
-        <section className="settings-form-section">
-          <div className="settings-form-label"><Shield size={16} aria-hidden="true" /><div><strong>{t("settings.permissionMode")}</strong><span>{t("settings.permissionModeDescription")}</span></div></div>
-          <div className="settings-segmented" role="radiogroup" aria-label={t("settings.permissionMode")}>
-            {([
-              { id: "ask" as const, label: t("settings.permissionAsk") },
-              { id: "auto" as const, label: t("settings.permissionAuto") },
-              { id: "always-approve" as const, label: t("settings.permissionAlwaysApprove") },
-            ]).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                role="radio"
-                aria-checked={permissionMode === id}
-                data-active={permissionMode === id}
-                disabled={permissionSaving}
-                onClick={() => void savePermissionMode(id)}
-              >
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
         </section>
         <section className="settings-form-section">
           <div className="settings-form-label"><Info size={16} aria-hidden="true" /><div><strong>{t("settings.about")}</strong><span>{t("settings.aboutVersion", { web: process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0" })}</span></div></div>

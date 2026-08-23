@@ -22,6 +22,7 @@ import { Route as ApiPluginsRouteImport } from './routes/api/plugins'
 import { Route as ApiProjectTrustRouteImport } from './routes/api/project-trust'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiRemoteAccessRouteImport } from './routes/api/remote-access'
+import { Route as ApiRuntimeProfileRouteImport } from './routes/api/runtime-profile'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
@@ -127,6 +128,11 @@ const ApiProjectsRoute = ApiProjectsRouteImport.update({
 const ApiRemoteAccessRoute = ApiRemoteAccessRouteImport.update({
   id: '/api/remote-access',
   path: '/api/remote-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRuntimeProfileRoute = ApiRuntimeProfileRouteImport.update({
+  id: '/api/runtime-profile',
+  path: '/api/runtime-profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSessionsRoute = ApiSessionsRouteImport.update({
@@ -351,6 +357,7 @@ export interface FileRoutesByFullPath {
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
+  '/api/runtime-profile': typeof ApiRuntimeProfileRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
@@ -407,6 +414,7 @@ export interface FileRoutesByTo {
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
+  '/api/runtime-profile': typeof ApiRuntimeProfileRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
@@ -464,6 +472,7 @@ export interface FileRoutesById {
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
+  '/api/runtime-profile': typeof ApiRuntimeProfileRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
@@ -522,6 +531,7 @@ export interface FileRouteTypes {
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
+    | '/api/runtime-profile'
     | '/api/sessions'
     | '/api/settings'
     | '/api/skills'
@@ -578,6 +588,7 @@ export interface FileRouteTypes {
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
+    | '/api/runtime-profile'
     | '/api/sessions'
     | '/api/settings'
     | '/api/skills'
@@ -634,6 +645,7 @@ export interface FileRouteTypes {
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
+    | '/api/runtime-profile'
     | '/api/sessions'
     | '/api/settings'
     | '/api/skills'
@@ -691,6 +703,7 @@ export interface RootRouteChildren {
   ApiProjectTrustRoute: typeof ApiProjectTrustRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
   ApiRemoteAccessRoute: typeof ApiRemoteAccessRoute
+  ApiRuntimeProfileRoute: typeof ApiRuntimeProfileRoute
   ApiSessionsRoute: typeof ApiSessionsRouteWithChildren
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
@@ -806,6 +819,13 @@ declare module '@tanstack/react-router' {
       path: '/api/remote-access'
       fullPath: '/api/remote-access'
       preLoaderRoute: typeof ApiRemoteAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/runtime-profile': {
+      id: '/api/runtime-profile'
+      path: '/api/runtime-profile'
+      fullPath: '/api/runtime-profile'
+      preLoaderRoute: typeof ApiRuntimeProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/sessions': {
@@ -1221,6 +1241,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProjectTrustRoute: ApiProjectTrustRoute,
   ApiProjectsRoute: ApiProjectsRoute,
   ApiRemoteAccessRoute: ApiRemoteAccessRoute,
+  ApiRuntimeProfileRoute: ApiRuntimeProfileRoute,
   ApiSessionsRoute: ApiSessionsRouteWithChildren,
   ApiSettingsRoute: ApiSettingsRoute,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
