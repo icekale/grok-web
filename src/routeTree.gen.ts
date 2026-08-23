@@ -61,6 +61,7 @@ import { Route as ApiAuthLogoutProviderRouteImport } from './routes/api/auth/log
 import { Route as ApiSessionsIdAutoNameRouteImport } from './routes/api/sessions/$id/auto-name'
 import { Route as ApiSessionsIdContextRouteImport } from './routes/api/sessions/$id/context'
 import { Route as ApiSessionsIdExportRouteImport } from './routes/api/sessions/$id/export'
+import { Route as ApiSessionsIdRestoreCodeRouteImport } from './routes/api/sessions/$id/restore-code'
 import { Route as ApiSessionsIdStateRouteImport } from './routes/api/sessions/$id/state'
 import { Route as ApiSessionsIdEntriesEntryIdThinkingRouteImport } from './routes/api/sessions/$id/entries/$entryId/thinking'
 import { Route as ApiSessionsIdEntriesEntryIdToolResultRouteImport } from './routes/api/sessions/$id/entries/$entryId/tool-result'
@@ -325,6 +326,12 @@ const ApiSessionsIdExportRoute = ApiSessionsIdExportRouteImport.update({
   path: '/export',
   getParentRoute: () => ApiSessionsIdRoute,
 } as any)
+const ApiSessionsIdRestoreCodeRoute =
+  ApiSessionsIdRestoreCodeRouteImport.update({
+    id: '/restore-code',
+    path: '/restore-code',
+    getParentRoute: () => ApiSessionsIdRoute,
+  } as any)
 const ApiSessionsIdStateRoute = ApiSessionsIdStateRouteImport.update({
   id: '/state',
   path: '/state',
@@ -396,6 +403,7 @@ export interface FileRoutesByFullPath {
   '/api/sessions/$id/auto-name': typeof ApiSessionsIdAutoNameRoute
   '/api/sessions/$id/context': typeof ApiSessionsIdContextRoute
   '/api/sessions/$id/export': typeof ApiSessionsIdExportRoute
+  '/api/sessions/$id/restore-code': typeof ApiSessionsIdRestoreCodeRoute
   '/api/sessions/$id/state': typeof ApiSessionsIdStateRoute
   '/api/sessions/$id/entries/$entryId/thinking': typeof ApiSessionsIdEntriesEntryIdThinkingRoute
   '/api/sessions/$id/entries/$entryId/tool-result': typeof ApiSessionsIdEntriesEntryIdToolResultRoute
@@ -453,6 +461,7 @@ export interface FileRoutesByTo {
   '/api/sessions/$id/auto-name': typeof ApiSessionsIdAutoNameRoute
   '/api/sessions/$id/context': typeof ApiSessionsIdContextRoute
   '/api/sessions/$id/export': typeof ApiSessionsIdExportRoute
+  '/api/sessions/$id/restore-code': typeof ApiSessionsIdRestoreCodeRoute
   '/api/sessions/$id/state': typeof ApiSessionsIdStateRoute
   '/api/sessions/$id/entries/$entryId/thinking': typeof ApiSessionsIdEntriesEntryIdThinkingRoute
   '/api/sessions/$id/entries/$entryId/tool-result': typeof ApiSessionsIdEntriesEntryIdToolResultRoute
@@ -511,6 +520,7 @@ export interface FileRoutesById {
   '/api/sessions/$id/auto-name': typeof ApiSessionsIdAutoNameRoute
   '/api/sessions/$id/context': typeof ApiSessionsIdContextRoute
   '/api/sessions/$id/export': typeof ApiSessionsIdExportRoute
+  '/api/sessions/$id/restore-code': typeof ApiSessionsIdRestoreCodeRoute
   '/api/sessions/$id/state': typeof ApiSessionsIdStateRoute
   '/api/sessions/$id/entries/$entryId/thinking': typeof ApiSessionsIdEntriesEntryIdThinkingRoute
   '/api/sessions/$id/entries/$entryId/tool-result': typeof ApiSessionsIdEntriesEntryIdToolResultRoute
@@ -570,6 +580,7 @@ export interface FileRouteTypes {
     | '/api/sessions/$id/auto-name'
     | '/api/sessions/$id/context'
     | '/api/sessions/$id/export'
+    | '/api/sessions/$id/restore-code'
     | '/api/sessions/$id/state'
     | '/api/sessions/$id/entries/$entryId/thinking'
     | '/api/sessions/$id/entries/$entryId/tool-result'
@@ -627,6 +638,7 @@ export interface FileRouteTypes {
     | '/api/sessions/$id/auto-name'
     | '/api/sessions/$id/context'
     | '/api/sessions/$id/export'
+    | '/api/sessions/$id/restore-code'
     | '/api/sessions/$id/state'
     | '/api/sessions/$id/entries/$entryId/thinking'
     | '/api/sessions/$id/entries/$entryId/tool-result'
@@ -684,6 +696,7 @@ export interface FileRouteTypes {
     | '/api/sessions/$id/auto-name'
     | '/api/sessions/$id/context'
     | '/api/sessions/$id/export'
+    | '/api/sessions/$id/restore-code'
     | '/api/sessions/$id/state'
     | '/api/sessions/$id/entries/$entryId/thinking'
     | '/api/sessions/$id/entries/$entryId/tool-result'
@@ -1094,6 +1107,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSessionsIdExportRouteImport
       parentRoute: typeof ApiSessionsIdRoute
     }
+    '/api/sessions/$id/restore-code': {
+      id: '/api/sessions/$id/restore-code'
+      path: '/restore-code'
+      fullPath: '/api/sessions/$id/restore-code'
+      preLoaderRoute: typeof ApiSessionsIdRestoreCodeRouteImport
+      parentRoute: typeof ApiSessionsIdRoute
+    }
     '/api/sessions/$id/state': {
       id: '/api/sessions/$id/state'
       path: '/state'
@@ -1138,6 +1158,7 @@ interface ApiSessionsIdRouteChildren {
   ApiSessionsIdAutoNameRoute: typeof ApiSessionsIdAutoNameRoute
   ApiSessionsIdContextRoute: typeof ApiSessionsIdContextRoute
   ApiSessionsIdExportRoute: typeof ApiSessionsIdExportRoute
+  ApiSessionsIdRestoreCodeRoute: typeof ApiSessionsIdRestoreCodeRoute
   ApiSessionsIdStateRoute: typeof ApiSessionsIdStateRoute
   ApiSessionsIdEntriesEntryIdThinkingRoute: typeof ApiSessionsIdEntriesEntryIdThinkingRoute
   ApiSessionsIdEntriesEntryIdToolResultRoute: typeof ApiSessionsIdEntriesEntryIdToolResultRoute
@@ -1147,6 +1168,7 @@ const ApiSessionsIdRouteChildren: ApiSessionsIdRouteChildren = {
   ApiSessionsIdAutoNameRoute: ApiSessionsIdAutoNameRoute,
   ApiSessionsIdContextRoute: ApiSessionsIdContextRoute,
   ApiSessionsIdExportRoute: ApiSessionsIdExportRoute,
+  ApiSessionsIdRestoreCodeRoute: ApiSessionsIdRestoreCodeRoute,
   ApiSessionsIdStateRoute: ApiSessionsIdStateRoute,
   ApiSessionsIdEntriesEntryIdThinkingRoute:
     ApiSessionsIdEntriesEntryIdThinkingRoute,

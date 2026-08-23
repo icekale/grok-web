@@ -478,9 +478,23 @@ export class AgentRuntime {
     return this.requireAcp().skillsToggle(name, enabled);
   }
 
+  async worktreeList(): Promise<unknown> {
+    await this.ensureProcess();
+    return this.requireAcp().worktreeList();
+  }
+
   async worktreeCreate(sessionId: string, sourcePath: string): Promise<{ worktreePath?: string; status?: string }> {
     await this.ensureProcess();
     return this.requireAcp().worktreeCreate(sessionId, sourcePath);
+  }
+
+  async forkSessionIntoCwd(sourceSessionId: string, sourceCwd: string, newCwd: string): Promise<{ newSessionId: string }> {
+    await this.ensureProcess();
+    const result = await this.requireAcp().sessionFork({ sourceSessionId, sourceCwd, newCwd });
+    const session = this.ensureSession(result.newSessionId);
+    session.loaded = true;
+    session.cwd = canonicalCwd(newCwd);
+    return result;
   }
 
   async worktreeRemove(worktreePath: string): Promise<unknown> {

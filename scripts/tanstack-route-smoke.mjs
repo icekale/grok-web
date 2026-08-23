@@ -103,6 +103,10 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       body: "{}",
     });
     await probe("DELETE", `/api/sessions/${FAKE_ID}`, [404]);
+    await probe("POST", `/api/sessions/${FAKE_ID}/restore-code`, [404, 400], {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirm: false }),
+    });
     await probe("GET", `/api/sessions/${FAKE_ID}/state`, [404]);
     const contextStatus = await probe("GET", `/api/sessions/${sid}/context`, [200, 404], {
       headers: { ...authHeaders, "x-smoke-note": "existing-session-read" },
