@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
+import { strToU8, zipSync } from "fflate";
+import { redactE2eText, validateArtifactDirectory } from "./e2e-artifacts.mjs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
@@ -60,7 +62,8 @@ export async function createAcpE2eResources() {
   const home = join(root, "home");
   const projectA = join(root, "project-a");
   const projectB = join(root, "project-b");
-  const artifactDir = join(root, "artifacts");
+  const artifactDir = join(ROOT, ".artifacts", "e2e");
+  rmSync(artifactDir, { recursive: true, force: true });
   const rawOutputDir = join(root, "raw-output");
   const logPath = join(root, "fixture.log");
   const controlPath = join(root, "fixture.control");
@@ -82,7 +85,10 @@ export async function createAcpE2eResources() {
     rawOutputDir,
     logPath,
     controlPath,
-    cleanup: async () => rmSync(root, { recursive: true, force: true }),
+    cleanup: async ({ preserveArtifacts = false } = {}) => {
+      if (!preserveArtifacts) rmSync(artifactDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    },
   };
 }
 
@@ -111,6 +117,17 @@ function terminateProcessGroup(child) {
   }
 }
 
+function writeFailureArtifacts(resources, exitCode) {
+  mkdirSync(resources.artifactDir, { recursive: true });
+  writeFileSync(join(resources.artifactDir, "chronology.json"), "[]\n");
+  writeFileSync(join(resources.artifactDir, "server.log"), `${JSON.stringify({ status: "failed", exitCode })}\n`);
+  const fixtureLog = existsSync(resources.logPath) ? readFileSync(resources.logPath, "utf8") : "";
+  writeFileSync(join(resources.artifactDir, "fixture.log"), redactE2eText(fixtureLog, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) }));
+  writeFileSync(join(resources.artifactDir, "trace.zip"), zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
+  writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+  validateArtifactDirectory(resources.artifactDir, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) });
+}
+
 export async function runAcpE2e({ args = [], launcher = (command, childArgs, options) => spawn(command, childArgs, options), resourceFactory = createAcpE2eResources } = {}) {
   const resources = await resourceFactory();
   let child;
@@ -125,10 +142,11 @@ export async function runAcpE2e({ args = [], launcher = (command, childArgs, opt
       stdio: "inherit",
     });
     exitCode = await waitForChild(child);
+    if (exitCode !== 0) writeFailureArtifacts(resources, exitCode);
     return exitCode;
   } finally {
     terminateProcessGroup(child);
-    await resources.cleanup?.();
+    await resources.cleanup?.({ preserveArtifacts: exitCode !== 0 });
   }
 }
 
