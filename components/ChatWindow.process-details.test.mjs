@@ -25,6 +25,13 @@ test("process details use a compact result row and stay collapsed", () => {
   assert.doesNotMatch(source, /chat\.processRunning/);
 });
 
+test("process groups separate tool expansion from thinking expansion", () => {
+  assert.match(source, /defaultToolDetailsExpanded/);
+  assert.match(source, /defaultThinkingDetailsExpanded/);
+  assert.match(source, /defaultToolDetailsExpanded: true/);
+  assert.match(source, /defaultThinkingDetailsExpanded: false/);
+});
+
 test("a live turn does not unroll persisted tool cards into the transcript", () => {
   const start = source.indexOf("const isLiveTail");
   const block = source.slice(start, start + 900);

@@ -132,7 +132,7 @@ test("keeps partial aborted content and a stopped status", () => {
   assert.match(html, /Stopped/);
 });
 
-test("keeps only the current tool card while streaming earlier green rows", () => {
+test("keeps every tool card while streaming", () => {
   const html = renderMessage({
     role: "assistant",
     provider: "grok",
@@ -145,12 +145,33 @@ test("keeps only the current tool card while streaming earlier green rows", () =
     ],
   }, { isStreaming: true });
 
-  assert.match(html, /working/);
-  assert.match(html, /search_replace/);
+  assert.match(html, />read_file</);
+  assert.match(html, />grep</);
+  assert.match(html, />search_replace</);
   assert.match(html, /a\.ts/);
-  assert.doesNotMatch(html, />read_file</);
-  assert.doesNotMatch(html, />grep</);
-  assert.match(html, /\+2/);
+  assert.match(html, /foo/);
+});
+
+test("shows live tool results without an extra click", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "grok",
+    model: "grok-4.6",
+    content: [{
+      type: "toolCall",
+      toolCallId: "live-1",
+      toolName: "run_terminal_command",
+      input: { command: "printf LIVE_TOOL_OUTPUT" },
+    }],
+  }, {
+    isStreaming: true,
+    toolResults: new Map([[
+      "live-1",
+      { role: "toolResult", toolCallId: "live-1", content: [{ type: "text", text: "LIVE_TOOL_OUTPUT" }] },
+    ]]),
+  });
+
+  assert.match(html, /LIVE_TOOL_OUTPUT/);
 });
 
 test("shows a Grok tool preview instead of generating-parameters once arguments exist", () => {
@@ -172,7 +193,7 @@ test("shows a Grok tool preview instead of generating-parameters once arguments 
   assert.doesNotMatch(html, /Generating parameters/);
 });
 
-test("keeps streamed tool input out of collapsed markup while counting it", () => {
+test("shows streamed raw tool input while counting it", () => {
   const block = {
     type: "toolCall",
     toolCallId: "call-write-1",
@@ -189,7 +210,7 @@ test("keeps streamed tool input out of collapsed markup while counting it", () =
 
   assert.match(html, /write/);
   assert.match(html, /Generating parameters/);
-  assert.doesNotMatch(html, /secret-stream-fragment/);
+  assert.match(html, /secret-stream-fragment/);
   assert.equal(block.rawInput ?? JSON.stringify(block.input, null, 2), block.rawInput);
 });
 
@@ -256,12 +277,12 @@ test("renders Grok run_terminal_command cards as bash with the command, not JSON
   assert.doesNotMatch(html, /List files/);
 });
 
-test("keeps streaming thinking and tool inputs collapsed by default", () => {
+test("keeps streaming thinking collapsed while showing tool input", () => {
   const html = renderMessage(assistantWithThinkingAndTool(), { isStreaming: true });
 
   assert.doesNotMatch(html, /<h2>Plan<\/h2>/);
   assert.doesNotMatch(html, /<li>inspect<\/li>/);
-  assert.doesNotMatch(html, /command: printf/);
+  assert.match(html, /printf &quot;hello&quot;/);
 });
 
 test("renders a complete SDK skill expansion as a compact command", () => {
@@ -316,7 +337,17 @@ test("renders user-message images as buttons that open a larger preview", () => 
   assert.match(html, /<img[^>]+src="data:image\/png;base64,YWJj"/);
 });
 
-test("keeps a streaming write collapsed until the user expands it", () => {
+test("separates thinking and tool expansion defaults", () => {
+  const html = renderMessage(assistantWithThinkingAndTool(), {
+    defaultToolDetailsExpanded: true,
+    defaultThinkingDetailsExpanded: false,
+  });
+
+  assert.doesNotMatch(html, /<h2>Plan<\/h2>/);
+  assert.match(html, /printf &quot;hello&quot;/);
+});
+
+test("shows streaming write input by default", () => {
   const html = renderMessage({
     role: "assistant",
     provider: "openai",
@@ -331,7 +362,7 @@ test("keeps a streaming write collapsed until the user expands it", () => {
 
   assert.match(html, />write</);
   assert.match(html, /\/tmp\/a\.md/);
-  assert.doesNotMatch(html, /# Hello/);
+  assert.match(html, /# Hello/);
 });
 
 test("renders custom-message images as buttons that open a larger preview", () => {

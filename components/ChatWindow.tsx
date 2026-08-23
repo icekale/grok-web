@@ -858,7 +858,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; defaultDetailsExpanded?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; defaultDetailsExpanded?: boolean; defaultToolDetailsExpanded?: boolean; defaultThinkingDetailsExpanded?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -899,6 +899,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     defaultDetailsExpanded={options.defaultDetailsExpanded}
+                    defaultToolDetailsExpanded={options.defaultToolDetailsExpanded}
+                    defaultThinkingDetailsExpanded={options.defaultThinkingDetailsExpanded}
                     writtenFiles={options.writtenFiles}
                     tokenSpeedEnabled={tokenSpeedEnabled}
                   />
@@ -978,8 +980,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                       hasError={processHasError}
                       toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
                     >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false })}
+                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process", defaultToolDetailsExpanded: true, defaultThinkingDetailsExpanded: false }))}
+                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, defaultToolDetailsExpanded: true, defaultThinkingDetailsExpanded: false })}
                     </ProcessDetailsGroup>
                   );
                   rendered.push(
@@ -1025,7 +1027,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               );
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming toolResults={toolResultsMap} modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} tokenSpeedEnabled={tokenSpeedEnabled} />
+              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming toolResults={toolResultsMap} modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} defaultToolDetailsExpanded={true} defaultThinkingDetailsExpanded={false} tokenSpeedEnabled={tokenSpeedEnabled} />
             )}
 
             {agentRunning && agentPhase?.kind === "stopping" && (

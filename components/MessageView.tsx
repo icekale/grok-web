@@ -175,6 +175,8 @@ interface Props {
   prevTimestamp?: number;
   sessionId?: string;
   defaultDetailsExpanded?: boolean;
+  defaultToolDetailsExpanded?: boolean;
+  defaultThinkingDetailsExpanded?: boolean;
   /**
    * Files this turn wrote, derived by the caller from the whole turn's
    * successful write/edit tool calls. ChatWindow computes this because the
@@ -213,12 +215,14 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, defaultDetailsExpanded = false, writtenFiles, tokenSpeedEnabled = true }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, defaultDetailsExpanded = false, defaultToolDetailsExpanded, defaultThinkingDetailsExpanded, writtenFiles, tokenSpeedEnabled = true }: Props) {
+  const toolDetailsExpanded = defaultToolDetailsExpanded ?? (defaultDetailsExpanded || Boolean(isStreaming));
+  const thinkingDetailsExpanded = defaultThinkingDetailsExpanded ?? defaultDetailsExpanded;
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} defaultDetailsExpanded={defaultDetailsExpanded} writtenFiles={writtenFiles} tokenSpeedEnabled={tokenSpeedEnabled} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} defaultToolDetailsExpanded={toolDetailsExpanded} defaultThinkingDetailsExpanded={thinkingDetailsExpanded} writtenFiles={writtenFiles} tokenSpeedEnabled={tokenSpeedEnabled} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -251,6 +255,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.prevTimestamp === next.prevTimestamp
     && prev.sessionId === next.sessionId
     && prev.defaultDetailsExpanded === next.defaultDetailsExpanded
+    && prev.defaultToolDetailsExpanded === next.defaultToolDetailsExpanded
+    && prev.defaultThinkingDetailsExpanded === next.defaultThinkingDetailsExpanded
     && prev.writtenFiles === next.writtenFiles
     && prev.tokenSpeedEnabled === next.tokenSpeedEnabled;
 });
@@ -503,7 +509,8 @@ function AssistantMessageView({
   prevTimestamp,
   sessionId,
   entryId,
-  defaultDetailsExpanded,
+  defaultToolDetailsExpanded,
+  defaultThinkingDetailsExpanded,
   writtenFiles,
   tokenSpeedEnabled = true,
 }: {
@@ -517,7 +524,8 @@ function AssistantMessageView({
   prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
-  defaultDetailsExpanded: boolean;
+  defaultToolDetailsExpanded: boolean;
+  defaultThinkingDetailsExpanded: boolean;
   writtenFiles?: WrittenFile[];
   tokenSpeedEnabled?: boolean;
 }) {
@@ -529,23 +537,7 @@ function AssistantMessageView({
       isAssistantContentBlock(item.block) && !isEmptyThinkingBlock(item.block, { isStreaming })
     )), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
-  const visibleBlockItems = useMemo(() => {
-    if (!isStreaming) return blockItems;
-    let lastTool = -1;
-    for (let i = 0; i < blockItems.length; i++) {
-      if (blockItems[i].block.type === "toolCall") lastTool = i;
-    }
-    if (lastTool < 0) return blockItems;
-    return blockItems.filter((item, index) => item.block.type !== "toolCall" || index === lastTool);
-  }, [blockItems, isStreaming]);
-  const streamingToolSummary = useMemo(() => {
-    if (!isStreaming) return null;
-    const tools = blockItems.filter((item) => item.block.type === "toolCall");
-    if (tools.length <= 1) return null;
-    const current = tools[tools.length - 1]?.block;
-    const name = current && current.type === "toolCall" ? current.toolName : "tool";
-    return { name, extra: tools.length - 1 };
-  }, [blockItems, isStreaming]);
+  const visibleBlockItems = blockItems;
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const aborted = isAbortedAssistantMessage(message, { isStreaming });
   const abortDetail = getAssistantAbortDetail(message, { isStreaming });
@@ -710,19 +702,8 @@ function AssistantMessageView({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {streamingToolSummary && (
-          <div
-            style={{
-              fontSize: "var(--text-ui)",
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            {t("chat.runningToolsMore", { names: streamingToolSummary.name, count: streamingToolSummary.extra })}
-          </div>
-        )}
         {visibleBlockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultDetailsExpanded={defaultDetailsExpanded} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultToolDetailsExpanded={defaultToolDetailsExpanded} defaultThinkingDetailsExpanded={defaultThinkingDetailsExpanded} />
         ))}
       </div>
 
@@ -814,18 +795,18 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, defaultDetailsExpanded }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; defaultDetailsExpanded: boolean }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, defaultToolDetailsExpanded, defaultThinkingDetailsExpanded }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; defaultToolDetailsExpanded: boolean; defaultThinkingDetailsExpanded: boolean }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock key={`${sessionId ?? ""}:${entryId ?? ""}:${blockIndex}`} block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} defaultExpanded={defaultDetailsExpanded} />;
+    return <ThinkingBlock key={`${sessionId ?? ""}:${entryId ?? ""}:${blockIndex}`} block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} defaultExpanded={defaultThinkingDetailsExpanded} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} defaultExpanded={defaultDetailsExpanded} isStreaming={isStreaming} sessionId={sessionId} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} defaultExpanded={defaultToolDetailsExpanded} isStreaming={isStreaming} sessionId={sessionId} />;
   }
   return null;
 }
