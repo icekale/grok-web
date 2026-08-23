@@ -19,7 +19,10 @@ function errorResponse(error: unknown): Response {
   const value = error && typeof error === "object" ? error as RestoreRecord : {};
   const status = typeof value.status === "number" ? value.status : 400;
   const code = typeof value.code === "string" ? value.code : "restore_invalid";
-  return Response.json({ error: error instanceof Error ? error.message : String(error), code }, { status });
+  return Response.json({ error: error instanceof Error ? error.message : String(error), code, ...(typeof value.residualPath === "string" ? { residualPath: value.residualPath } : {}) }, { status });
+}
+function methodNotFound(error: unknown): boolean {
+  return /-32601|method not found|unknown method|not supported/i.test(error instanceof Error ? error.message : String(error));
 }
 function unsupported(message: string): never {
   const error = new Error(message) as Error & { status: number; code: string };
@@ -70,17 +73,21 @@ export function createRestoreCodeHandlers(deps: RestoreDeps = {}) {
         const remove = deps.removeWorktree ?? ((path: string) => getAgentRuntime().worktreeRemove(path));
         const created = await create(params.id, preflight.sourceCwd);
         const worktreePath = created.worktreePath;
-        if (!worktreePath || !inside(worktreePath, [preflight.gitRoot])) throw Object.assign(new Error(`ACP returned an unsafe worktree path: ${worktreePath ?? "missing"}`), { status: 400, code: "restore_path_untrusted", residualPath: worktreePath });
+        if (!worktreePath || !inside(worktreePath, [preflight.gitRoot]) || realpathSync(worktreePath) === realpathSync(preflight.sourceCwd) || realpathSync(worktreePath) === realpathSync(preflight.gitRoot)) throw Object.assign(new Error(`ACP returned an unsafe worktree path: ${worktreePath ?? "missing"}`), { status: 400, code: "restore_path_untrusted", residualPath: worktreePath });
         try {
           const forked = await fork(params.id, preflight.sourceCwd, realpathSync(worktreePath));
           return Response.json({ status: "created", ...preflight, worktreePath, newSessionId: forked.newSessionId });
         } catch (forkError) {
+          if (methodNotFound(forkError)) unsupported("ACP session fork is not supported");
           try { await remove(worktreePath); } catch (cleanupError) {
             throw Object.assign(new Error(`Restore fork failed; residual worktree: ${worktreePath}`), { status: 500, code: "restore_cleanup_failed", residualPath: worktreePath, cause: cleanupError });
           }
           throw forkError;
         }
-      } catch (error) { return errorResponse(error); }
+      } catch (error) {
+        if (methodNotFound(error)) return errorResponse(Object.assign(new Error("ACP restore method is not supported"), { status: 501, code: "unsupported" }));
+        return errorResponse(error);
+      }
     },
   };
 }
