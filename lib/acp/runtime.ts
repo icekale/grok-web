@@ -28,6 +28,7 @@ import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, grokAgentEnv, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
+import { readAcpModes, type AcpModes } from "./modes.ts";
 import {
   advertisedToolPresets,
   applyConfigOptionUpdate,
@@ -69,6 +70,7 @@ type SessionState = {
   thinkingLevel?: string;
   hasUserPrompt?: boolean;
   configOptions: AcpConfigOption[];
+  modes: AcpModes;
   eventSequence: number;
   eventPromptGeneration?: number;
   queuedPromptGenerations: Array<number | undefined>;
@@ -201,6 +203,7 @@ export class AgentRuntime {
     session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
     session.thinkingLevel = selectedGrokEffort(created) ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]);
     session.configOptions = readAcpConfigOptions(created);
+    session.modes = readAcpModes(created);
     return created.sessionId;
   }
 
@@ -223,6 +226,7 @@ export class AgentRuntime {
     if (effort) session.thinkingLevel = effort;
     const options = readAcpConfigOptions(loaded);
     if (options.length > 0) session.configOptions = options;
+    session.modes = readAcpModes(loaded);
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
@@ -616,6 +620,18 @@ export class AgentRuntime {
         session.modelId = set.modelId;
         return { provider: "grok", id: session.modelId };
       }
+      case "set_standard_mode": {
+        const modeId = stringField(command.modeId);
+        if (!modeId) throw new Error("modeId is required");
+        const session = this.ensureSession(sessionId);
+        if (session.modes.available.length > 0 && !session.modes.available.some((mode) => mode.id === modeId)) {
+          throw new AgentCommandError(400, "mode_unadvertised", "ACP mode is not advertised");
+        }
+        await this.ensureProcess();
+        await this.requireAcp().sessionSetMode(sessionId, modeId);
+        session.modes = { ...session.modes, current: modeId };
+        return { modeId };
+      }
       case "set_thinking_level": {
         await this.ensureProcess();
         const level = stringField(command.level);
@@ -773,6 +789,7 @@ export class AgentRuntime {
     thinkingLevel: string;
     queuedMessages: QueueSnapshot;
     toolPresets: ToolPreset[];
+    modes?: AcpModes;
     contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null };
   }> {
     const session = this.sessions.get(sessionId);
@@ -786,6 +803,7 @@ export class AgentRuntime {
       thinkingLevel: session?.thinkingLevel ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]),
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
       toolPresets: advertisedToolPresets(session?.configOptions ?? []),
+      ...(session?.modes.available.length ? { modes: session.modes } : {}),
       ...(contextUsage ? { contextUsage } : {}),
     };
   }
@@ -1209,6 +1227,7 @@ export class AgentRuntime {
         bashTerminalIds: new Set(),
         queue: new SessionQueue(),
         configOptions: [],
+        modes: { current: null, available: [] },
         eventSequence: 0,
         queuedPromptGenerations: [],
       };
