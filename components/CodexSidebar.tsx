@@ -33,6 +33,7 @@ interface Props {
   onInitialRestoreDone?: () => void;
   refreshKey?: number;
   onSessionDeleted?: (sessionId: string) => void;
+  onRestoreCode?: (session: SessionInfo) => void;
   selectedCwd?: string | null;
   onCwdChange?: (cwd: string | null, projectRoot?: string | null) => void;
   onBackgroundTaskDone?: () => void;
@@ -135,6 +136,7 @@ export function CodexSidebar({
   onInitialRestoreDone,
   refreshKey,
   onSessionDeleted,
+  onRestoreCode,
   selectedCwd: selectedCwdProp,
   onCwdChange,
   onBackgroundTaskDone,
@@ -806,6 +808,7 @@ export function CodexSidebar({
                         unread={unreadIds.has(session.id)}
                         onSelect={() => selectSession(session)}
                         onChanged={() => void loadData(false)}
+                        onRestoreCode={onRestoreCode}
                         onDeleted={() => { onSessionDeleted?.(session.id); void loadData(false); }}
                         onArchive={() => {
                           setArchivedIds((current) => new Set(current).add(session.id));
@@ -846,6 +849,7 @@ export function CodexSidebar({
               relativeTime={formatRelativeTime(session.modified, locale)}
               onSelect={() => selectSession(session)}
               onChanged={() => void loadData(false)}
+              onRestoreCode={onRestoreCode}
               onDeleted={() => { onSessionDeleted?.(session.id); void loadData(false); }}
               onArchive={() => {
                 setArchivedIds((current) => new Set(current).add(session.id));
@@ -1006,7 +1010,7 @@ export function CodexSidebar({
   );
 }
 
-function SessionRow({ session, selected, running, runningSubagentCount, unread, variant = "nested", projectLabel, relativeTime, onSelect, onChanged, onDeleted, onArchive }: {
+function SessionRow({ session, selected, running, runningSubagentCount, unread, variant = "nested", projectLabel, relativeTime, onSelect, onChanged, onDeleted, onArchive, onRestoreCode }: {
   session: SessionInfo;
   selected: boolean;
   running: boolean;
@@ -1019,6 +1023,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
   onChanged: () => void;
   onDeleted: () => void;
   onArchive: () => void;
+  onRestoreCode?: (session: SessionInfo) => void;
 }) {
   const { t } = useI18n();
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
@@ -1164,6 +1169,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
             <div ref={menuRef} className="codex-project-menu codex-project-menu-portal" role="menu" style={{ left: menuPos.left, top: menuPos.top }}>
               <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.rename")}</button>
               <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveSession")}</button>
+              {onRestoreCode && session.sessionRole !== "subagent" && <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRestoreCode(session); }}>Restore code in new worktree</button>}
               <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
             </div>,
             document.body,

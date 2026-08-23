@@ -26,6 +26,7 @@ import { Network,
 } from "lucide-react";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { CodexSidebar } from "./CodexSidebar";
+import { RestoreCodeDialog } from "./RestoreCodeDialog";
 import { hasActiveDescendant, useSubagentTree } from "@/hooks/useSubagentTree";
 import { SessionBreadcrumb, SubagentComposer, SubagentTree, DesktopSubagentCard, buildBreadcrumbItems, countSubagentNodes, findSubagentNode } from "./SubagentSessions";
 import type { SubagentTreeNode } from "@/lib/api-types";
@@ -138,6 +139,7 @@ export function AppShell() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
   const [settingsVariant, setSettingsVariant] = useState<SettingsVariant>("settings");
   const [grokSignedOut, setGrokSignedOut] = useState(false);
+  const [restoreCodeSession, setRestoreCodeSession] = useState<SessionInfo | null>(null);
   const openSettings = useCallback((section: SettingsSection = "general") => {
     setSettingsSection(section);
     setSettingsVariant(
@@ -1282,6 +1284,7 @@ export function AppShell() {
         onInitialRestoreDone={handleInitialRestoreDone}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
+        onRestoreCode={setRestoreCodeSession}
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onBackgroundTaskDone={handleBackgroundTaskDone}
@@ -2628,6 +2631,16 @@ export function AppShell() {
         </div>
       </div>
     </div>
+    {restoreCodeSession && (
+      <RestoreCodeDialog
+        sessionId={restoreCodeSession.id}
+        onClose={() => setRestoreCodeSession(null)}
+        onSuccess={(result) => {
+          setRestoreCodeSession(null);
+          window.location.assign(`/?session=${encodeURIComponent(result.newSessionId)}&cwd=${encodeURIComponent(result.worktreePath)}`);
+        }}
+      />
+    )}
     {settingsOpen && (
       <Suspense fallback={null}>
         <SettingsPage
