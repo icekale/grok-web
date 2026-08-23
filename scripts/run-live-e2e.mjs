@@ -87,7 +87,12 @@ function writeLiveFailureArtifacts(artifactDir, rawDir, exitCode, roots) {
     ? sanitizeTraceArchive(readFileSync(rawTrace), { roots })
     : zipSync({ "trace.trace": strToU8(JSON.stringify({ status: "failed", exitCode })) }));
   if (!existsSync(join(artifactDir, "screenshot.png"))) writeFileSync(join(artifactDir, "screenshot.png"), Buffer.concat([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"), Buffer.from("E2E_SAFE_SCREENSHOT_V1\n")]));
-  validateArtifactDirectory(artifactDir, { roots });
+  try {
+    validateArtifactDirectory(artifactDir, { roots });
+  } catch (error) {
+    rmSync(artifactDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function runLiveE2e({ args = [], env = process.env, launcher = (command, childArgs, options) => spawn(command, childArgs, options), preflight = preflightLiveE2e } = {}) {

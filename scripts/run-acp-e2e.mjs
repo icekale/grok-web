@@ -15,7 +15,7 @@ const PLAYWRIGHT_CLI = require.resolve("@playwright/test/cli");
 
 export function buildAcpE2eEnv(input, base = process.env) {
   const env = { ...base };
-  delete env.GROK_WEB_PASSWORD;
+  for (const key of ["GROK_WEB_PASSWORD", "GROK_WEB_LIVE_E2E", "GROK_WEB_LIVE_E2E_HOME", "GROK_WEB_LIVE_E2E_GROK_BIN"]) delete env[key];
   return {
     ...env,
     CI: "1",
@@ -143,7 +143,12 @@ function writeFailureArtifacts(resources, exitCode) {
   if (!existsSync(join(resources.artifactDir, "screenshot.png"))) {
     writeFileSync(join(resources.artifactDir, "screenshot.png"), Buffer.concat([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"), Buffer.from("E2E_SAFE_SCREENSHOT_V1\n")]));
   }
-  validateArtifactDirectory(resources.artifactDir, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) });
+  try {
+    validateArtifactDirectory(resources.artifactDir, { roots: new Map([[resources.home, "<grok-home>"], [resources.projectA, "<project-a>"], [resources.projectB, "<project-b>"]]) });
+  } catch (error) {
+    rmSync(resources.artifactDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function runAcpE2e({ args = [], launcher = (command, childArgs, options) => spawn(command, childArgs, options), resourceFactory = createAcpE2eResources } = {}) {

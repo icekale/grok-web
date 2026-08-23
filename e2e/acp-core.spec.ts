@@ -38,19 +38,25 @@ test.describe("ACP core", () => {
       Object.defineProperty(window, "__e2eSseTypes", { configurable: true, value: seen });
     });
     await page.goto(`/?cwd=${encodeURIComponent(cwd)}`);
+    let ownedSessionId: string | undefined;
     try {
       const composer = page.getByRole("textbox", { name: "Message" });
+      const newSessionResponse = page.waitForResponse((response) => response.url().endsWith("/api/agent/new") && response.request().method() === "POST");
       await composer.fill("E2E_TEXT_MARKER");
       await page.getByRole("button", { name: "Send" }).click();
+      ownedSessionId = (await newSessionResponse.then((response) => response.json())).sessionId as string;
+      expect(ownedSessionId).toBeTruthy();
       await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
       const types = await page.evaluate(() => (window as unknown as { __e2eSseTypes: string[] }).__e2eSseTypes);
       expect(types).toContain("session_snapshot");
       expect(types).toContain("message_update");
       expect(fixtureMethods()).toEqual(expect.arrayContaining(["initialize", "session/new", "session/prompt"]));
     } finally {
-      const sessions = await page.request.get("/api/sessions").then((response) => response.json());
-      for (const session of sessions.sessions ?? []) {
-        if (session.cwd === cwd) await page.request.delete(`/api/sessions/${encodeURIComponent(session.id)}`);
+      if (ownedSessionId) {
+        const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(ownedSessionId)}`);
+        expect([200, 404], await deleted.text()).toContain(deleted.status());
+        const remaining = await page.request.get("/api/sessions").then((response) => response.json());
+        expect((remaining.sessions ?? []).some((session: { id?: string }) => session.id === ownedSessionId)).toBe(false);
       }
     }
   });

@@ -23,17 +23,21 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     await page.getByRole("button", { name: "Send" }).click();
     sessionId = (await newSessionResponse.then((response) => response.json())).sessionId as string;
     expect(sessionId).toBeTruthy();
-    const liveSse = page.evaluate((id) => new Promise<{ updates: number; settled: boolean }>((resolve, reject) => {
+    const liveSse = page.evaluate((id) => new Promise<{ updates: number; textUpdates: number; settled: boolean }>((resolve, reject) => {
       const source = new EventSource(`/api/agent/${encodeURIComponent(id)}/events`);
       let updates = 0;
+      let textUpdates = 0;
       const timer = setTimeout(() => { source.close(); reject(new Error("live SSE completion timeout")); }, 120_000);
       source.onmessage = (event) => {
         const value = JSON.parse(event.data);
-        if (value.type === "message_update") updates += 1;
+        if (value.type === "message_update") {
+          updates += 1;
+          if (value.assistantMessageEvent?.type === "text_delta" && typeof value.assistantMessageEvent.delta === "string" && value.assistantMessageEvent.delta) textUpdates += 1;
+        }
         if (value.type === "agent_settled") {
           clearTimeout(timer);
           source.close();
-          resolve({ updates, settled: true });
+          resolve({ updates, textUpdates, settled: true });
         }
       };
       source.onerror = () => { clearTimeout(timer); source.close(); reject(new Error("live SSE closed")); };
@@ -43,6 +47,7 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
     const stream = await liveSse;
     expect(stream.settled).toBe(true);
     expect(stream.updates).toBeGreaterThan(0);
+    expect(stream.textUpdates).toBeGreaterThan(0);
 
     const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId!)}/context`);
     expect(context.ok(), await context.text()).toBeTruthy();
