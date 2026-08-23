@@ -137,12 +137,14 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
   let exitCode = 1;
   let cleanupError;
   let initialWorktreeIds = new Set();
+  let worktreeSnapshotReady = false;
   try {
     root = mkdtempSync(join(tmpdir(), "grok-web-live-e2e-"));
     rawOutputDir = join(root, "raw-output");
     project = join(root, "project");
     initProject(project);
     initialWorktreeIds = snapshotWorktrees(checked.home, checked.binary);
+    worktreeSnapshotReady = true;
     const port = await allocateLoopbackPort();
     const runEnv = { ...env };
     delete runEnv.GROK_WEB_PASSWORD;
@@ -175,7 +177,8 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
     } catch {}
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_000));
     try {
-      if (project) await cleanup(checked.home, checked.binary, project, initialWorktreeIds);
+      if (project && worktreeSnapshotReady) await cleanup(checked.home, checked.binary, project, initialWorktreeIds);
+      else if (project) cleanupError = new Error("Live E2E refused cleanup because the worktree baseline could not be captured.");
     } catch (error) {
       cleanupError = error;
     }

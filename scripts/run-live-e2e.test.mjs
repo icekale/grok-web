@@ -60,6 +60,19 @@ test("live child environment pins the dedicated home", async () => {
   assert.equal(launchedEnv.GROK_HOME, home);
 });
 
+test("runLiveE2e refuses destructive cleanup when the worktree baseline fails", async () => {
+  const home = homeWithAuth(["grok.com"]);
+  let cleaned = false;
+  await assert.rejects(runLiveE2e({
+    env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home },
+    preflight: () => ({ home, binary: process.execPath }),
+    snapshotWorktrees: () => { throw new Error("snapshot failed"); },
+    cleanup: () => { cleaned = true; },
+    launcher: () => { throw new Error("must not spawn"); },
+  }), /baseline/);
+  assert.equal(cleaned, false);
+});
+
 test("runLiveE2e never spawns when preflight fails", async () => {
   let spawned = false;
   await assert.rejects(runLiveE2e({ env: {}, launcher: () => { spawned = true; throw new Error("must not spawn"); } }), /GROK_WEB_LIVE_E2E/);
