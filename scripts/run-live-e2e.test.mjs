@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -37,7 +37,7 @@ test("live preflight accepts exact grok.com auth or the top-level official key",
   const keyHome = homeWithAuth([], true);
   for (const home of [authHome, keyHome]) {
     const result = preflightLiveE2e({ env: { ...baseEnv, GROK_WEB_LIVE_E2E_HOME: home }, resolveBinary: () => process.execPath });
-    assert.equal(result.home, home);
+    assert.equal(result.home, realpathSync(home));
     assert.equal(result.binary, process.execPath);
   }
 });

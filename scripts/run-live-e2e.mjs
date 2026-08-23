@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,16 +34,19 @@ export function preflightLiveE2e({ env = process.env, defaultHome = join(homedir
   if (!isAbsolute(homeValue)) throw new Error("GROK_WEB_LIVE_E2E_HOME must be an absolute dedicated home.");
   const home = resolve(homeValue);
   if (!existsSync(home)) throw new Error("GROK_WEB_LIVE_E2E_HOME does not exist.");
-  if (home === resolve(defaultHome)) throw new Error("Live E2E refuses the default operator Grok home; use a dedicated home.");
+  const canonicalHome = realpathSync(home);
+  const canonicalDefaultHome = existsSync(defaultHome) ? realpathSync(defaultHome) : resolve(defaultHome);
+  if (canonicalHome === canonicalDefaultHome) throw new Error("Live E2E refuses the default operator Grok home; use a dedicated home.");
   if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(home)) throw new Error("Live E2E refuses the repository ACP fixture as a Grok home.");
   const binary = resolveBinary(home);
   if (!binary || !existsSync(binary)) throw new Error("No real Grok binary is resolvable; set GROK_WEB_LIVE_E2E_GROK_BIN.");
-  if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(binary)) throw new Error("Live E2E refuses the repository ACP fixture binary.");
-  const auth = readAuth(home);
-  if (!auth.methods.includes("grok.com") && !hasApiKey(home)) {
+  const canonicalBinary = realpathSync(binary);
+  if (/(?:e2e[\\/]fixtures|acp-agent\.mjs)/i.test(canonicalBinary)) throw new Error("Live E2E refuses the repository ACP fixture binary.");
+  const auth = readAuth(canonicalHome);
+  if (!auth.methods.includes("grok.com") && !hasApiKey(canonicalHome)) {
     throw new Error("Dedicated Grok home is not authenticated: use grok.com OAuth or the official top-level API key.");
   }
-  return { home, binary };
+  return { home: canonicalHome, binary: canonicalBinary };
 }
 
 function initProject(path) {
@@ -89,30 +92,33 @@ function writeLiveFailureArtifacts(artifactDir, rawDir, exitCode, roots) {
 
 export async function runLiveE2e({ args = [], env = process.env, launcher = (command, childArgs, options) => spawn(command, childArgs, options), preflight = preflightLiveE2e } = {}) {
   const checked = preflight({ env });
-  const root = mkdtempSync(join(tmpdir(), "grok-web-live-e2e-"));
   const artifactDir = join(ROOT, ".artifacts", "e2e-live");
   rmSync(artifactDir, { recursive: true, force: true });
-  const rawOutputDir = join(root, "raw-output");
-  const project = join(root, "project");
-  initProject(project);
-  const port = await allocateLoopbackPort();
-  const runEnv = { ...env };
-  delete runEnv.GROK_WEB_PASSWORD;
-  Object.assign(runEnv, {
-    CI: "1",
-    NITRO_HOST: "127.0.0.1",
-    GROK_WEB_E2E_ISOLATED: "1",
-    GROK_WEB_E2E_PORT: String(port),
-    GROK_WEB_E2E_PROJECT_A: project,
-    GROK_WEB_E2E_ARTIFACT_DIR: artifactDir,
-    GROK_WEB_E2E_RAW_OUTPUT_DIR: rawOutputDir,
-    GROK_HOME: checked.home,
-    GROK_WEB_LIVE_E2E_HOME: checked.home,
-    GROK_BIN: checked.binary,
-  });
+  let root;
+  let project;
+  let rawOutputDir;
   let child;
   let exitCode = 1;
   try {
+    root = mkdtempSync(join(tmpdir(), "grok-web-live-e2e-"));
+    rawOutputDir = join(root, "raw-output");
+    project = join(root, "project");
+    initProject(project);
+    const port = await allocateLoopbackPort();
+    const runEnv = { ...env };
+    delete runEnv.GROK_WEB_PASSWORD;
+    Object.assign(runEnv, {
+      CI: "1",
+      NITRO_HOST: "127.0.0.1",
+      GROK_WEB_E2E_ISOLATED: "1",
+      GROK_WEB_E2E_PORT: String(port),
+      GROK_WEB_E2E_PROJECT_A: project,
+      GROK_WEB_E2E_ARTIFACT_DIR: artifactDir,
+      GROK_WEB_E2E_RAW_OUTPUT_DIR: rawOutputDir,
+      GROK_HOME: checked.home,
+      GROK_WEB_LIVE_E2E_HOME: checked.home,
+      GROK_BIN: checked.binary,
+    });
     child = launcher(PLAYWRIGHT_CLI, ["test", "e2e/live.spec.ts", ...args], {
       cwd: ROOT,
       env: runEnv,
@@ -128,8 +134,14 @@ export async function runLiveE2e({ args = [], env = process.env, launcher = (com
       if (child?.pid && process.platform !== "win32") process.kill(-child.pid, "SIGTERM");
       else child?.kill?.("SIGTERM");
     } catch {}
-    rmSync(root, { recursive: true, force: true });
-    if (exitCode === 0) rmSync(artifactDir, { recursive: true, force: true });
+    if (root) {
+      rmSync(root, { recursive: true, force: true });
+      if (existsSync(root)) throw new Error(`Live E2E cleanup left residual path: ${root}`);
+    }
+    if (exitCode === 0) {
+      rmSync(artifactDir, { recursive: true, force: true });
+      if (existsSync(artifactDir)) throw new Error(`Live E2E cleanup left artifact path: ${artifactDir}`);
+    }
   }
 }
 

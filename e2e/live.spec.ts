@@ -17,16 +17,15 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
   try {
     await page.goto(`/?cwd=${encodeURIComponent(cwd)}`);
     await authorizeProject(page, cwd);
+    const newSessionResponse = page.waitForResponse((response) => response.url().endsWith("/api/agent/new") && response.request().method() === "POST");
     const promptResponse = page.waitForResponse((response) => response.url().includes("/api/agent/") && !response.url().endsWith("/new") && response.request().method() === "POST");
     await page.getByRole("textbox", { name: "Message" }).fill("LIVE_E2E_MARKER");
     await page.getByRole("button", { name: "Send" }).click();
+    sessionId = (await newSessionResponse.then((response) => response.json())).sessionId as string;
+    expect(sessionId).toBeTruthy();
     const prompt = await promptResponse;
     expect(prompt.ok(), await prompt.text()).toBeTruthy();
 
-    const sessions = await page.request.get("/api/sessions").then((response) => response.json());
-    const owned = (sessions.sessions ?? []).find((session: { cwd?: string }) => session.cwd === cwd);
-    sessionId = owned?.id as string | undefined;
-    expect(sessionId).toBeTruthy();
     const context = await page.request.get(`/api/sessions/${encodeURIComponent(sessionId!)}/context`);
     expect(context.ok(), await context.text()).toBeTruthy();
     expect(JSON.stringify(await context.json())).toContain("LIVE_E2E_MARKER");
@@ -38,19 +37,37 @@ test("runs one bounded authenticated Grok browser turn and verifies persisted hi
       if (response.status() === 200) expect(await response.json()).toBeTruthy();
     }
   } finally {
-    const sessions = await page.request.get("/api/sessions").then((response) => response.json());
+    let cleanupError: unknown;
+    let sessions: { id?: string; cwd?: string }[] = [];
+    try {
+      const body = await page.request.get("/api/sessions").then((response) => response.json());
+      sessions = body.sessions ?? [];
+    } catch (error) {
+      cleanupError = error;
+    }
     const ownedIds = new Set<string>();
-    for (const session of sessions.sessions ?? []) {
+    for (const session of sessions) {
       if ((sessionId && session.id === sessionId) || session.cwd === cwd) ownedIds.add(String(session.id));
     }
     if (sessionId) ownedIds.add(sessionId);
     for (const ownedId of ownedIds) {
-      const abort = await page.request.post(`/api/agent/${encodeURIComponent(ownedId)}`, { data: { type: "abort" }, timeout: 5_000 });
-      expect([200, 404], await abort.text()).toContain(abort.status());
-      const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(ownedId)}`, { timeout: 5_000 });
-      expect([200, 404], await deleted.text()).toContain(deleted.status());
+      try {
+        const abort = await page.request.post(`/api/agent/${encodeURIComponent(ownedId)}`, { data: { type: "abort" }, timeout: 5_000 });
+        expect([200, 404], await abort.text()).toContain(abort.status());
+        const deleted = await page.request.delete(`/api/sessions/${encodeURIComponent(ownedId)}`, { timeout: 5_000 });
+        expect([200, 404], await deleted.text()).toContain(deleted.status());
+      } catch (error) {
+        cleanupError ??= error;
+      }
     }
-    const remaining = await page.request.get("/api/sessions").then((response) => response.json());
-    expect((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => ownedIds.has(String(session.id)) || session.cwd === cwd)).toBe(false);
+    try {
+      const remaining = await page.request.get("/api/sessions").then((response) => response.json());
+      if ((remaining.sessions ?? []).some((session: { id?: string; cwd?: string }) => ownedIds.has(String(session.id)) || session.cwd === cwd)) {
+        cleanupError ??= new Error(`Live E2E session residue remains under ${cwd}`);
+      }
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    if (cleanupError) throw cleanupError;
   }
 });
