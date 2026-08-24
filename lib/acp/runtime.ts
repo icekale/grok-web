@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { grokHome } from "../grok-home.ts";
 import { discoverGrokCapabilities, type GrokCapabilities } from "../grok-capabilities.ts";
 import { readRuntimeProfile, validateRuntimeProfile, writeRuntimeProfile, type RuntimeProfile } from "../runtime-profile.ts";
-import { readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
+import { readGrokConfig, readPermissionMode, sessionNewMeta } from "../grok-settings/home-config.ts";
 import { historyUserText, mapUpdatesJsonl } from "../history-map.ts";
 import { findGrokSession } from "../session-index.ts";
 import { readContextUsageFromDir, readSessionContextUsage } from "../session-signals.ts";
@@ -164,8 +164,36 @@ async function terminateChild(child: ChildProcess): Promise<void> {
   child.removeListener("error", onExit);
 }
 
-function extraAcpReadRoots(): string[] {
-  return [join(homedir(), ".agents"), join(grokHome(), "docs"), join(grokHome(), "skills")].map(canonicalCwd);
+function expandUserPath(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
+  return value;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "") : [];
+}
+
+export function extraAcpReadRoots(): string[] {
+  const home = grokHome();
+  const config = readGrokConfig(home);
+  const skills = config.skills && typeof config.skills === "object" && !Array.isArray(config.skills) ? config.skills as Record<string, unknown> : {};
+  const plugins = config.plugins && typeof config.plugins === "object" && !Array.isArray(config.plugins) ? config.plugins as Record<string, unknown> : {};
+  return [
+    join(homedir(), ".agents"),
+    join(homedir(), ".claude"),
+    join(homedir(), ".cursor", "skills"),
+    join(home, "skills"),
+    join(home, "commands"),
+    join(home, "docs"),
+    join(home, "installed-plugins"),
+    join(home, "bundled", "skills"),
+    join(home, "plugins"),
+    ...stringList(skills.paths),
+    ...stringList(skills.server_skill_dirs),
+    ...stringList(skills.bundled_skill_dirs),
+    ...stringList(plugins.paths),
+  ].map((path) => canonicalCwd(expandUserPath(path)));
 }
 
 export class AgentRuntime {
