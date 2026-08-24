@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 import { DialogShell } from "./DialogShell";
 
 export function RestoreCodeDialog({ sessionId, advisoryName, onClose, onSuccess }: { sessionId: string; advisoryName?: string; onClose: () => void; onSuccess: (result: { newSessionId: string; worktreePath: string }) => void }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restore = async () => {
@@ -16,9 +18,24 @@ export function RestoreCodeDialog({ sessionId, advisoryName, onClose, onSuccess 
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  return <DialogShell size="confirm" title="Restore code in new worktree" ariaLabel="Restore code" onClose={() => { if (!busy) onClose(); }} dismissible={!busy} backdropDismissible={false} footer={<><button type="button" className="codex-dialog-button" onClick={onClose} disabled={busy}>Cancel</button><button type="button" className="codex-dialog-button" data-variant="primary" onClick={() => void restore()} disabled={busy}>Restore</button></>}>
-    <p className="codex-dialog-copy">The original project and session remain untouched. A new ACP-owned worktree will be created.</p>
-    <code className="codex-dialog-inset">{advisoryName ?? `restore/${sessionId.slice(0, 8)}`}</code>
-    {error && <div className="codex-dialog-error" role="alert">{error}</div>}
-  </DialogShell>;
+  return (
+    <DialogShell
+      size="confirm"
+      title={t("sidebar.restoreCodeInWorktree")}
+      ariaLabel={t("sidebar.restoreCode")}
+      onClose={() => { if (!busy) onClose(); }}
+      dismissible={!busy}
+      backdropDismissible={false}
+      footer={(
+        <>
+          <button type="button" className="codex-dialog-button" onClick={onClose} disabled={busy}>{t("sidebar.cancel")}</button>
+          <button type="button" className="codex-dialog-button" data-variant="primary" onClick={() => void restore()} disabled={busy}>{t("sidebar.restoreCode")}</button>
+        </>
+      )}
+    >
+      <p className="codex-dialog-copy">{t("sidebar.restoreCodeCopy")}</p>
+      <code className="codex-dialog-inset">{advisoryName ?? `restore/${sessionId.slice(0, 8)}`}</code>
+      {error && <div className="codex-dialog-error" role="alert">{error}</div>}
+    </DialogShell>
+  );
 }

@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArrowDown, ArrowUp, ChevronRight, Ellipsis, Folder, FolderPlus, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, ChevronRight, Ellipsis, Folder, FolderPlus, GitBranch, LoaderCircle, MessageSquare, PanelLeft, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { readArchivedSessionIds, rememberArchivedSessionIds, writeArchivedSessionIds } from "@/lib/archived-sessions";
@@ -1169,7 +1169,7 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
             <div ref={menuRef} className="codex-project-menu codex-project-menu-portal" role="menu" style={{ left: menuPos.left, top: menuPos.top }}>
               <button type="button" role="menuitem" onClick={() => { setValue(title); setRenaming(true); setMenuPos(null); }}><Pencil size={14} aria-hidden="true" />{t("sidebar.rename")}</button>
               <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onArchive(); }}><Archive size={14} aria-hidden="true" />{t("sidebar.archiveSession")}</button>
-              {onRestoreCode && session.sessionRole !== "subagent" && <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRestoreCode(session); }}>Restore code in new worktree</button>}
+              {onRestoreCode && session.sessionRole !== "subagent" && <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRestoreCode(session); }}><GitBranch size={14} aria-hidden="true" />{t("sidebar.restoreCodeMenu")}</button>}
               <button type="button" role="menuitem" className="danger" onClick={() => { setMenuPos(null); setDeleteError(null); setPendingDelete(true); }}><Trash2 size={14} aria-hidden="true" />{t("sidebar.delete")}</button>
             </div>,
             document.body,

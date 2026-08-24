@@ -59,6 +59,16 @@ test("project sorting supports drag and keyboard-accessible menu actions", () =>
   assert.match(sidebar, /event\.key !== "Enter" && event\.key !== " "/);
 });
 
+test("session restore-code action uses localized copy instead of hardcoded English", async () => {
+  const dialog = await readFile(new URL("./RestoreCodeDialog.tsx", import.meta.url), "utf8");
+  assert.match(sidebar, /<GitBranch size=\{14\} aria-hidden="true" \/>\{t\("sidebar\.restoreCodeMenu"\)\}/);
+  assert.doesNotMatch(sidebar, />Restore code in new worktree</);
+  assert.match(dialog, /t\("sidebar\.restoreCodeInWorktree"\)/);
+  assert.match(dialog, /t\("sidebar\.restoreCodeCopy"\)/);
+  assert.match(dialog, /t\("sidebar\.restoreCode"\)/);
+  assert.doesNotMatch(dialog, /Restore code in new worktree/);
+});
+
 test("session delete confirms in DialogShell and still reports errors inline", () => {
   assert.match(sidebar, /setDeleteError\(null\); setPendingDelete\(true\)/);
   assert.match(sidebar, /sidebar\.confirmDeleteSession/);
