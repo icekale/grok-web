@@ -3,6 +3,23 @@ export function composerDisplayId(modelId: string): string {
   return slash > 0 ? modelId.slice(slash + 1) : modelId;
 }
 
+export function composerProvider(modelId: string): string {
+  const slash = modelId.indexOf("/");
+  return slash > 0 ? modelId.slice(0, slash) : "grok";
+}
+
+export function sessionModelRef(modelId: string): { provider: string; id: string } {
+  return { provider: composerProvider(modelId), id: modelId };
+}
+
+export function resolvedSessionModelId(requested: string, reported?: string | null): string {
+  if (!reported) return requested;
+  if (requested.includes("/") && !reported.includes("/") && composerDisplayId(requested) === reported) {
+    return requested;
+  }
+  return reported;
+}
+
 export function composerModelLabel(modelId: string, name?: string | null): string {
   const id = composerDisplayId(modelId);
   const trimmed = typeof name === "string" ? name.trim() : "";

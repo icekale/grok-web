@@ -85,6 +85,17 @@ export function renderGrokModelTable(row: SettingsComposerModel, pickerId = `${r
   if (row.baseUrl) lines.push(`base_url = ${JSON.stringify(row.baseUrl)}`);
   if (row.apiKey) lines.push(`api_key = ${JSON.stringify(row.apiKey)}`);
   if (row.contextWindow) lines.push(`context_window = ${row.contextWindow}`);
+  if (row.id.toLowerCase() === "grok-4.6") {
+    lines.push(
+      "supports_reasoning_effort = true",
+      "reasoning_efforts = [",
+      '  { id = "xhigh", value = "xhigh", label = "Extra High Effort", default = false },',
+      '  { id = "high", value = "high", label = "High Effort", default = true },',
+      '  { id = "medium", value = "medium", label = "Medium Effort", default = false },',
+      '  { id = "low", value = "low", label = "Low Effort", default = false },',
+      "]",
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 

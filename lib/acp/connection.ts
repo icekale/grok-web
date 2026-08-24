@@ -1,3 +1,4 @@
+import { resolvedSessionModelId } from "../grok-model-label.ts";
 import { readAcpTextFile, writeAcpTextFile } from "./client-fs.ts";
 import { isJsonRpcId, JsonRpcConn, type JsonRpcId } from "./jsonrpc.ts";
 import { buildAcpPrompt, parsePromptImages } from "./prompt-images.ts";
@@ -334,12 +335,16 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/models/list", {}).then((raw) => unwrapResult(raw) as never);
   }
 
-  sessionSetModel(sessionId: string, modelId: string): Promise<{ modelId: string }> {
-    return this.rpc.request("session/set_model", { sessionId, modelId }).then((raw) => {
+  sessionSetModel(sessionId: string, modelId: string, reasoningEffort?: string): Promise<{ modelId: string }> {
+    return this.rpc.request("session/set_model", {
+      sessionId,
+      modelId,
+      ...(reasoningEffort ? { _meta: { reasoningEffort } } : {}),
+    }).then((raw) => {
       const meta = raw && typeof raw === "object" && "_meta" in raw
         ? (raw as { _meta?: { model?: { Ok?: string } } })._meta
         : undefined;
-      return { modelId: meta?.model?.Ok ?? modelId };
+      return { modelId: resolvedSessionModelId(modelId, meta?.model?.Ok) };
     });
   }
 

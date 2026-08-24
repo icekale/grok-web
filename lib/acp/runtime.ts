@@ -23,6 +23,7 @@ import { AcpTurnMapper } from "./map-events.ts";
 import { syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
 import { defaultGrokEffortLevel, GROK_EFFORT_LEVELS } from "../grok-effort-levels.ts";
+import { sessionModelRef } from "../grok-model-label.ts";
 import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, grokAgentEnv, resolveGrokBin } from "./process.ts";
@@ -649,6 +650,7 @@ export class AgentRuntime {
       case "set_model": {
         const modelId = stringField(command.modelId);
         if (!modelId) throw new Error("modelId is required");
+        const currentEffort = this.sessions.get(sessionId)?.thinkingLevel;
         const wrote = syncSettingsModelsToGrokConfig(readModelsConfig());
         const cwd = this.sessions.get(sessionId)?.cwd;
         let listed = await this.listModels();
@@ -661,10 +663,10 @@ export class AgentRuntime {
         if (!listed.modelList.some((model) => model.id === modelId)) {
           throw new Error(`Unknown model: ${modelId}`);
         }
-        const set = await this.requireAcp().sessionSetModel(sessionId, modelId);
+        const set = await this.requireAcp().sessionSetModel(sessionId, modelId, currentEffort);
         const session = this.ensureSession(sessionId);
         session.modelId = set.modelId;
-        return { provider: "grok", id: session.modelId };
+        return sessionModelRef(session.modelId);
       }
       case "set_standard_mode": {
         const modeId = stringField(command.modeId);
@@ -695,7 +697,9 @@ export class AgentRuntime {
         if (!level) throw new Error("level is required");
         const session = this.ensureSession(sessionId);
         const previous = session.thinkingLevel;
-        await this.requireAcp().sessionSetMode(sessionId, level);
+        const modelId = session.modelId ?? "grok-4.6";
+        const set = await this.requireAcp().sessionSetModel(sessionId, modelId, level);
+        session.modelId = set.modelId;
         session.thinkingLevel = level;
         return { level, previous };
       }
@@ -897,7 +901,7 @@ export class AgentRuntime {
     isStreaming: boolean;
     isPromptRunning: boolean;
     isBashRunning: boolean;
-    model: { provider: "grok"; id: string };
+    model: { provider: string; id: string };
     thinkingLevel: string;
     queuedMessages: QueueSnapshot;
     toolPresets: ToolPreset[];
@@ -915,7 +919,7 @@ export class AgentRuntime {
       isStreaming: promptBusy,
       isPromptRunning: promptBusy,
       isBashRunning: this.isSessionBashRunning(session),
-      model: { provider: "grok", id: session?.modelId ?? "grok-4.6" },
+      model: sessionModelRef(session?.modelId ?? "grok-4.6"),
       thinkingLevel: session?.thinkingLevel ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]),
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
       toolPresets: advertisedToolPresets(session?.configOptions ?? []),

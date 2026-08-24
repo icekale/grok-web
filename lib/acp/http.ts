@@ -64,6 +64,16 @@ export function createAgentHandlers(runtime: AgentRuntime): {
             if (!(error instanceof AgentCapabilityError)) throw error;
           }
         }
+        if (typeof body.modelId === "string" && body.modelId) {
+          await runtime.send(sessionId, {
+            type: "set_model",
+            provider: typeof body.provider === "string" ? body.provider : "grok",
+            modelId: body.modelId,
+          });
+        }
+        if (typeof body.thinkingLevel === "string" && body.thinkingLevel) {
+          await runtime.send(sessionId, { type: "set_thinking_level", level: body.thinkingLevel });
+        }
 
         const state = await runtime.send(sessionId, { type: "get_state" }) as SessionState;
         const model = publicModel(state);

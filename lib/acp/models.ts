@@ -48,12 +48,20 @@ export function mapGrokModels(listed: AcpModelsList): ModelsData {
   };
 }
 
+const SELECTED_EFFORT_IDS = new Set(["none", "auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
 export function selectedGrokEffort(result: unknown): string | undefined {
   if (!isRecord(result) || !isRecord(result._meta)) return undefined;
   const config = result._meta["x.ai/sessionConfig"];
   if (!isRecord(config) || !Array.isArray(config.options)) return undefined;
   for (const option of config.options) {
-    if (isRecord(option) && option.category === "mode" && option.selected === true && typeof option.id === "string") {
+    if (
+      isRecord(option)
+      && option.category === "mode"
+      && option.selected === true
+      && typeof option.id === "string"
+      && SELECTED_EFFORT_IDS.has(option.id)
+    ) {
       return option.id;
     }
   }
