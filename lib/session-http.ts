@@ -12,7 +12,6 @@ import { invalidateSessionListCache, listAllSessions } from "./session-reader.ts
 import type { SessionInfo } from "./types.ts";
 import { getAgentRuntime, peekAgentRuntime } from "./acp/runtime.ts";
 import type { AgentRuntime } from "./acp/runtime.ts";
-import { ensurePromptUsesVisibleModel } from "./session-model-retarget.ts";
 
 const SESSION_LIST_FIRST_MESSAGE_CHARS = 512;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
@@ -239,7 +238,6 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
   const runtime = peekAgentRuntime();
   if (runtime?.hasSession(id)) {
     try {
-      await ensurePromptUsesVisibleModel(runtime, id);
       const state = await runtime.send(id, { type: "get_state" }) as Record<string, unknown>;
       return Response.json({
         running: runtime.isBusy(id),

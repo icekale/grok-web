@@ -326,7 +326,8 @@ export function listLanIPv4s(): string[] {
   const seen = new Set<string>();
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries ?? []) {
-      if (entry.family !== "IPv4" || entry.internal) continue;
+      const family = entry.family;
+      if (!(family === "IPv4" || family === 4) || entry.internal) continue;
       if (entry.address.startsWith("169.254.")) continue;
       if (seen.has(entry.address)) continue;
       seen.add(entry.address);

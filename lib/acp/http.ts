@@ -144,9 +144,9 @@ export function createAgentHandlers(
         if (!runtime.hasSession(id)) {
           return Response.json({ error: "Session not found" }, { status: 404 });
         }
-        await options.ensurePromptModel?.(id);
 
         if (command.type === "prompt") {
+          await options.ensurePromptModel?.(id);
           const promptGeneration = nextPromptGeneration(id);
           await runtime.send(id, { ...command, promptGeneration });
           promptAccepted = true;
@@ -172,7 +172,6 @@ export function createAgentHandlers(
         if (!runtime.hasSession(id)) {
           return Response.json({ error: "Session not found" }, { status: 404 });
         }
-        await options.ensurePromptModel?.(id);
         const state = await runtime.send(id, { type: "get_state" });
         return Response.json({ running: runtime.isBusy(id), state });
       } catch (error) {

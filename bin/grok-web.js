@@ -61,7 +61,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (!isLoopbackHost(hostname) && process.env.GROK_WEB_PASSWORD) {
+  if (!isLoopbackHost(hostname) && password) {
     console.warn(
       `Warning: grok-web is listening on ${hostname} with Basic Auth over HTTP. Use HTTPS or a trusted VPN to protect the password in transit.`,
     );

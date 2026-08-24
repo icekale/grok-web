@@ -128,6 +128,11 @@ function childHasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
+function childFromConnection(acp: AcpConnection): ChildProcess | undefined {
+  const child = (acp as AcpConnection & { child?: ChildProcess }).child;
+  return child && typeof child.kill === "function" ? child : undefined;
+}
+
 async function terminateChild(child: ChildProcess): Promise<void> {
   if (childHasExited(child)) return;
   let exited = false;
@@ -178,6 +183,7 @@ export class AgentRuntime {
   private unsubClose: (() => void) | undefined;
   private child: ChildProcess | undefined;
   private spawnedReasoningEffort: string | undefined;
+  private spawnEffortInitialized = false;
   private aligningSpawnEffort = false;
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
@@ -262,7 +268,9 @@ export class AgentRuntime {
       session.modes = modeState.modes;
       session.modeSource = modeState.source;
     }
-    await this.applySessionEffort(sessionId, session, connection.acp);
+    if (!this.aligningSpawnEffort) {
+      await this.applySessionEffort(sessionId, session, connection.acp);
+    }
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
@@ -289,8 +297,8 @@ export class AgentRuntime {
     this.listeners.clear();
     this.sequencedListeners.clear();
     this.dropConnection();
-    if (child && !child.killed) child.kill();
     this.child = undefined;
+    if (child) await terminateChild(child);
     await this.ensureProcess();
   }
 
@@ -669,10 +677,11 @@ export class AgentRuntime {
           selected: this.sessions.get(sessionId)?.thinkingLevel,
           modelId,
         });
-        this.spawnedReasoningEffort = upcomingEffort;
         let listed = await this.listModels();
         const known = listed.modelList.some((model) => model.id === modelId);
         if (wrote.length > 0 || (!known && modelId.includes("/"))) {
+          this.spawnedReasoningEffort = upcomingEffort;
+          this.spawnEffortInitialized = true;
           await this.recycleProcess();
           if (cwd) await this.loadSession(sessionId, cwd);
           listed = await this.listModels();
@@ -1253,6 +1262,11 @@ export class AgentRuntime {
   private async startProcess(): Promise<void> {
     const startupToken = ++this.startupToken;
     const acp = await this.connectFn();
+    const spawned = childFromConnection(acp);
+    if (spawned) {
+      this.child = spawned;
+      this.connectionChildren.set(acp, spawned);
+    }
     const child = this.connectionChildren.get(acp) ?? this.child;
     try {
       await acp.initialize();
@@ -1272,6 +1286,10 @@ export class AgentRuntime {
     this.unsubPermissionResolved?.();
     this.unsubClose?.();
     this.acp = acp;
+    if (!this.spawnEffortInitialized) {
+      this.spawnedReasoningEffort = this.spawnEffortArg();
+      this.spawnEffortInitialized = true;
+    }
     const generation = ++this.connectionGeneration;
     if (typeof acp.onClose === "function") {
       this.unsubClose = acp.onClose(() => {
@@ -1325,7 +1343,7 @@ export class AgentRuntime {
     const profile = readRuntimeProfile();
     clearGrokDefaultReasoningEffort();
     syncSettingsModelsToGrokConfig(readModelsConfig());
-    const child = spawn(bin, grokAgentArgs(profile, capabilities, this.spawnedReasoningEffort), grokAgentSpawnOptions());
+    const child = spawn(bin, grokAgentArgs(profile, capabilities, this.spawnEffortArg()), grokAgentSpawnOptions());
     if (!child.stdin || !child.stdout) {
       child.kill();
       throw new Error("failed to open grok stdio");
@@ -1468,10 +1486,15 @@ export class AgentRuntime {
     return this.acp;
   }
 
-  private snapshotRecoverableSessions(): Array<{ id: string; cwd: string }> {
+  private snapshotRecoverableSessions(): Array<{ id: string; cwd: string; modelId?: string; thinkingLevel?: string }> {
     return [...this.sessions.entries()]
       .filter(([, session]) => session.loaded && session.cwd)
-      .map(([id, session]) => ({ id, cwd: session.cwd as string }));
+      .map(([id, session]) => ({
+        id,
+        cwd: session.cwd as string,
+        modelId: session.modelId,
+        thinkingLevel: session.thinkingLevel,
+      }));
   }
 
   private snapshotListeners(): {
@@ -1491,17 +1514,29 @@ export class AgentRuntime {
     };
   }
 
+  private spawnEffortArg(): string | undefined {
+    if (this.spawnEffortInitialized) return this.spawnedReasoningEffort;
+    return this.spawnedReasoningEffort ?? resolvedGrokEffort({ modelId: "grok-4.6" });
+  }
+
   private async ensureSpawnMatchesEffort(effort?: string): Promise<boolean> {
     if (!shouldRespawnForEffort(this.spawnedReasoningEffort, effort)) return false;
-    this.spawnedReasoningEffort = effort;
     if (!this.child || this.aligningSpawnEffort || this.listBusyIds().length > 0) return false;
     this.aligningSpawnEffort = true;
     try {
       const recoverable = this.snapshotRecoverableSessions();
       const { restore } = this.snapshotListeners();
+      this.spawnedReasoningEffort = effort;
+      this.spawnEffortInitialized = true;
       await this.recycleProcess();
       restore();
-      for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
+      for (const entry of recoverable) {
+        await this.loadSession(entry.id, entry.cwd);
+        const session = this.ensureSession(entry.id);
+        if (entry.modelId) session.modelId = entry.modelId;
+        session.thinkingLevel = entry.thinkingLevel;
+        await this.applySessionEffort(entry.id, session);
+      }
       return true;
     } finally {
       this.aligningSpawnEffort = false;
