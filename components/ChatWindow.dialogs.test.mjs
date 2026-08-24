@@ -73,3 +73,13 @@ test("streaming tool cards receive toolResults", () => {
   assert.match(source, /\[persisted, liveToolResults\]/);
   assert.doesNotMatch(source, /\[entryIds, liveToolResults, messages\]/);
 });
+
+test("keeps the live phase label while streaming content is visible", () => {
+  const stopping = source.slice(
+    source.indexOf('agentRunning && agentPhase?.kind === "stopping"'),
+    source.indexOf("bashRunning &&"),
+  );
+  assert.match(stopping, /agentRunning && agentPhase && agentPhase\.kind !== "stopping"/);
+  assert.doesNotMatch(stopping, /!hasStreamingContent/);
+  assert.match(stopping, /phaseLabel\(agentPhase, t\)/);
+});

@@ -1038,7 +1038,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 <span className="animate-[pulse_1.5s_infinite]">{t("chat.stopping")}</span>
               </div>
             )}
-            {agentRunning && !hasStreamingContent && agentPhase && agentPhase.kind !== "stopping" && (
+            {agentRunning && agentPhase && agentPhase.kind !== "stopping" && (
               <div className="break-words py-2 text-[13px] text-text-muted">
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
               </div>
