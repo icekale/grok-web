@@ -1,5 +1,5 @@
 import type { ModelsData } from "../models-cache.ts";
-import { composerModelLabel } from "../grok-model-label.ts";
+import { composerModelLabel, composerProvider } from "../grok-model-label.ts";
 
 type AcpModel = {
   modelId: string;
@@ -75,11 +75,6 @@ export function selectedGrokModelId(result: unknown): string | undefined {
     return detail.currentModelId;
   }
   return undefined;
-}
-
-function composerProvider(modelId: string): string {
-  const slash = modelId.indexOf("/");
-  return slash > 0 ? modelId.slice(0, slash) : "grok";
 }
 
 function reasoningEfforts(meta: unknown): Array<{ id: string; label?: string; default?: boolean }> {

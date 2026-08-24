@@ -16,6 +16,11 @@ interface RemoteAccessSnapshot {
   configPath: string;
   bindHostname: string;
   bindPort: string;
+  bindLan: boolean;
+  listeningLan: boolean;
+  restartRequired: boolean;
+  loopbackUrl: string;
+  lanUrls: string[];
   allowedHosts: string[];
   envAllowedHosts: string[];
   passwordConfigured: boolean;
@@ -25,10 +30,21 @@ interface RemoteAccessSnapshot {
 }
 
 interface Draft {
+  bindLan: boolean;
   allowedHosts: string[];
   password: string;
   confirm: string;
   removePassword: boolean;
+}
+
+function draftFromSnapshot(snapshot: RemoteAccessSnapshot): Draft {
+  return {
+    bindLan: snapshot.bindLan,
+    allowedHosts: [...snapshot.allowedHosts],
+    password: "",
+    confirm: "",
+    removePassword: false,
+  };
 }
 
 interface Props {
@@ -62,13 +78,15 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
   const [hostInput, setHostInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const [action, setAction] = useState<"load" | "save" | "reload" | null>("load");
 
   const dirty = Boolean(
     snapshot
     && draft
     && (
-      !hostsEqual(draft.allowedHosts, snapshot.allowedHosts)
+      draft.bindLan !== snapshot.bindLan
+      || !hostsEqual(draft.allowedHosts, snapshot.allowedHosts)
       || draft.password.length > 0
       || draft.confirm.length > 0
       || draft.removePassword
@@ -82,12 +100,7 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
     if (!response.ok) throw new Error((await readApiError(response)).error);
     const next = await response.json() as RemoteAccessSnapshot;
     setSnapshot(next);
-    setDraft({
-      allowedHosts: [...next.allowedHosts],
-      password: "",
-      confirm: "",
-      removePassword: false,
-    });
+    setDraft(draftFromSnapshot(next));
     setHostInput("");
   }, []);
 
@@ -108,12 +121,7 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
       dirty,
       discard() {
         if (!snapshot) return;
-        setDraft({
-          allowedHosts: [...snapshot.allowedHosts],
-          password: "",
-          confirm: "",
-          removePassword: false,
-        });
+        setDraft(draftFromSnapshot(snapshot));
         setHostInput("");
         setError(null);
         setMessage(null);
@@ -128,7 +136,16 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
     password_required: t("remote.error.password_required"),
     password_invalid: t("remote.error.password_invalid"),
     cannot_disable_password_remotely: t("remote.error.cannot_disable_password_remotely"),
+    cannot_disable_lan_remotely: t("remote.error.cannot_disable_lan_remotely"),
   }), [t]);
+
+  const copyUrl = (url: string) => {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(url);
+    }).catch(() => {
+      setCopied(null);
+    });
+  };
 
   const addHost = (event?: FormEvent) => {
     event?.preventDefault();
@@ -155,8 +172,9 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
     setMessage(null);
     void (async () => {
       try {
-        const body: { allowedHosts: string[]; password?: string | null } = {
+        const body: { allowedHosts: string[]; bindLan: boolean; password?: string | null } = {
           allowedHosts: draft.allowedHosts,
+          bindLan: draft.bindLan,
         };
         if (draft.removePassword) body.password = null;
         else if (draft.password) body.password = draft.password;
@@ -174,13 +192,14 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
         const next = await response.json() as RemoteAccessSnapshot;
         const enabledAuth = !snapshot?.passwordConfigured && next.passwordConfigured;
         setSnapshot(next);
-        setDraft({
-          allowedHosts: [...next.allowedHosts],
-          password: "",
-          confirm: "",
-          removePassword: false,
-        });
-        setMessage(enabledAuth ? t("remote.savedAuthHint", { username: next.username }) : t("remote.saved"));
+        setDraft(draftFromSnapshot(next));
+        setMessage(
+          next.restartRequired
+            ? t("remote.savedRestartHint")
+            : enabledAuth
+              ? t("remote.savedAuthHint", { username: next.username })
+              : t("remote.saved"),
+        );
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
@@ -212,6 +231,12 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
 
   const busy = action !== null;
   const filePassword = snapshot.passwordSource === "file";
+  const lanStatus = snapshot.restartRequired
+    ? t("remote.restartRequired")
+    : snapshot.listeningLan
+      ? t("remote.lanOn")
+      : t("remote.lanOff");
+  const copyableUrls = [snapshot.loopbackUrl, ...snapshot.lanUrls];
 
   return (
     <div className="settings-form-page">
@@ -238,6 +263,50 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
 
       <section className="settings-form-section">
         <div className="settings-form-label">
+          <GlobeLock size={16} aria-hidden="true" />
+          <div>
+            <strong>{t("remote.lanEnable")}</strong>
+            <span>{lanStatus}</span>
+          </div>
+        </div>
+        <button
+          className="settings-switch"
+          type="button"
+          role="switch"
+          aria-checked={draft.bindLan}
+          disabled={busy}
+          title={t("remote.lanEnable")}
+          onClick={() => setDraft({ ...draft, bindLan: !draft.bindLan })}
+        >
+          <span />
+        </button>
+      </section>
+
+      <section className="settings-form-section settings-form-section-stack">
+        <div className="settings-form-label">
+          <Server size={16} aria-hidden="true" />
+          <div>
+            <strong>{t("remote.urls")}</strong>
+            <span>{snapshot.lanUrls.length === 0 ? t("remote.urlsLanHint") : t("remote.listenDescription")}</span>
+          </div>
+        </div>
+        {copyableUrls.map((url) => (
+          <div className="settings-url-row" key={url}>
+            <code className="settings-readonly-value">{url}</code>
+            <button
+              type="button"
+              className="settings-secondary-button"
+              disabled={busy}
+              onClick={() => copyUrl(url)}
+            >
+              {copied === url ? t("remote.copied") : t("remote.copy")}
+            </button>
+          </div>
+        ))}
+      </section>
+
+      <section className="settings-form-section">
+        <div className="settings-form-label">
           <Server size={16} aria-hidden="true" />
           <div>
             <strong>{t("remote.listen")}</strong>
@@ -245,53 +314,6 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
           </div>
         </div>
         <code className="settings-readonly-value">{snapshot.bindHostname}:{snapshot.bindPort}</code>
-      </section>
-
-      <section className="settings-form-section settings-form-section-stack">
-        <div className="settings-form-label">
-          <GlobeLock size={16} aria-hidden="true" />
-          <div>
-            <strong>{t("remote.hosts")}</strong>
-            <span>{t("remote.hostsDescription")}</span>
-          </div>
-        </div>
-        <div className="settings-host-editor">
-          <div className="settings-host-chips">
-            {draft.allowedHosts.map((host) => (
-              <span className="settings-host-chip" key={host}>
-                {host}
-                <button
-                  type="button"
-                  disabled={busy}
-                  aria-label={t("remote.removeHost")}
-                  onClick={() => setDraft({ ...draft, allowedHosts: draft.allowedHosts.filter((item) => item !== host) })}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </span>
-            ))}
-            {snapshot.envAllowedHosts.map((host) => (
-              <span className="settings-host-chip" data-env="true" key={`env:${host}`} title={t("remote.envHost")}>
-                {host}
-                <em>{t("remote.envHost")}</em>
-              </span>
-            ))}
-          </div>
-          <form className="settings-host-add" onSubmit={addHost}>
-            <input
-              value={hostInput}
-              disabled={busy}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t("remote.hostPlaceholder")}
-              onChange={(event) => setHostInput(event.target.value)}
-            />
-            <button type="submit" disabled={busy || hostInput.trim().length === 0}>
-              <Plus size={14} aria-hidden="true" />
-              {t("remote.addHost")}
-            </button>
-          </form>
-        </div>
       </section>
 
       <section className="settings-form-section settings-form-section-stack">
@@ -339,6 +361,53 @@ export function RemoteAccessConfig({ onControllerChange }: Props) {
           )}
         </div>
       </section>
+
+      <details className="settings-form-section settings-form-section-stack">
+        <summary className="settings-form-label">
+          <GlobeLock size={16} aria-hidden="true" />
+          <div>
+            <strong>{t("remote.advancedHosts")}</strong>
+            <span>{t("remote.hostsDescription")}</span>
+          </div>
+        </summary>
+        <div className="settings-host-editor">
+          <div className="settings-host-chips">
+            {draft.allowedHosts.map((host) => (
+              <span className="settings-host-chip" key={host}>
+                {host}
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={t("remote.removeHost")}
+                  onClick={() => setDraft({ ...draft, allowedHosts: draft.allowedHosts.filter((item) => item !== host) })}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            {snapshot.envAllowedHosts.map((host) => (
+              <span className="settings-host-chip" data-env="true" key={`env:${host}`} title={t("remote.envHost")}>
+                {host}
+                <em>{t("remote.envHost")}</em>
+              </span>
+            ))}
+          </div>
+          <form className="settings-host-add" onSubmit={addHost}>
+            <input
+              value={hostInput}
+              disabled={busy}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={t("remote.hostPlaceholder")}
+              onChange={(event) => setHostInput(event.target.value)}
+            />
+            <button type="submit" disabled={busy || hostInput.trim().length === 0}>
+              <Plus size={14} aria-hidden="true" />
+              {t("remote.addHost")}
+            </button>
+          </form>
+        </div>
+      </details>
 
       <div className="settings-form-actions">
         <button type="button" className="settings-primary-button" disabled={busy} onClick={save}>

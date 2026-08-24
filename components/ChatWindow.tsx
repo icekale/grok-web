@@ -20,6 +20,7 @@ import { DialogShell } from "./DialogShell";
 import { filterGoalStatuses, filterGoalWidgets, resolveGoalPanelModel } from "@/lib/goal-panel";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
+import { thinkingLevelsForComposerModel } from "@/lib/grok-effort-levels";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile, useIsWideDesktop } from "@/hooks/useIsMobile";
@@ -634,12 +635,18 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     promptAnchorUpdateRef.current?.();
   }, [streamState.streamingMessage]);
 
-  const availableThinkingLevels = displayModelValue
-    ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
-    : null;
+  const availableThinkingLevels = thinkingLevelsForComposerModel(
+    modelThinkingLevels,
+    displayModelValue?.provider,
+    displayModelValue?.modelId,
+  );
 
   const currentThinkingLevelMap = displayModelValue
-    ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
+    ? (
+      modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`]
+      ?? modelThinkingLevelMaps[`grok:${displayModelValue.modelId}`]
+      ?? null
+    )
     : null;
 
   const chatInputElement = (

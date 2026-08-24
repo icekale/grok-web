@@ -51,6 +51,7 @@ export function grokLiveChatModels<T extends { provider: string }>(modelList: re
 export {
   GROK_EFFORT_LEVELS,
   defaultGrokEffortLevel,
+  thinkingLevelsForComposerModel,
   visibleGrokEffortLevels,
 } from "./grok-effort-levels.ts";
 
@@ -116,6 +117,7 @@ export function mergeComposerModels(
       `${model.provider}:${model.id}`,
       `${model.provider}/${model.id}`,
       model.id,
+      model.provider,
     );
   }
 
@@ -151,15 +153,16 @@ function assignThinkingAlias(
   key: string,
   pinKey: string,
   modelId: string,
+  provider: string,
 ): void {
   if (!target.thinkingLevels[key]?.length) {
-    const sourceKey = findThinkingSourceKey(acp.thinkingLevels, modelId);
+    const sourceKey = findThinkingSourceKey(acp.thinkingLevels, modelId, provider);
     if (sourceKey) {
       target.thinkingLevels[key] = acp.thinkingLevels[sourceKey];
       if (acp.thinkingLevelMaps[sourceKey]) target.thinkingLevelMaps[key] = acp.thinkingLevelMaps[sourceKey];
     }
   }
-  if (!target.thinkingLevelPins[pinKey]) {
+  if (provider === "grok" && !target.thinkingLevelPins[pinKey]) {
     const displayId = composerDisplayId(modelId);
     const sourcePin = acp.thinkingLevelPins[`grok/${modelId}`]
       ?? acp.thinkingLevelPins[`grok/${displayId}`]
@@ -168,12 +171,22 @@ function assignThinkingAlias(
   }
 }
 
-function findThinkingSourceKey(thinkingLevels: Record<string, string[]>, modelId: string): string | undefined {
+function findThinkingSourceKey(
+  thinkingLevels: Record<string, string[]>,
+  modelId: string,
+  provider: string,
+): string | undefined {
   if (thinkingLevels[modelId]?.length) return modelId;
   const displayId = composerDisplayId(modelId);
-  const exact = `grok:${modelId}`;
-  if (thinkingLevels[exact]?.length) return exact;
-  const display = `grok:${displayId}`;
-  if (thinkingLevels[display]?.length) return display;
-  return Object.keys(thinkingLevels).find((key) => key.endsWith(`:${displayId}`) && thinkingLevels[key].length);
+  if (provider === "grok") {
+    const exact = `grok:${modelId}`;
+    if (thinkingLevels[exact]?.length) return exact;
+    const display = `grok:${displayId}`;
+    if (thinkingLevels[display]?.length) return display;
+  }
+  return Object.keys(thinkingLevels).find((key) => (
+    key.endsWith(`:${displayId}`)
+    && thinkingLevels[key].length > 0
+    && (provider === "grok" || !key.startsWith("grok:"))
+  ));
 }

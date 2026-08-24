@@ -12,6 +12,7 @@ import { invalidateSessionListCache, listAllSessions } from "./session-reader.ts
 import type { SessionInfo } from "./types.ts";
 import { getAgentRuntime, peekAgentRuntime } from "./acp/runtime.ts";
 import type { AgentRuntime } from "./acp/runtime.ts";
+import { ensurePromptUsesVisibleModel } from "./session-model-retarget.ts";
 
 const SESSION_LIST_FIRST_MESSAGE_CHARS = 512;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
@@ -81,7 +82,6 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
       context: {
         messages,
         entryIds,
-        thinkingLevel: "off",
         model: lastAssistant
           ? { provider: lastAssistant.provider, modelId: lastAssistant.model }
           : null,
@@ -237,8 +237,9 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
   if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
   const contextUsage = await readSessionContextUsage(id);
   const runtime = peekAgentRuntime();
-  if (runtime) {
+  if (runtime?.hasSession(id)) {
     try {
+      await ensurePromptUsesVisibleModel(runtime, id);
       const state = await runtime.send(id, { type: "get_state" }) as Record<string, unknown>;
       return Response.json({
         running: runtime.isBusy(id),
@@ -248,13 +249,12 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
         },
       });
     } catch {
-      // Session is on disk but not loaded in ACP; return idle state.
+      // Session is on disk but the in-memory ACP view is stale; return idle state.
     }
   }
   return Response.json({
     running: false,
     state: {
-      thinkingLevel: "off",
       queuedMessages: { steering: [], followUp: [] },
       ...(contextUsage ? { contextUsage } : {}),
     },

@@ -20,13 +20,13 @@ import {
 } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
-import { syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
+import { clearGrokDefaultReasoningEffort, syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
-import { defaultGrokEffortLevel, GROK_EFFORT_LEVELS } from "../grok-effort-levels.ts";
+import { persistedReasoningEffort, resolvedGrokEffort, shouldRespawnForEffort } from "../grok-effort-levels.ts";
 import { sessionModelRef } from "../grok-model-label.ts";
 import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
-import { grokAgentArgs, grokAgentEnv, resolveGrokBin } from "./process.ts";
+import { grokAgentArgs, grokAgentSpawnOptions, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
 import { promptIndexForEntry, resolveSessionEntries } from "./rewind-map.ts";
 import { readAcpCurrentModeUpdate, readAcpModeState, type AcpModeSource, type AcpModes } from "./modes.ts";
@@ -78,7 +78,11 @@ type SessionState = {
   eventSequence: number;
   eventPromptGeneration?: number;
   queuedPromptGenerations: Array<number | undefined>;
+  promptErrorEmitted?: boolean;
+  lastAgentError?: string;
 };
+
+const REASONING_EFFORTS = new Set(["auto", "none", "off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 export class AgentCapabilityError extends Error {
   readonly status = 501;
@@ -173,6 +177,8 @@ export class AgentRuntime {
   private unsubPermissionResolved: (() => void) | undefined;
   private unsubClose: (() => void) | undefined;
   private child: ChildProcess | undefined;
+  private spawnedReasoningEffort: string | undefined;
+  private aligningSpawnEffort = false;
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
@@ -219,11 +225,12 @@ export class AgentRuntime {
     session.loaded = true;
     session.cwd = canonical;
     session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
-    session.thinkingLevel = selectedGrokEffort(created) ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]);
+    session.thinkingLevel = resolvedGrokEffort({ modelId: session.modelId }) ?? undefined;
     session.configOptions = readAcpConfigOptions(created);
     const modeState = readAcpModeState(created);
     session.modes = modeState.modes;
     session.modeSource = modeState.source;
+    await this.applySessionEffort(created.sessionId, session, connection.acp);
     return created.sessionId;
   }
 
@@ -242,8 +249,12 @@ export class AgentRuntime {
     session.cwd = canonical;
     const modelId = selectedGrokModelId(loaded);
     if (modelId) session.modelId = modelId;
-    const effort = selectedGrokEffort(loaded);
-    if (effort) session.thinkingLevel = effort;
+    if (!session.modelId) session.modelId = "grok-4.6";
+    session.thinkingLevel = resolvedGrokEffort({
+      persisted: await readPersistedReasoningEffort(sessionId),
+      selected: selectedGrokEffort(loaded),
+      modelId: session.modelId,
+    });
     const options = readAcpConfigOptions(loaded);
     if (options.length > 0) session.configOptions = options;
     const modeState = readAcpModeState(loaded);
@@ -251,6 +262,7 @@ export class AgentRuntime {
       session.modes = modeState.modes;
       session.modeSource = modeState.source;
     }
+    await this.applySessionEffort(sessionId, session, connection.acp);
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
@@ -262,6 +274,7 @@ export class AgentRuntime {
     const session = this.ensureSession(sessionId);
     session.loaded = true;
     session.cwd = directory;
+    await this.applySessionEffort(sessionId, session, connection.acp);
   }
 
   async listModels() {
@@ -650,9 +663,13 @@ export class AgentRuntime {
       case "set_model": {
         const modelId = stringField(command.modelId);
         if (!modelId) throw new Error("modelId is required");
-        const currentEffort = this.sessions.get(sessionId)?.thinkingLevel;
         const wrote = syncSettingsModelsToGrokConfig(readModelsConfig());
         const cwd = this.sessions.get(sessionId)?.cwd;
+        const upcomingEffort = resolvedGrokEffort({
+          selected: this.sessions.get(sessionId)?.thinkingLevel,
+          modelId,
+        });
+        this.spawnedReasoningEffort = upcomingEffort;
         let listed = await this.listModels();
         const known = listed.modelList.some((model) => model.id === modelId);
         if (wrote.length > 0 || (!known && modelId.includes("/"))) {
@@ -663,9 +680,9 @@ export class AgentRuntime {
         if (!listed.modelList.some((model) => model.id === modelId)) {
           throw new Error(`Unknown model: ${modelId}`);
         }
-        const set = await this.requireAcp().sessionSetModel(sessionId, modelId, currentEffort);
         const session = this.ensureSession(sessionId);
-        session.modelId = set.modelId;
+        session.modelId = modelId;
+        await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
         return sessionModelRef(session.modelId);
       }
       case "set_standard_mode": {
@@ -694,14 +711,24 @@ export class AgentRuntime {
       case "set_thinking_level": {
         await this.ensureProcess();
         const level = stringField(command.level);
-        if (!level) throw new Error("level is required");
+        if (!REASONING_EFFORTS.has(level)) {
+          throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level || "empty"}`);
+        }
         const session = this.ensureSession(sessionId);
         const previous = session.thinkingLevel;
         const modelId = session.modelId ?? "grok-4.6";
-        const set = await this.requireAcp().sessionSetModel(sessionId, modelId, level);
-        session.modelId = set.modelId;
-        session.thinkingLevel = level;
-        return { level, previous };
+        const effort = resolvedGrokEffort({ selected: level, modelId });
+        if (!effort) {
+          throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level}`);
+        }
+        session.thinkingLevel = effort;
+        try {
+          await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
+        } catch (error) {
+          session.thinkingLevel = previous;
+          throw error;
+        }
+        return { level: session.thinkingLevel, previous };
       }
       case "get_commands":
         return this.listSlashCommands(sessionId);
@@ -902,7 +929,7 @@ export class AgentRuntime {
     isPromptRunning: boolean;
     isBashRunning: boolean;
     model: { provider: string; id: string };
-    thinkingLevel: string;
+    thinkingLevel: string | undefined;
     queuedMessages: QueueSnapshot;
     toolPresets: ToolPreset[];
     modes?: AcpModes;
@@ -920,7 +947,9 @@ export class AgentRuntime {
       isPromptRunning: promptBusy,
       isBashRunning: this.isSessionBashRunning(session),
       model: sessionModelRef(session?.modelId ?? "grok-4.6"),
-      thinkingLevel: session?.thinkingLevel ?? defaultGrokEffortLevel([...GROK_EFFORT_LEVELS]),
+      thinkingLevel: session
+        ? session.thinkingLevel ?? resolvedGrokEffort({ modelId: session.modelId })
+        : resolvedGrokEffort({}),
       queuedMessages: session?.queue.snapshot() ?? { steering: [], followUp: [] },
       toolPresets: advertisedToolPresets(session?.configOptions ?? []),
       ...(session?.modes.available.length ? { modes: session.modes } : {}),
@@ -971,13 +1000,22 @@ export class AgentRuntime {
     if (promptGeneration !== undefined) session.eventPromptGeneration = promptGeneration;
     session.busy = true;
     session.mapper.begin();
+    session.promptErrorEmitted = false;
     try {
+      await this.applySessionEffort(sessionId, session);
       const result = await this.requireAcp().sessionPrompt(sessionId, message, Array.isArray(images) ? images : []);
-      this.emit(sessionId, session.mapper.endTurn());
       const stopReason = result && typeof result === "object" && "stopReason" in result
         && typeof (result as { stopReason?: unknown }).stopReason === "string"
         ? (result as { stopReason: string }).stopReason
         : "";
+      if (stopReason === "error" && !session.promptErrorEmitted) {
+        this.emit(sessionId, [{
+          type: "prompt_error",
+          errorMessage: session.lastAgentError || "The model request failed",
+        }]);
+        session.promptErrorEmitted = true;
+      }
+      this.emit(sessionId, session.mapper.endTurn());
       if (stopReason !== "cancelled") {
         const next = session.queue.takeNext("followUp");
         if (next !== undefined) {
@@ -1257,6 +1295,11 @@ export class AgentRuntime {
         session.modeSource = modeState.source;
       }
       const mapped = session.mapper.push(update);
+      const promptError = mapped.find((event) => event.type === "prompt_error");
+      if (promptError && typeof promptError.errorMessage === "string" && promptError.errorMessage) {
+        session.promptErrorEmitted = true;
+        session.lastAgentError = promptError.errorMessage;
+      }
       this.emit(sessionId, plan ? [{ type: "plan_update", plan }, ...mapped] : mapped);
       if (update && typeof update === "object" && "sessionUpdate" in update
         && (update as { sessionUpdate?: unknown }).sessionUpdate === "turn_completed") {
@@ -1280,7 +1323,9 @@ export class AgentRuntime {
     const capabilities = await discoverGrokCapabilities(bin);
     this.cliCapabilities = capabilities;
     const profile = readRuntimeProfile();
-    const child = spawn(bin, grokAgentArgs(profile, capabilities), { stdio: ["pipe", "pipe", "inherit"], env: grokAgentEnv() });
+    clearGrokDefaultReasoningEffort();
+    syncSettingsModelsToGrokConfig(readModelsConfig());
+    const child = spawn(bin, grokAgentArgs(profile, capabilities, this.spawnedReasoningEffort), grokAgentSpawnOptions());
     if (!child.stdin || !child.stdout) {
       child.kill();
       throw new Error("failed to open grok stdio");
@@ -1423,6 +1468,67 @@ export class AgentRuntime {
     return this.acp;
   }
 
+  private snapshotRecoverableSessions(): Array<{ id: string; cwd: string }> {
+    return [...this.sessions.entries()]
+      .filter(([, session]) => session.loaded && session.cwd)
+      .map(([id, session]) => ({ id, cwd: session.cwd as string }));
+  }
+
+  private snapshotListeners(): {
+    listeners: Map<string, Set<SessionListener>>;
+    sequencedListeners: Map<string, Set<(entry: { sequence: number; event: Record<string, unknown>; promptGeneration?: number }) => void>>;
+    restore: () => void;
+  } {
+    const listeners = new Map([...this.listeners].map(([id, set]) => [id, new Set(set)] as const));
+    const sequencedListeners = new Map([...this.sequencedListeners].map(([id, set]) => [id, new Set(set)] as const));
+    return {
+      listeners,
+      sequencedListeners,
+      restore: () => {
+        for (const [id, set] of listeners) this.listeners.set(id, set);
+        for (const [id, set] of sequencedListeners) this.sequencedListeners.set(id, set);
+      },
+    };
+  }
+
+  private async ensureSpawnMatchesEffort(effort?: string): Promise<boolean> {
+    if (!shouldRespawnForEffort(this.spawnedReasoningEffort, effort)) return false;
+    this.spawnedReasoningEffort = effort;
+    if (!this.child || this.aligningSpawnEffort || this.listBusyIds().length > 0) return false;
+    this.aligningSpawnEffort = true;
+    try {
+      const recoverable = this.snapshotRecoverableSessions();
+      const { restore } = this.snapshotListeners();
+      await this.recycleProcess();
+      restore();
+      for (const entry of recoverable) await this.loadSession(entry.id, entry.cwd);
+      return true;
+    } finally {
+      this.aligningSpawnEffort = false;
+    }
+  }
+
+  private async applySessionEffort(
+    sessionId: string,
+    session: SessionState,
+    acp?: AcpConnection,
+    options?: { throwOnError?: boolean },
+  ): Promise<void> {
+    const effort = resolvedGrokEffort({ selected: session.thinkingLevel, modelId: session.modelId });
+    session.thinkingLevel = effort;
+    const recycled = await this.ensureSpawnMatchesEffort(effort);
+    if (recycled) return;
+    const conn = acp ?? this.acp;
+    if (!conn || typeof conn.sessionSetModel !== "function" || !session.modelId) return;
+    try {
+      const set = await conn.sessionSetModel(sessionId, session.modelId, effort);
+      if (set?.modelId) session.modelId = set.modelId;
+    } catch (error) {
+      if (options?.throwOnError) throw error;
+      // Keep the resolved in-memory effort so a later set_model can retry.
+    }
+  }
+
   private captureConnection(): { acp: AcpConnection; generation: number } {
     return { acp: this.requireAcp(), generation: this.connectionGeneration };
   }
@@ -1489,6 +1595,16 @@ function commandImages(command: AgentCommand): unknown {
 
 function hasPromptImages(images: unknown): boolean {
   return Array.isArray(images) && images.length > 0;
+}
+
+async function readPersistedReasoningEffort(sessionId: string): Promise<string | undefined> {
+  const found = await findGrokSession(sessionId);
+  if (!found) return undefined;
+  try {
+    return persistedReasoningEffort(JSON.parse(await readFile(join(found.path, "summary.json"), "utf8")));
+  } catch {
+    return undefined;
+  }
 }
 
 async function diskHasUserMessages(sessionId: string): Promise<boolean> {

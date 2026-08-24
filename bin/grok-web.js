@@ -24,7 +24,7 @@ const { parseLaunchOptions } = require("./pi-web-options");
 
 const pkgDir = path.join(__dirname, "..");
 
-const { port, hostname, openBrowser } = parseLaunchOptions();
+let { port, hostname, openBrowser } = parseLaunchOptions();
 
 function importLib(name) {
   const compiled = path.join(pkgDir, "lib", `${name}.mjs`);
@@ -33,6 +33,17 @@ function importLib(name) {
 }
 
 async function main() {
+  const cliHasHost = process.argv.some((a) => a === "-H" || a === "--hostname" || a.startsWith("--hostname="));
+  const envHasHost = Boolean(process.env.GROK_WEB_HOSTNAME);
+  if (!cliHasHost && !envHasHost) {
+    try {
+      const { preferredListenHostname } = await importLib("remote-access-config");
+      hostname = preferredListenHostname();
+    } catch {
+      // Incomplete installs (and the CLI fixture) keep the launch default.
+    }
+  }
+
   const { assertBindAllowed, isLoopbackHost } = await importLib("bind-guard");
 
   let password = process.env.GROK_WEB_PASSWORD;

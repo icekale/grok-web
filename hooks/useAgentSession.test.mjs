@@ -49,7 +49,9 @@ test("reconciles authoritative session snapshots and permission resolutions", ()
   assert.match(handler, /pendingPermissions/);
   assert.match(handler, /finishPromptWithoutStream/);
   assert.match(handler, /case "permission_resolved"/);
-  assert.match(source, /typeof d\.context\.thinkingLevel === "string"/);
+  assert.match(source, /typeof d\.context\.thinkingLevel === "string" && d\.context\.thinkingLevel !== "off"/);
+  assert.match(source, /fetch\(`\/api\/agent\/\$\{encodeURIComponent\(sid\)\}`\)/);
+  assert.match(source, /function liveAgentModel/);
 });
 
 test("does not settle a local prompt from the idle preflight snapshot", () => {
@@ -396,6 +398,26 @@ test("delegates event stream readiness and keeps the live agent phase visible", 
   assert.match(chatWindowSource, /return null;/);
 });
 
+test("does not clear the live agent phase when streaming content or mid-turn agent_end arrives", () => {
+  const snapshotSource = source.slice(
+    source.indexOf('case "session_snapshot"'),
+    source.indexOf('case "plan_update"'),
+  );
+  const streamSource = source.slice(
+    source.indexOf('case "message_start"'),
+    source.indexOf('case "message_end"'),
+  );
+  const agentEndSource = source.slice(
+    source.indexOf('case "agent_end"'),
+    source.indexOf('case "agent_settled"'),
+  );
+
+  assert.doesNotMatch(snapshotSource, /setAgentPhase\(null\)/);
+  assert.doesNotMatch(streamSource, /setAgentPhase\(null\)/);
+  assert.match(agentEndSource, /setAgentPhase\(\{ kind: "waiting_model" \}\)/);
+  assert.doesNotMatch(agentEndSource, /setAgentPhase\(null\)/);
+});
+
 test("uses one absolute agent-readiness deadline instead of a five-second transport deadline", () => {
   assert.match(source, /EVENT_STREAM_READY_TIMEOUT_MS = 60_000/);
   assert.doesNotMatch(source, /EVENT_STREAM_OPEN_TIMEOUT_MS/);
@@ -517,7 +539,6 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
   assert.match(streamSource, /msg\?\.role === "assistant"[\s\S]*dispatch\(\{ type: "snapshot", message: msg \}\)/);
   assert.match(streamSource, /event\.assistantMessageEvent as ClientAssistantMessageEvent/);
   assert.match(streamSource, /dispatch\(\{ type: "delta", event: delta \}\)/);
-  assert.match(streamSource, /delta\.type !== "toolcall_start" && delta\.type !== "toolcall_delta"/);
   assert.doesNotMatch(streamSource, /case "message_delta"/);
   assert.match(messageEndSource, /const completed = event\.message as AgentMessage/);
   assert.match(messageEndSource, /normalizeToolCalls\(completed\)/);

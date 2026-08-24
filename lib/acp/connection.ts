@@ -621,7 +621,11 @@ export class AcpConnection {
   }
   onSessionUpdate(handler: (sessionId: string, update: unknown) => void): () => void {
     return this.rpc.onNotification((method, params) => {
-      if (method !== "session/update" || !isRecord(params) || typeof params.sessionId !== "string") {
+      if (
+        (method !== "session/update" && method !== "_x.ai/session/update")
+        || !isRecord(params)
+        || typeof params.sessionId !== "string"
+      ) {
         return;
       }
       const commands = readAvailableCommands({ update: params.update });

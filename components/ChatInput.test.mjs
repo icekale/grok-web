@@ -39,6 +39,7 @@ test("composer reasoning helpers stay in browser-safe code", async () => {
   const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /from "@\/lib\/grok-effort-levels"/);
   assert.match(source, /from "@\/lib\/grok-model-label"/);
+  assert.match(source, /visibleGrokEffortLevels\(availableThinkingLevels, model\?\.modelId\)/);
   assert.doesNotMatch(source, /from "@\/lib\/composer-models"/);
   assert.doesNotMatch(source, /from ["']node:path["']/);
   assert.doesNotMatch(source, /from ["']path["']/);
@@ -211,8 +212,8 @@ test("lays out attach, model, and effort; tool access only when ACP advertised i
   );
   assert.doesNotMatch(hidden, />Full access</);
   assert.match(hidden, />grok-4\.6</);
-  assert.doesNotMatch(hidden, /data-thinking-badge="high"/);
-  assert.doesNotMatch(hidden, /Change effort/);
+  assert.match(hidden, /data-thinking-badge="high"/);
+  assert.match(hidden, /Change effort/);
   assert.doesNotMatch(hidden, />Compact context</);
   assert.doesNotMatch(hidden, /aria-label="More controls"/);
 

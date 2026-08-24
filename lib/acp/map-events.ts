@@ -13,6 +13,7 @@ export class AcpTurnMapper {
   private readonly toolIndexById = new Map<string, number>();
   private readonly toolNameById = new Map<string, string>();
   private readonly partialContent: unknown[] = [];
+  private lastPromptError = "";
 
   begin(): void {
     this.started = false;
@@ -22,6 +23,7 @@ export class AcpTurnMapper {
     this.toolIndexById.clear();
     this.toolNameById.clear();
     this.partialContent.length = 0;
+    this.lastPromptError = "";
   }
 
   push(update: unknown): AcpSseEvent[] {
@@ -35,6 +37,25 @@ export class AcpTurnMapper {
         return this.toolCall(update);
       case "tool_call_update":
         return this.toolCallUpdate(update);
+      case "auto_compact_started":
+      case "auto_compaction_start":
+        return this.autoCompactStarted(update);
+      case "auto_compact_failed":
+        return [{
+          type: "auto_compaction_end",
+          errorMessage: stringField(update.error) || stringField(update.message) || "Context compaction failed",
+        }];
+      case "retry_state":
+        return stringField(update.type) === "failed"
+          ? this.promptError(stringField(update.message) || "The model request failed")
+          : [];
+      case "turn_completed": {
+        const stop = stringField(update.stop_reason) || stringField(update.stopReason);
+        if (stop !== "error") return [];
+        return this.promptError(
+          stringField(update.agent_result) || stringField(update.error) || "The model request failed",
+        );
+      }
       default:
         return [];
     }
@@ -110,6 +131,30 @@ export class AcpTurnMapper {
     return events;
   }
 
+  private autoCompactStarted(update: Record<string, unknown>): AcpSseEvent[] {
+    const events: AcpSseEvent[] = [{ type: "auto_compaction_start" }];
+    const tokens = numberField(update.tokens_used ?? update.tokensUsed);
+    const contextWindow = numberField(update.context_window ?? update.contextWindow);
+    const percent = numberField(update.percentage ?? update.percent);
+    if (tokens != null && contextWindow != null && contextWindow > 0) {
+      events.push({
+        type: "context_usage",
+        contextUsage: {
+          tokens,
+          contextWindow,
+          percent: percent ?? Math.round((tokens / contextWindow) * 100),
+        },
+      });
+    }
+    return events;
+  }
+
+  private promptError(message: string): AcpSseEvent[] {
+    if (!message || message === this.lastPromptError) return [];
+    this.lastPromptError = message;
+    return [{ type: "prompt_error", errorMessage: message }];
+  }
+
   private toolCall(update: Record<string, unknown>): AcpSseEvent[] {
     const toolCallId = stringField(update.toolCallId) || stringField(update.id);
     const toolName = grokCanonicalToolName(
@@ -181,6 +226,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringField(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function numberField(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

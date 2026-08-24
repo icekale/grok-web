@@ -1,10 +1,12 @@
 const CACHE_PREFIX = "grok-web";
-const CACHE_VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
+const CACHE_GENERATION = "grok-mark-2";
+const CACHE_VERSION = `${new URL(self.location.href).searchParams.get("v") || "dev"}-${CACHE_GENERATION}`;
 const STATIC_CACHE = `${CACHE_PREFIX}-static-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.webmanifest",
+  "/icons/favicon.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
@@ -26,7 +28,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith(`${CACHE_PREFIX}-`) && key !== STATIC_CACHE)
+            .filter((key) => key !== STATIC_CACHE && (key.startsWith(`${CACHE_PREFIX}-`) || key.startsWith("pi-web-")))
             .map((key) => caches.delete(key)),
         ),
       )
@@ -47,7 +49,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(async () => {
-        const fallback = await caches.match(OFFLINE_URL);
+        const fallback = await caches.match(OFFLINE_URL, { cacheName: STATIC_CACHE });
         return fallback ?? Response.error();
       }),
     );

@@ -47,7 +47,7 @@ export interface SessionData {
   context: {
     messages: AgentMessage[];
     entryIds: string[];
-    thinkingLevel: string;
+    thinkingLevel?: string;
     model: { provider: string; modelId: string } | null;
     goal?: import("@/lib/goal-panel").GoalPanelModel | null;
   };
@@ -70,6 +70,7 @@ interface LastAssistantTextResponse {
 type AgentStateResponse = {
   contextUsage?: import("@/lib/pi-types").ContextUsage | null;
   systemPrompt?: string;
+  model?: { provider?: unknown; id?: unknown };
   thinkingLevel?: string;
   isStreaming?: boolean;
   isPromptRunning?: boolean;
@@ -90,6 +91,14 @@ export interface QueuedMessages {
 
 function normalizeQueuedMessages(q?: { steering?: string[]; followUp?: string[] } | null): QueuedMessages {
   return { steering: q?.steering ?? [], followUp: q?.followUp ?? [] };
+}
+
+function liveAgentModel(state: AgentStateResponse): { provider: string; modelId: string } | null {
+  const model = state.model;
+  if (!model || typeof model.provider !== "string" || typeof model.id !== "string" || !model.id) {
+    return null;
+  }
+  return { provider: model.provider, modelId: model.id };
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
@@ -170,7 +179,7 @@ export interface UseAgentSessionOptions {
   historyRefreshGeneration?: number;
 }
 
-export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevelOption = "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const PROMPT_SETTLE_INITIAL_DELAY_MS = 800;
 const PROMPT_SETTLE_POLL_MS = 600;
@@ -370,7 +379,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("xhigh");
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("high");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<import("@/lib/pi-types").ContextUsage | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -595,7 +604,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return current;
       });
       setError(null);
-      if (typeof d.context.thinkingLevel === "string") {
+      if (typeof d.context.thinkingLevel === "string" && d.context.thinkingLevel !== "off") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
 
@@ -604,16 +613,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!includeState) return null;
 
       try {
-        const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
+        const stateRes = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
         const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
         if (sessionIdRef.current !== sid) return null;
 
         const liveState = agentState.state;
         if (liveState) {
+          const liveModel = liveAgentModel(liveState);
+          if (liveModel) {
+            currentModelOverrideSessionRef.current = sid;
+            setCurrentModelOverride(liveModel);
+          }
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "xhigh");
+          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "high");
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
@@ -682,6 +696,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
       applyAdvertisedToolPresets(state?.toolPresets);
+      if (state?.thinkingLevel) setThinkingLevel(state.thinkingLevel as ThinkingLevelOption);
+      const liveModel = state ? liveAgentModel(state) : null;
+      if (liveModel) {
+        currentModelOverrideSessionRef.current = sid;
+        setCurrentModelOverride(liveModel);
+      }
     } catch {
       setToolsAdvertised([]);
     }
@@ -1232,7 +1252,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const streamingMessage = snapshot.streamingMessage;
           if (streamingMessage && isRecord(streamingMessage) && streamingMessage.role === "assistant" && !ignoreStreamSnapshotRef.current) {
             dispatch({ type: "snapshot", message: streamingMessage as unknown as AgentMessage });
-            if (Array.isArray(streamingMessage.content) && streamingMessage.content.length > 0) setAgentPhase(null);
           }
         } else if (agentRunningRef.current && !rpcPromptPendingRef.current && sessionIdRef.current) {
           // The initial idle snapshot can arrive between the optimistic UI
@@ -1308,7 +1327,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // Keep the stream open until prompt_done/agent_settled and the idle grace.
         if (!agentRunningRef.current || !acceptsPromptGeneration(event)) break;
         textDeltaBatcher.flush();
-        setAgentPhase(null);
+        setAgentPhase({ kind: "waiting_model" });
         setRetryInfo(null);
         dispatch({ type: "end" });
         setMessages((prev) => mergeLiveToolResults(prev, liveResultsFromOutputs(liveToolOutputsRef.current)));
@@ -1396,9 +1415,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (msg?.role === "assistant") {
             if (ignoreStreamSnapshotRef.current) break;
             dispatch({ type: "snapshot", message: msg });
-            if (msg.content.length > 0) setAgentPhase(null);
-          } else if (msg) {
-            setAgentPhase(null);
           }
         } else {
           const delta = event.assistantMessageEvent as ClientAssistantMessageEvent | undefined;
@@ -1423,9 +1439,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             } else {
               textDeltaBatcher.flush();
               dispatch({ type: "delta", event: delta });
-            }
-            if (delta.type !== "toolcall_start" && delta.type !== "toolcall_delta") {
-              setAgentPhase(null);
             }
           }
         }
@@ -1898,7 +1911,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Like pi, apply it to the model a new session starts with.
       const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.id}`];
       if (thinkingLevelOverrideRef.current === null) {
-        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "xhigh");
+        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "high");
       }
     }
   }, [isNew, newSessionCwd, session?.cwd]);
@@ -2289,7 +2302,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "xhigh");
+          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "high");
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));

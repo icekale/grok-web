@@ -30,8 +30,19 @@ test("Agent Runtime renders persisted profile warnings", () => {
 
 test("Agent Runtime owns the global permission profile", () => {
   assert.match(settings, /id: "runtime"/);
+  assert.match(settings, /id: "runtime", label: t\("runtime\.nav"\), disabled: false/);
   assert.match(settings, /<AgentRuntimeConfig onDirtyChange=\{setRuntimeDirty\}/);
   assert.doesNotMatch(settings, /savePermissionMode/);
+});
+
+test("Agent Runtime copy goes through i18n", () => {
+  assert.match(runtime, /useI18n/);
+  assert.match(runtime, /t\("runtime\.title"\)/);
+  assert.match(runtime, /t\("runtime\.description"/);
+  assert.match(runtime, /t\("runtime\.apply"\)/);
+  assert.match(runtime, /t\("runtime\.confirmRestart"\)/);
+  assert.doesNotMatch(runtime, /"Agent Runtime"/);
+  assert.doesNotMatch(runtime, /Apply and safely restart/);
 });
 
 test("settings embeds the model, skill, plugin, and remote modules", () => {

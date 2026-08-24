@@ -111,6 +111,11 @@ export default defineConfig(({ command }) => {
               "Cache-Control": "public, max-age=0, must-revalidate",
             },
           },
+          "/offline.html": {
+            headers: {
+              "Cache-Control": "public, max-age=0, must-revalidate",
+            },
+          },
         },
       }),
       viteReact(),

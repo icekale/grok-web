@@ -4,6 +4,21 @@ import { writePrivateFileAtomicSync } from "./atomic-file.ts";
 import { collectSettingsComposerModels, type SettingsComposerModel } from "./composer-models.ts";
 import { grokHome } from "./grok-home.ts";
 
+export function clearDefaultReasoningEffort(text: string): string {
+  const modelsMatch = /^\[models\][^\[]*/m.exec(text);
+  if (!modelsMatch) return text;
+  const block = modelsMatch[0];
+  const nextBlock = block.replace(/^[ \t]*default_reasoning_effort\s*=.*\n?/m, "");
+  return `${text.slice(0, modelsMatch.index)}${nextBlock}${text.slice(modelsMatch.index + block.length)}`;
+}
+
+export function clearGrokDefaultReasoningEffort(home = grokHome()): void {
+  const file = join(home, "config.toml");
+  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+  const next = clearDefaultReasoningEffort(current);
+  if (next !== current) writePrivateFileAtomicSync(file, next);
+}
+
 export function grokApiBackend(api?: string): "responses" | "chat_completions" | "messages" {
   if (api === "openai-responses") return "responses";
   if (api === "anthropic-messages") return "messages";
@@ -85,11 +100,21 @@ export function renderGrokModelTable(row: SettingsComposerModel, pickerId = `${r
   if (row.baseUrl) lines.push(`base_url = ${JSON.stringify(row.baseUrl)}`);
   if (row.apiKey) lines.push(`api_key = ${JSON.stringify(row.apiKey)}`);
   if (row.contextWindow) lines.push(`context_window = ${row.contextWindow}`);
-  if (row.id.toLowerCase() === "grok-4.6") {
+  const id = row.id.toLowerCase();
+  if (id === "grok-4.6") {
     lines.push(
       "supports_reasoning_effort = true",
       "reasoning_efforts = [",
-      '  { id = "xhigh", value = "xhigh", label = "Extra High Effort", default = false },',
+      '  { id = "xhigh", value = "xhigh", label = "Extra High Effort", default = true },',
+      '  { id = "high", value = "high", label = "High Effort", default = false },',
+      '  { id = "medium", value = "medium", label = "Medium Effort", default = false },',
+      '  { id = "low", value = "low", label = "Low Effort", default = false },',
+      "]",
+    );
+  } else if (id === "grok-4.5") {
+    lines.push(
+      "supports_reasoning_effort = true",
+      "reasoning_efforts = [",
       '  { id = "high", value = "high", label = "High Effort", default = true },',
       '  { id = "medium", value = "medium", label = "Medium Effort", default = false },',
       '  { id = "low", value = "low", label = "Low Effort", default = false },',

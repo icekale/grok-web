@@ -92,6 +92,18 @@ test("service worker cache prefix is grok-web", async () => {
   assert.doesNotMatch(swSource, /CACHE_PREFIX = "pi-web"/);
 });
 
+test("service worker precaches the Grok mark used by the offline page", async () => {
+  const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+  assert.match(swSource, /\/icons\/favicon\.svg/);
+});
+
+test("service worker cache name drops leftover Pi icon caches", async () => {
+  const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+  assert.match(swSource, /CACHE_GENERATION = "grok-mark-2"/);
+  assert.match(swSource, /key\.startsWith\("pi-web-"\)/);
+  assert.match(swSource, /caches\.match\(OFFLINE_URL,\s*\{\s*cacheName:\s*STATIC_CACHE\s*\}\)/);
+});
+
 test("service worker treats emitted /assets as static and drops Next markers", async () => {
   const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
   assert.match(swSource, /startsWith\("\/assets\/"\)/);

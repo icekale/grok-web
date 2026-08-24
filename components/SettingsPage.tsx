@@ -242,7 +242,7 @@ export function SettingsPage({
 
   const allSections: { id: SettingsSection; label: string; disabled: boolean }[] = [
     { id: "general", label: t("settings.general"), disabled: false },
-    { id: "runtime", label: "Agent Runtime", disabled: false },
+    { id: "runtime", label: t("runtime.nav"), disabled: false },
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
     { id: "plugins", label: t("common.plugins"), disabled: !cwd },

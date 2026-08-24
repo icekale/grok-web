@@ -22,6 +22,18 @@ export function grokAgentEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.Pr
   return env;
 }
 
+export function grokAgentSpawnOptions(source: NodeJS.ProcessEnv = process.env): {
+  stdio: ["pipe", "pipe", "inherit"];
+  env: NodeJS.ProcessEnv;
+  detached: boolean;
+} {
+  return {
+    stdio: ["pipe", "pipe", "inherit"],
+    env: grokAgentEnv(source),
+    detached: process.platform !== "win32",
+  };
+}
+
 function requireGlobal(capabilities: GrokCapabilities, flag: string): void {
   if (!capabilities.globalFlags.has(flag)) throw new Error(`Grok does not advertise ${flag}`);
 }
@@ -29,9 +41,16 @@ function requireAgent(capabilities: GrokCapabilities, flag: string): void {
   if (!capabilities.agentFlags.has(flag)) throw new Error(`Grok agent does not advertise ${flag}`);
 }
 
-export function grokAgentArgs(profile: RuntimeProfile = DEFAULT_RUNTIME_PROFILE, capabilities?: GrokCapabilities): string[] {
+export function grokAgentArgs(
+  profile: RuntimeProfile = DEFAULT_RUNTIME_PROFILE,
+  capabilities?: GrokCapabilities,
+  reasoningEffort?: string,
+): string[] {
   if (!capabilities) return ["agent", "stdio"];
   const args: string[] = [];
+  if (reasoningEffort && capabilities.globalFlags.has("--reasoning-effort")) {
+    args.push("--reasoning-effort", reasoningEffort);
+  }
   if (profile.agent) {
     requireGlobal(capabilities, "--agent");
     if (!capabilities.agents.some((agent) => agent.name === profile.agent)) throw new Error(`Unknown Grok Agent: ${profile.agent}`);

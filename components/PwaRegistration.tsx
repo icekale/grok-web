@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { pwaServiceWorkerAction } from "@/lib/pwa-registration";
+import { isCurrentGrokServiceWorker, leftoverForeignCacheNames, pwaServiceWorkerAction } from "@/lib/pwa-registration";
 
 export function PwaRegistration() {
   useEffect(() => {
@@ -17,11 +17,26 @@ export function PwaRegistration() {
     const register = () => {
       const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
       const scriptUrl = `/sw.js?v=${encodeURIComponent(appVersion)}`;
+      const origin = window.location.origin;
 
-      void navigator.serviceWorker.register(scriptUrl, {
-        scope: "/",
-        updateViaCache: "none",
-      }).catch((error: unknown) => {
+      void Promise.all([
+        "caches" in window
+          ? caches.keys().then((keys) => Promise.all(leftoverForeignCacheNames(keys).map((key) => caches.delete(key))))
+          : Promise.resolve(),
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          Promise.all(
+            regs.map((reg) => {
+              const scriptURL = reg.active?.scriptURL ?? reg.waiting?.scriptURL ?? reg.installing?.scriptURL ?? "";
+              return isCurrentGrokServiceWorker(scriptURL, origin) ? Promise.resolve(false) : reg.unregister();
+            }),
+          ),
+        ),
+      ]).then(() =>
+        navigator.serviceWorker.register(scriptUrl, {
+          scope: "/",
+          updateViaCache: "none",
+        }),
+      ).catch((error: unknown) => {
         console.error("Failed to register the Grok Web service worker:", error);
       });
     };

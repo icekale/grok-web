@@ -4,6 +4,7 @@ import { nextPromptGeneration } from "../prompt-generation.ts";
 import { findGrokSession } from "../session-index.ts";
 import { invalidateSessionListCache } from "../session-reader.ts";
 import { hasJsonContentType } from "../request-security.ts";
+import { resolvedGrokEffort } from "../grok-effort-levels.ts";
 import { formatGrokMissingError } from "./process.ts";
 import { AgentCapabilityError, AgentCommandError, type AgentCommand, type AgentRuntime } from "./runtime.ts";
 
@@ -19,7 +20,10 @@ type SessionState = {
   modes?: unknown;
 };
 
-export function createAgentHandlers(runtime: AgentRuntime): {
+export function createAgentHandlers(
+  runtime: AgentRuntime,
+  options: { ensurePromptModel?: (id: string) => Promise<void> } = {},
+): {
   postNew(req: Request): Promise<Response>
   postSession(req: Request, id: string): Promise<Response>
   getSession(req: Request, id: string): Promise<Response>
@@ -71,8 +75,13 @@ export function createAgentHandlers(runtime: AgentRuntime): {
             modelId: body.modelId,
           });
         }
-        if (typeof body.thinkingLevel === "string" && body.thinkingLevel) {
-          await runtime.send(sessionId, { type: "set_thinking_level", level: body.thinkingLevel });
+        const requestedThinkingLevel = typeof body.thinkingLevel === "string" && body.thinkingLevel
+          ? body.thinkingLevel
+          : typeof body.modelId === "string" && body.modelId
+            ? resolvedGrokEffort({ modelId: body.modelId })
+            : undefined;
+        if (requestedThinkingLevel) {
+          await runtime.send(sessionId, { type: "set_thinking_level", level: requestedThinkingLevel });
         }
 
         const state = await runtime.send(sessionId, { type: "get_state" }) as SessionState;
@@ -91,6 +100,7 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         }
 
         if (command.type === "prompt") {
+          await options.ensurePromptModel?.(sessionId);
           const promptGeneration = nextPromptGeneration(sessionId);
           await runtime.send(sessionId, { ...command, promptGeneration } as AgentCommand);
           promptAccepted = true;
@@ -130,12 +140,11 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         const command = await req.json() as AgentCommand;
         commandType = typeof command.type === "string" ? command.type : undefined;
 
-        if (command.type !== "get_state") {
-          await loadSessionIfNeeded(runtime, id);
-        }
+        await loadSessionIfNeeded(runtime, id);
         if (!runtime.hasSession(id)) {
           return Response.json({ error: "Session not found" }, { status: 404 });
         }
+        await options.ensurePromptModel?.(id);
 
         if (command.type === "prompt") {
           const promptGeneration = nextPromptGeneration(id);
@@ -163,6 +172,7 @@ export function createAgentHandlers(runtime: AgentRuntime): {
         if (!runtime.hasSession(id)) {
           return Response.json({ error: "Session not found" }, { status: 404 });
         }
+        await options.ensurePromptModel?.(id);
         const state = await runtime.send(id, { type: "get_state" });
         return Response.json({ running: runtime.isBusy(id), state });
       } catch (error) {
@@ -187,7 +197,7 @@ function allowFileRoot(root: string): void {
   globalThis.__piAllowedRootsCache?.roots.add(normalizedRoot);
 }
 
-async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<void> {
+export async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Promise<void> {
   if (runtime.hasSession(id)) return;
   const session = await findGrokSession(id);
   if (!session) return;

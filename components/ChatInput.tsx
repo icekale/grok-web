@@ -98,8 +98,8 @@ interface Props {
   toolPreset?: ToolPreset;
   toolsAdvertised?: readonly ToolPreset[];
   onToolPresetChange?: (preset: ToolPreset) => void;
-  thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-  onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
+  thinkingLevel?: "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  onThinkingLevelChange?: (level: "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   modes?: AcpModes;
   onModeChange?: (modeId: string) => void;
   availableThinkingLevels?: string[] | null;
@@ -184,13 +184,13 @@ export function filterModelOptions(options: ModelOption[], query: string): Model
   ));
 }
 
-const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const THINKING_LEVELS = ["auto", "none", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
-  auto: "chat.thinkingUseDefault", off: "chat.thinkingOff", minimal: "chat.thinkingMinimal", low: "chat.thinkingLow",
+  auto: "chat.thinkingUseDefault", none: "chat.thinkingOff", off: "chat.thinkingOff", minimal: "chat.thinkingMinimal", low: "chat.thinkingLow",
   medium: "chat.thinkingMedium", high: "chat.thinkingHigh", xhigh: "chat.thinkingXhigh", max: "chat.thinkingMax",
 };
 const THINKING_SHORT_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
-  auto: "chat.thinkingShortAuto", off: "chat.thinkingShortOff", minimal: "chat.thinkingShortMinimal", low: "chat.thinkingShortLow",
+  auto: "chat.thinkingShortAuto", none: "chat.thinkingShortOff", off: "chat.thinkingShortOff", minimal: "chat.thinkingShortMinimal", low: "chat.thinkingShortLow",
   medium: "chat.thinkingShortMedium", high: "chat.thinkingShortHigh", xhigh: "chat.thinkingShortXhigh", max: "chat.thinkingShortMax",
 };
 
@@ -1732,10 +1732,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         saved: formatTokenCount(compactSavedTokens),
       })
     : null;
-  const visibleThinkingLevels = visibleGrokEffortLevels(availableThinkingLevels);
+  const visibleThinkingLevels = visibleGrokEffortLevels(availableThinkingLevels, model?.modelId);
   const activeThinkingLevel = visibleThinkingLevels.includes(thinkingLevel ?? "")
-    ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels)
-    : defaultGrokEffortLevel(visibleThinkingLevels);
+    ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId)
+    : defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -2593,7 +2593,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           onClick={() => {
                             setThinkingMenuOpen(false);
                             if (!isActive) {
-                              onThinkingLevelChange(lvl as "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max");
+                              onThinkingLevelChange(lvl as "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max");
                             }
                           }}
                         >

@@ -24,6 +24,11 @@ export type RemoteAccessSnapshot = {
   configPath: string;
   bindHostname: string;
   bindPort: string;
+  bindLan: boolean;
+  listeningLan: boolean;
+  restartRequired: boolean;
+  loopbackUrl: string;
+  lanUrls: string[];
   allowedHosts: string[];
   envAllowedHosts: string[];
   passwordConfigured: boolean;
@@ -35,7 +40,7 @@ export type RemoteAccessSnapshot = {
 export type RemoteAccessWriteError = {
   ok: false;
   status: 400 | 403;
-  code: "invalid_hostname" | "password_required" | "password_invalid" | "cannot_disable_password_remotely";
+  code: "invalid_hostname" | "password_required" | "password_invalid" | "cannot_disable_password_remotely" | "cannot_disable_lan_remotely";
   error: string;
 };
 
@@ -47,13 +52,14 @@ type StoredFile = {
   schemaVersion?: unknown;
   allowedHosts?: unknown;
   passwordHash?: unknown;
+  bindLan?: unknown;
   [key: string]: unknown;
 };
 
 type FileCache =
   | { kind: "missing"; path: string; mtimeMs: number; ino: number }
   | { kind: "invalid"; path: string; mtimeMs: number; ino: number; configError: string }
-  | { kind: "ok"; path: string; mtimeMs: number; ino: number; stored: StoredFile; allowedHosts: string[]; passwordHash: string | undefined };
+  | { kind: "ok"; path: string; mtimeMs: number; ino: number; stored: StoredFile; allowedHosts: string[]; passwordHash: string | undefined; bindLan: boolean };
 
 let fileCache: FileCache | undefined;
 const verifyCacheSecret = randomBytes(32);
@@ -230,7 +236,8 @@ function readFileCache(path = getRemoteAccessConfigPath()): FileCache {
     const passwordHash = typeof parsed.passwordHash === "string" && parsed.passwordHash.length > 0
       ? parsed.passwordHash
       : undefined;
-    fileCache = { kind: "ok", path, mtimeMs, ino, stored: parsed, allowedHosts, passwordHash };
+    const bindLan = parsed.bindLan === true;
+    fileCache = { kind: "ok", path, mtimeMs, ino, stored: parsed, allowedHosts, passwordHash, bindLan };
     return fileCache;
   } catch (error) {
     fileCache = {
@@ -314,15 +321,30 @@ function isUnspecifiedBindHost(hostname: string): boolean {
   return hostname === "0.0.0.0" || hostname === "::" || hostname === "[::]";
 }
 
-function firstLanIPv4(): string | undefined {
+export function listLanIPv4s(): string[] {
+  const addresses: string[] = [];
+  const seen = new Set<string>();
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries ?? []) {
-      const family = entry.family;
-      if (family !== "IPv4" || entry.internal) continue;
+      if (entry.family !== "IPv4" || entry.internal) continue;
       if (entry.address.startsWith("169.254.")) continue;
-      return entry.address;
+      if (seen.has(entry.address)) continue;
+      seen.add(entry.address);
+      addresses.push(entry.address);
     }
   }
+  return addresses;
+}
+
+function firstLanIPv4(): string | undefined {
+  return listLanIPv4s()[0];
+}
+
+export function preferredListenHostname(): string {
+  const cache = readFileCache();
+  const bindLan = cache.kind === "ok" && cache.bindLan;
+  const hasPassword = envPasswordEnabled() || (cache.kind === "ok" && Boolean(cache.passwordHash));
+  return bindLan && hasPassword ? "0.0.0.0" : "127.0.0.1";
 }
 
 function authorityFromRequest(request?: Request): { hostname: string; port: string } | undefined {
@@ -361,13 +383,23 @@ export function readRemoteAccessSnapshot(request?: Request): RemoteAccessSnapsho
     : filePassword
       ? "file"
       : undefined;
+  const passwordConfigured = Boolean(passwordSource);
+  const bindLan = cache.kind === "ok" ? cache.bindLan : false;
+  const listeningLan = isUnspecifiedBindHost(configuredBindHostname());
+  const advertised = advertiseBind(request);
+  const urlPort = advertised.bindPort;
   return {
     schemaVersion: REMOTE_ACCESS_SCHEMA_VERSION,
     configPath: path,
-    ...advertiseBind(request),
+    ...advertised,
+    bindLan,
+    listeningLan,
+    restartRequired: bindLan !== listeningLan && (!bindLan || passwordConfigured),
+    loopbackUrl: `http://127.0.0.1:${urlPort}`,
+    lanUrls: listLanIPv4s().map((ip) => `http://${ip}:${urlPort}`),
     allowedHosts: cache.kind === "ok" ? cache.allowedHosts : [],
     envAllowedHosts,
-    passwordConfigured: Boolean(passwordSource),
+    passwordConfigured,
     ...(passwordSource ? { passwordSource } : {}),
     username: "grok",
     ...(cache.kind === "invalid" ? { configError: cache.configError } : {}),
@@ -389,6 +421,7 @@ function validatePassword(password: string): RemoteAccessWriteError | undefined 
 export function writeRemoteAccessConfig(input: {
   allowedHosts: unknown;
   password?: string | null;
+  bindLan?: boolean;
   loopbackRequest: boolean;
   request?: Request;
 }): RemoteAccessWriteResult {
@@ -400,10 +433,12 @@ export function writeRemoteAccessConfig(input: {
   const path = getRemoteAccessConfigPath();
   const existing = readFileCache(path);
   const currentHash = existing.kind === "ok" ? existing.passwordHash : undefined;
+  const currentBindLan = existing.kind === "ok" ? existing.bindLan : false;
+  const nextBindLan = typeof input.bindLan === "boolean" ? input.bindLan : currentBindLan;
   const extra = existing.kind === "ok"
     ? Object.fromEntries(
       Object.entries(existing.stored).filter(([key]) => (
-        key !== "schemaVersion" && key !== "allowedHosts" && key !== "passwordHash"
+        key !== "schemaVersion" && key !== "allowedHosts" && key !== "passwordHash" && key !== "bindLan"
       )),
     )
     : {};
@@ -418,12 +453,12 @@ export function writeRemoteAccessConfig(input: {
         error: "Password can only be cleared from localhost",
       };
     }
-    if (hosts.length > 0 && !envPasswordEnabled()) {
+    if ((hosts.length > 0 || nextBindLan) && !envPasswordEnabled()) {
       return {
         ok: false,
         status: 400,
         code: "password_required",
-        error: "A password is required while allowed hostnames are configured",
+        error: "A password is required while LAN access or allowed hostnames are configured",
       };
     }
     nextHash = undefined;
@@ -433,13 +468,22 @@ export function writeRemoteAccessConfig(input: {
     nextHash = hashPassword(input.password);
   }
 
+  if (currentBindLan && !nextBindLan && !input.loopbackRequest) {
+    return {
+      ok: false,
+      status: 403,
+      code: "cannot_disable_lan_remotely",
+      error: "LAN access can only be turned off from localhost",
+    };
+  }
+
   const effectivePassword = envPasswordEnabled() || Boolean(nextHash);
-  if (hosts.length > 0 && !effectivePassword) {
+  if ((hosts.length > 0 || nextBindLan) && !effectivePassword) {
     return {
       ok: false,
       status: 400,
       code: "password_required",
-      error: "A password is required while allowed hostnames are configured",
+      error: "A password is required while LAN access or allowed hostnames are configured",
     };
   }
 
@@ -449,6 +493,7 @@ export function writeRemoteAccessConfig(input: {
   const serialized: StoredFile = {
     schemaVersion: REMOTE_ACCESS_SCHEMA_VERSION,
     allowedHosts: hosts,
+    bindLan: nextBindLan,
     ...extra,
   };
   if (nextHash) serialized.passwordHash = nextHash;

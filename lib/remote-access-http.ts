@@ -39,9 +39,18 @@ export async function PUT(
       }
     }
 
+    let bindLan: boolean | undefined;
+    if ("bindLan" in body) {
+      if (typeof body.bindLan !== "boolean") {
+        return Response.json({ error: "bindLan must be a boolean" }, { status: 400 });
+      }
+      bindLan = body.bindLan;
+    }
+
     const result = writeRemoteAccessConfig({
       allowedHosts: body.allowedHosts,
       password,
+      bindLan,
       loopbackRequest: isLoopbackApiRequest(req, peerAddress),
       request: req,
     });

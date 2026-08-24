@@ -109,7 +109,6 @@ export function buildSessionContext(
   return {
     messages,
     entryIds,
-    thinkingLevel: "off",
     model: null,
   };
 }
