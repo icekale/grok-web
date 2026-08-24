@@ -1076,7 +1076,10 @@ function SessionRow({ session, selected, running, runningSubagentCount, unread, 
     setDeleteError(null);
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
       onDeleted();
       return true;
     } catch (cause) {

@@ -263,6 +263,11 @@ export async function getSessionState(_req: Request, id: string): Promise<Respon
 
 type SessionDeleteRuntime = Pick<AgentRuntime, "hasSession" | "isBusy" | "loadSession" | "closeSession">;
 
+function isSessionOwnedElsewhere(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already loaded|in use|owned/i.test(message);
+}
+
 export async function deleteSession(
   id: string,
   runtime: SessionDeleteRuntime = getAgentRuntime(),
@@ -272,16 +277,28 @@ export async function deleteSession(
   if (runtime.hasSession(id) && runtime.isBusy(id)) {
     return Response.json({ error: "Session is running", code: "session_busy" }, { status: 409 });
   }
-  try {
-    if (!runtime.hasSession(id)) await runtime.loadSession(id, session.cwd);
-    const closed = await runtime.closeSession(id) as {
-      outcome?: unknown;
-      _meta?: { "x.ai/closeOutcome"?: unknown };
-    } | undefined;
-    const outcome = closed?.outcome ?? closed?._meta?.["x.ai/closeOutcome"];
-    if (outcome !== "closed") throw new Error("ACP session did not close");
-  } catch {
-    return Response.json({ error: "Session is in use", code: "session_in_use" }, { status: 409 });
+  let owned = runtime.hasSession(id);
+  if (!owned) {
+    try {
+      await runtime.loadSession(id, session.cwd);
+      owned = true;
+    } catch (error) {
+      if (isSessionOwnedElsewhere(error)) {
+        return Response.json({ error: "Session is in use", code: "session_in_use" }, { status: 409 });
+      }
+    }
+  }
+  if (owned) {
+    try {
+      const closed = await runtime.closeSession(id) as {
+        outcome?: unknown;
+        _meta?: { "x.ai/closeOutcome"?: unknown };
+      } | undefined;
+      const outcome = closed?.outcome ?? closed?._meta?.["x.ai/closeOutcome"];
+      if (outcome !== "closed") throw new Error("ACP session did not close");
+    } catch {
+      return Response.json({ error: "Session is in use", code: "session_in_use" }, { status: 409 });
+    }
   }
   rmSync(session.path, { recursive: true, force: true });
   invalidateSessionListCache();

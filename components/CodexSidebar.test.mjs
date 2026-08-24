@@ -76,6 +76,7 @@ test("session delete confirms in DialogShell and still reports errors inline", (
   assert.doesNotMatch(sidebar, /remove\(\)\.then\(\(\) => setPendingDelete\(false\)\)/);
   assert.match(sidebar, /className="codex-row-error"/);
   assert.match(sidebar, /role="alert"/);
+  assert.match(sidebar, /\/api\/sessions\/\$\{encodeURIComponent\(session\.id\)\}[\s\S]{0,220}?data\.error \?\? `HTTP \$\{response\.status\}`/);
   assert.match(styles, /\.codex-row-error \{[^}]*color: var\(--danger\)|#ef4444|rgba\(239,68,68/);
 });
 

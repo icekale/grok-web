@@ -331,7 +331,10 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     setSlashDeleteError(null);
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
       setPendingSlashDelete(false);
       onSessionDeleted?.(id);
     } catch (cause) {
