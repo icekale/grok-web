@@ -20,7 +20,7 @@ import {
 } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
-import { clearGrokDefaultReasoningEffort, syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
+import { pinGrokDefaultReasoningEffort, syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
 import { persistedReasoningEffort, resolvedGrokEffort, shouldRespawnForEffort } from "../grok-effort-levels.ts";
 import { sessionModelRef } from "../grok-model-label.ts";
@@ -1040,7 +1040,13 @@ export class AgentRuntime {
     session.promptErrorEmitted = false;
     try {
       await this.applySessionEffort(sessionId, session);
-      const result = await this.requireAcp().sessionPrompt(sessionId, message, Array.isArray(images) ? images : []);
+      const effort = resolvedGrokEffort({ selected: session.thinkingLevel, modelId: session.modelId });
+      const result = await this.requireAcp().sessionPrompt(
+        sessionId,
+        message,
+        Array.isArray(images) ? images : [],
+        effort,
+      );
       const stopReason = result && typeof result === "object" && "stopReason" in result
         && typeof (result as { stopReason?: unknown }).stopReason === "string"
         ? (result as { stopReason: string }).stopReason
@@ -1369,7 +1375,7 @@ export class AgentRuntime {
     const capabilities = await discoverGrokCapabilities(bin);
     this.cliCapabilities = capabilities;
     const profile = readRuntimeProfile();
-    clearGrokDefaultReasoningEffort();
+    pinGrokDefaultReasoningEffort(this.spawnEffortArg());
     syncSettingsModelsToGrokConfig(readModelsConfig());
     const child = spawn(bin, grokAgentArgs(profile, capabilities, this.spawnEffortArg()), grokAgentSpawnOptions());
     if (!child.stdin || !child.stdout) {

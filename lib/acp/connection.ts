@@ -301,10 +301,12 @@ export class AcpConnection {
     sessionId: string,
     text: string,
     images: unknown[] = [],
+    reasoningEffort?: string,
   ): Promise<unknown> {
     return this.rpc.request("session/prompt", {
       sessionId,
       prompt: buildAcpPrompt(text, parsePromptImages(images)),
+      ...(reasoningEffort ? { _meta: { reasoningEffort } } : {}),
     });
   }
 

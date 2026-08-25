@@ -12,11 +12,30 @@ export function clearDefaultReasoningEffort(text: string): string {
   return `${text.slice(0, modelsMatch.index)}${nextBlock}${text.slice(modelsMatch.index + block.length)}`;
 }
 
-export function clearGrokDefaultReasoningEffort(home = grokHome()): void {
+export function pinDefaultReasoningEffort(text: string, effort?: string): string {
+  if (!effort) return clearDefaultReasoningEffort(text);
+  const line = `default_reasoning_effort = ${JSON.stringify(effort)}`;
+  const modelsMatch = /^\[models\][^\[]*/m.exec(text);
+  if (!modelsMatch) {
+    const suffix = text.length === 0 || text.endsWith("\n") ? "" : "\n";
+    return `${text}${suffix}[models]\n${line}\n`;
+  }
+  const block = modelsMatch[0];
+  const nextBlock = /^[ \t]*default_reasoning_effort\s*=.*$/m.test(block)
+    ? block.replace(/^[ \t]*default_reasoning_effort\s*=.*$/m, line)
+    : block.replace(/\[models\]\s*\n?/, `[models]\n${line}\n`);
+  return `${text.slice(0, modelsMatch.index)}${nextBlock}${text.slice(modelsMatch.index + block.length)}`;
+}
+
+export function pinGrokDefaultReasoningEffort(effort?: string, home = grokHome()): void {
   const file = join(home, "config.toml");
   const current = existsSync(file) ? readFileSync(file, "utf8") : "";
-  const next = clearDefaultReasoningEffort(current);
+  const next = pinDefaultReasoningEffort(current, effort);
   if (next !== current) writePrivateFileAtomicSync(file, next);
+}
+
+export function clearGrokDefaultReasoningEffort(home = grokHome()): void {
+  pinGrokDefaultReasoningEffort(undefined, home);
 }
 
 export function grokApiBackend(api?: string): "responses" | "chat_completions" | "messages" {
