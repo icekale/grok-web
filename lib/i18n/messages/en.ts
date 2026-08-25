@@ -467,6 +467,8 @@ export const enLocale: LocalePlugin = {
     "chat.allBuiltInTools": "All built-in tools",
     "chat.changeReasoning": "Change effort: {level}",
     "chat.changeReasoningLabel": "Change effort",
+    "chat.changeMode": "Change mode: {mode}",
+    "chat.changeModeLabel": "ACP mode",
     "chat.changeToolPreset": "Change tool preset",
     "chat.stopCompaction": "Stop compaction",
     "chat.compactContext": "Compact context",

@@ -14,9 +14,10 @@ test("renders the advertised standard Plan mode and sends the standard ACP comma
   const sessionId = (await (await created).json()).sessionId as string;
   try {
     await expect(page.getByText("E2E_STREAM_OK", { exact: true })).toBeVisible();
-    const mode = page.getByLabel("ACP mode");
+    const mode = page.locator(".composer-mode-chip");
     await expect(mode).toBeVisible();
-    await mode.selectOption("plan");
+    await mode.click();
+    await page.locator(".composer-menu").getByRole("button", { name: "Plan" }).click();
     await expect.poll(() => fixtureMethods().filter((method) => method === "session/set_mode").length).toBeGreaterThan(0);
   } finally {
     await closeOwnedSession(page, sessionId);

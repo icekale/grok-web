@@ -52,6 +52,7 @@ test("lets the mobile access chip shrink before it can overlap the streaming con
   assert.match(source, /className="composer-model-selector" style=\{\{ flex: isMobile \? "1 1 auto" : "0 0 auto", minWidth: 0, display: isMobile && isStreaming \? "none" : "flex"/);
   assert.match(source, /className="composer-access-chevron"/);
   assert.match(source, /className="composer-chip composer-thinking-chip"/);
+  assert.match(source, /className="composer-chip composer-mode-chip"/);
   assert.match(source, /composer-menu-item/);
   assert.match(source, /className="composer-thinking-label"/);
   assert.match(source, /className="composer-thinking-chevron"/);

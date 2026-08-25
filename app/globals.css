@@ -862,6 +862,11 @@ html.keyboard-open .extension-status-shelf {
   color: var(--text-dim);
   font-size: var(--text-meta);
 }
+.composer-mode-label {
+  max-width: 6.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 @media (max-width: 640px) {
   .composer-icon-hit::after {
     position: absolute;

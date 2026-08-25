@@ -505,10 +505,39 @@ test("keeps compaction actions coarse-pointer sized and still under reduced moti
   assert.match(css, /@media \(pointer: coarse\) \{\s*\.compaction-feedback-action \{[^}]*min-height: 44px/);
 });
 
+test("mode chip is a compact composer menu, not a native select", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {},
+        onAbort() {},
+        isStreaming: false,
+        modes: {
+          current: "default",
+          available: [
+            { id: "default", name: "Normal" },
+            { id: "plan", name: "Plan" },
+            { id: "auto", name: "Auto" },
+            { id: "bypassPermissions", name: "Always-approve" },
+          ],
+        },
+        onModeChange() {},
+      }),
+    ),
+  );
+  assert.match(html, /aria-label="ACP mode"/);
+  assert.match(html, /composer-mode-chip/);
+  assert.match(html, />Normal</);
+  assert.doesNotMatch(html, /<select/);
+});
+
 test("keeps composer chip labels from wrapping", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\.composer-chip \{\s*display: flex;[^}]*white-space: nowrap/);
   assert.match(css, /\.composer-chip \{\s*display: flex;[^}]*height: 32px;[^}]*border-radius: 8px;/);
+  assert.match(css, /\.composer-mode-label \{[^}]*max-width: 6\.5em;[^}]*text-overflow: ellipsis/);
   assert.match(css, /\.composer-menu-item \{/);
   assert.match(css, /\.chat-user-bubble \{[^}]*background: var\(--user-bg\)/);
 });

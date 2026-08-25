@@ -466,6 +466,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.allBuiltInTools": "全部内置工具",
     "chat.changeReasoning": "更改 Effort：{level}",
     "chat.changeReasoningLabel": "更改 Effort",
+    "chat.changeMode": "更改模式：{mode}",
+    "chat.changeModeLabel": "ACP 模式",
     "chat.changeToolPreset": "更改工具预设",
     "chat.stopCompaction": "停止压缩",
     "chat.compactContext": "压缩上下文",

@@ -715,6 +715,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [modelFilter, setModelFilter] = useState("");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [queueDockCollapsed, setQueueDockCollapsed] = useState(true);
   const [queueEditing, setQueueEditing] = useState<QueueDockItem | null>(null);
   const [queueEditingText, setQueueEditingText] = useState("");
@@ -747,6 +748,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const thinkingMenuRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -1736,6 +1738,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const activeThinkingLevel = visibleThinkingLevels.includes(thinkingLevel ?? "")
     ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId)
     : defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId);
+  const currentModeName = modes?.available.find((mode) => mode.id === modes.current)?.name ?? modes?.current ?? "";
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1752,6 +1755,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       }
       if (thinkingMenuRef.current && !thinkingMenuRef.current.contains(e.target as Node)) {
         setThinkingMenuOpen(false);
+      }
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
+        setModeMenuOpen(false);
       }
       if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node) && !textareaRef.current?.contains(e.target as Node)) {
         setHistoryMenuOpen(false);
@@ -2339,6 +2345,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 onClick={() => {
                   setModelDropdownOpen(false);
                   setThinkingMenuOpen(false);
+                  setModeMenuOpen(false);
                   setMoreMenuOpen((open) => !open);
                 }}
                 title={t("chat.changeToolPreset")}
@@ -2418,6 +2425,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     onClick={(e) => {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                       setModelDropdownRect({ top: rect.top, left: rect.left, width: rect.width });
+                      setThinkingMenuOpen(false);
+                      setModeMenuOpen(false);
+                      setMoreMenuOpen(false);
                       setModelDropdownOpen((open) => {
                         if (open) setModelFilter("");
                         return !open;
@@ -2551,18 +2561,49 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             gap: 2,
           }}>
             {modes && modes.available.length > 0 && onModeChange && (
-              <label className="composer-chip" title="ACP mode">
-                <List size={12} aria-hidden="true" />
-                <select
-                  aria-label="ACP mode"
-                  value={modes.current ?? ""}
+              <div ref={modeMenuRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="composer-chip composer-mode-chip"
+                  onClick={() => {
+                    setModelDropdownOpen(false);
+                    setMoreMenuOpen(false);
+                    setThinkingMenuOpen(false);
+                    setModeMenuOpen((open) => !open);
+                  }}
                   disabled={isStreaming}
-                  onChange={(event) => onModeChange(event.target.value)}
-                  style={{ border: 0, background: "transparent", color: "inherit", font: "inherit", outline: 0, maxWidth: 120 }}
+                  title={t("chat.changeMode", { mode: currentModeName })}
+                  aria-label={t("chat.changeModeLabel")}
+                  aria-expanded={modeMenuOpen}
                 >
-                  {modes.available.map((mode) => <option key={mode.id} value={mode.id}>{mode.name}</option>)}
-                </select>
-              </label>
+                  <span className="composer-mode-label">{currentModeName}</span>
+                  <ChevronDown className="composer-mode-chevron" size={12} strokeWidth={2} aria-hidden="true" style={{ opacity: 0.7 }} />
+                </button>
+                {modeMenuOpen && (
+                  <div className="composer-menu" style={{ right: 0, minWidth: 160 }}>
+                    {modes.available.map((mode) => {
+                      const isActive = mode.id === modes.current;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          className={`composer-menu-item${isActive ? " is-active" : ""}`}
+                          onClick={() => {
+                            setModeMenuOpen(false);
+                            if (!isActive) onModeChange(mode.id);
+                          }}
+                        >
+                          {isActive
+                            ? <Check size={10} strokeWidth={2} aria-hidden="true" style={{ color: "var(--accent)", flexShrink: 0 }} />
+                            : <span style={{ width: 10, flexShrink: 0 }} />}
+                          <span>{mode.name}</span>
+                          {mode.description ? <span className="composer-menu-item-meta">{mode.description}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
             {onThinkingLevelChange && visibleThinkingLevels.length > 0 && (
               <div ref={thinkingMenuRef} style={{ position: "relative" }}>
@@ -2572,6 +2613,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   onClick={() => {
                     setModelDropdownOpen(false);
                     setMoreMenuOpen(false);
+                    setModeMenuOpen(false);
                     setThinkingMenuOpen((open) => !open);
                   }}
                   title={t("chat.changeReasoning", { level: thinkingEffortLabel(activeThinkingLevel, t) })}
