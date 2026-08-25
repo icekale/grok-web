@@ -18,7 +18,8 @@ test("keeps access on the left and reasoning beside the model", () => {
 
 test("keeps the composer toolbar at three grid cells on mobile", () => {
   // The mobile toolbar is a 3-column grid (attach | access+model | right).
-  assert.match(source, /gridTemplateColumns: isMobile \? "auto minmax\(0, 1fr\) auto"/);
+  // The right column must be allowed to shrink so Send cannot overflow the shell.
+  assert.match(source, /gridTemplateColumns: isMobile \? "auto minmax\(0, 1fr\) minmax\(0, auto\)"/);
   assert.match(source, /className="composer-middle"/);
   const middle = source.indexOf('className="composer-middle"');
   assert.ok(middle >= 0);
@@ -57,4 +58,11 @@ test("lets the mobile access chip shrink before it can overlap the streaming con
   assert.match(css, /\.composer-shell\.is-streaming \.composer-access-chevron \{\s*display: none;/);
   assert.match(css, /@media \(max-width: 360px\) \{[\s\S]*?\.composer-shell\.is-streaming \.composer-thinking-label \{[\s\S]*?display: none;/);
   assert.match(css, /\.composer-shell\.is-streaming \.composer-thinking-chip \{[\s\S]*?width: 44px;[\s\S]*?flex: 0 0 44px;/);
+});
+
+test("keeps the mobile send control inside the composer shell", () => {
+  assert.match(source, /className="composer-icon-hit composer-send"/);
+  assert.match(source, /className="composer-send-label"/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.composer-send-label \{[\s\S]*?display: none;/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.composer-send \{[\s\S]*?width: 44px;/);
 });

@@ -2287,7 +2287,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {/* Toolbar: + | model | chips | send */}
         <div style={{
           display: isMobile ? "grid" : "flex",
-          gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : undefined,
+          gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) minmax(0, auto)" : undefined,
           alignItems: "center",
           gap: 4,
         }}>
@@ -2543,6 +2543,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {/* RIGHT: thinking + send */}
           <div style={{
             flex: "0 0 auto",
+            minWidth: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
@@ -2658,13 +2659,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             </div>
           ) : (
             <button
-              className="composer-icon-hit"
+              className="composer-icon-hit composer-send"
               onClick={handleSend}
               disabled={!value.trim() && !attachedImages.length}
               style={{
                 flexShrink: 0,
                 display: "flex", alignItems: "center", gap: 6,
-                height: 28, padding: "0 10px",
                 background: (value.trim() || attachedImages.length) ? "var(--text)" : "var(--bg-panel)",
                 border: "none",
                 borderRadius: 8,
@@ -2677,7 +2677,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               aria-label={t("chat.send")}
             >
               <ArrowUp size={14} strokeWidth={2.2} aria-hidden="true" />
-              {t("chat.send")}
+              <span className="composer-send-label">{t("chat.send")}</span>
             </button>
           )}
           </div>

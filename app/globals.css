@@ -762,6 +762,10 @@ html.keyboard-open .extension-status-shelf {
 .composer-icon-hit {
   position: relative;
 }
+.composer-send {
+  height: 28px;
+  padding: 0 10px;
+}
 .composer-icon-hit:focus-visible,
 .composer-chip:focus-visible {
   outline: 2px solid var(--accent);
@@ -872,6 +876,17 @@ html.keyboard-open .extension-status-shelf {
     padding-inline: 0;
   }
   .composer-shell.is-streaming .composer-access-chevron {
+    display: none;
+  }
+  .composer-send {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+  .composer-send-label {
     display: none;
   }
 }
