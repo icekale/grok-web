@@ -67,9 +67,6 @@ function isConcreteEffort(level: string | null | undefined): level is string {
   return typeof level === "string" && ADVERTISED_EFFORT_LEVELS.has(level) && level !== "auto";
 }
 
-export function shouldRespawnForEffort(spawned?: string | null, next?: string | null): boolean {
-  return (spawned ?? "") !== (next ?? "");
-}
 
 export function persistedReasoningEffort(summary: unknown): string | undefined {
   if (!summary || typeof summary !== "object") return undefined;

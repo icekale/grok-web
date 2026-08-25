@@ -188,7 +188,14 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    await probe("GET", "/api/meta", [405]);
+    await probe("GET", "/api/meta", [200]);
+    const versionResponse = await fetch(`${origin}/api/meta`, { headers: authHeaders });
+    assert.equal(versionResponse.headers.get("cache-control"), "no-store");
+    const versionBody = await versionResponse.json();
+    assert.equal(typeof versionBody.appVersion, "string");
+    assert.ok(versionBody.appVersion);
+    assert.equal(typeof versionBody.buildId, "string");
+    assert.ok(versionBody.buildId);
     await probe("GET", "/api/models", [200, 403]);
     await probe("GET", "/api/models-config", [200]);
     // PUT /api/models-config is a real write with almost no validation and

@@ -110,6 +110,8 @@ export const enLocale: LocalePlugin = {
     "remote.error.cannot_disable_password_remotely": "The password can only be cleared from localhost.",
     "remote.error.cannot_disable_lan_remotely": "LAN access can only be turned off from localhost.",
     "appUpdate.releaseNotes": "Grok Web v{version} is available. View release notes",
+    "appUpdate.newVersion": "A new Grok Web version is ready",
+    "appUpdate.reload": "Refresh now",
     "sidebar.hide": "Hide sidebar",
     "sidebar.show": "Show sidebar",
     "theme.light": "Light mode (click for dark)",

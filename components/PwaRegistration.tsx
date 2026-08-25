@@ -15,8 +15,8 @@ export function PwaRegistration() {
     }
 
     const register = () => {
-      const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
-      const scriptUrl = `/sw.js?v=${encodeURIComponent(appVersion)}`;
+      const buildId = process.env.NEXT_PUBLIC_BUILD_ID ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
+      const scriptUrl = `/sw.js?v=${encodeURIComponent(buildId)}`;
       const origin = window.location.origin;
 
       void Promise.all([

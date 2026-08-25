@@ -22,7 +22,7 @@ import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
 import { pinGrokDefaultReasoningEffort, syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
-import { persistedReasoningEffort, resolvedGrokEffort, shouldRespawnForEffort } from "../grok-effort-levels.ts";
+import { persistedReasoningEffort, resolvedGrokEffort } from "../grok-effort-levels.ts";
 import { sessionModelRef } from "../grok-model-label.ts";
 import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
@@ -212,7 +212,6 @@ export class AgentRuntime {
   private child: ChildProcess | undefined;
   private spawnedReasoningEffort: string | undefined;
   private spawnEffortInitialized = false;
-  private aligningSpawnEffort = false;
   private readonly connectionChildren = new WeakMap<AcpConnection, ChildProcess>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
@@ -220,6 +219,7 @@ export class AgentRuntime {
   private readonly workspaceSessionStarts = new Map<string, Promise<string>>();
   private profileApplyChain: Promise<unknown> = Promise.resolve();
   private modeProbeBySession = new Map<string, Promise<void>>();
+  private readonly thinkingLevelChanges = new Map<string, Promise<void>>();
   private disposed = false;
 
   constructor(options?: {
@@ -296,9 +296,7 @@ export class AgentRuntime {
       session.modes = modeState.modes;
       session.modeSource = modeState.source;
     }
-    if (!this.aligningSpawnEffort) {
-      await this.applySessionEffort(sessionId, session, connection.acp);
-    }
+    await this.applySessionEffort(sessionId, session, connection.acp);
   }
 
   async resumeSession(sessionId: string, cwd?: string): Promise<void> {
@@ -410,6 +408,7 @@ export class AgentRuntime {
     }
     this.child = undefined;
     this.modeProbeBySession.clear();
+    this.thinkingLevelChanges.clear();
     this.sessions.clear();
     this.listeners.clear();
     this.sequencedListeners.clear();
@@ -697,6 +696,7 @@ export class AgentRuntime {
       case "navigate_tree":
         return this.sendNavigateTree(sessionId, command);
       case "set_model": {
+        await this.waitForThinkingLevelChange(sessionId);
         const modelId = stringField(command.modelId);
         if (!modelId) throw new Error("modelId is required");
         const wrote = syncSettingsModelsToGrokConfig(readModelsConfig());
@@ -745,28 +745,8 @@ export class AgentRuntime {
         }
         return { modeId };
       }
-      case "set_thinking_level": {
-        await this.ensureProcess();
-        const level = stringField(command.level);
-        if (!REASONING_EFFORTS.has(level)) {
-          throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level || "empty"}`);
-        }
-        const session = this.ensureSession(sessionId);
-        const previous = session.thinkingLevel;
-        const modelId = session.modelId ?? "grok-4.6";
-        const effort = resolvedGrokEffort({ selected: level, modelId });
-        if (!effort) {
-          throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level}`);
-        }
-        session.thinkingLevel = effort;
-        try {
-          await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
-        } catch (error) {
-          session.thinkingLevel = previous;
-          throw error;
-        }
-        return { level: session.thinkingLevel, previous };
-      }
+      case "set_thinking_level":
+        return this.setThinkingLevel(sessionId, command);
       case "get_commands":
         return this.listSlashCommands(sessionId);
       case "reload": {
@@ -1006,6 +986,7 @@ export class AgentRuntime {
     const imageError = validateAgentImages(images);
     if (imageError) throw new Error(imageError);
     if (!processReady) await this.ensureProcess();
+    await this.waitForThinkingLevelChange(sessionId);
     const session = this.ensureSession(sessionId);
     session.hasUserPrompt = true;
     if (this.isSessionBashRunning(session)) {
@@ -1553,28 +1534,42 @@ export class AgentRuntime {
     return this.spawnedReasoningEffort ?? resolvedGrokEffort({ modelId: "grok-4.6" });
   }
 
-  private async ensureSpawnMatchesEffort(effort?: string): Promise<boolean> {
-    if (!shouldRespawnForEffort(this.spawnedReasoningEffort, effort)) return false;
-    if (!this.child || this.aligningSpawnEffort || this.listBusyIds().length > 0) return false;
-    this.aligningSpawnEffort = true;
-    try {
-      const recoverable = this.snapshotRecoverableSessions();
-      const { restore } = this.snapshotListeners();
-      this.spawnedReasoningEffort = effort;
-      this.spawnEffortInitialized = true;
-      await this.recycleProcess();
-      restore();
-      for (const entry of recoverable) {
-        await this.loadSession(entry.id, entry.cwd);
-        const session = this.ensureSession(entry.id);
-        if (entry.modelId) session.modelId = entry.modelId;
-        session.thinkingLevel = entry.thinkingLevel;
-        await this.applySessionEffort(entry.id, session);
+  private waitForThinkingLevelChange(sessionId: string): Promise<void> {
+    return this.thinkingLevelChanges.get(sessionId) ?? Promise.resolve();
+  }
+
+  private setThinkingLevel(sessionId: string, command: AgentCommand): Promise<{ level: string; previous?: string }> {
+    const previousChange = this.waitForThinkingLevelChange(sessionId);
+    const operation = previousChange.then(async () => {
+      await this.ensureProcess();
+      const level = stringField(commandField(command, "level"));
+      if (!REASONING_EFFORTS.has(level)) {
+        throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level || "empty"}`);
       }
-      return true;
-    } finally {
-      this.aligningSpawnEffort = false;
-    }
+      const session = this.ensureSession(sessionId);
+      const previous = session.thinkingLevel;
+      const modelId = session.modelId ?? "grok-4.6";
+      const effort = resolvedGrokEffort({ selected: level, modelId });
+      if (!effort) {
+        throw new AgentCommandError(400, "effort_unsupported", `Unsupported reasoning effort: ${level}`);
+      }
+      session.thinkingLevel = effort;
+      try {
+        await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
+      } catch (error) {
+        session.thinkingLevel = previous;
+        throw error;
+      }
+      return { level: session.thinkingLevel, previous };
+    });
+    const settled = operation.then(() => undefined, () => undefined);
+    this.thinkingLevelChanges.set(sessionId, settled);
+    void settled.then(() => {
+      if (this.thinkingLevelChanges.get(sessionId) === settled) {
+        this.thinkingLevelChanges.delete(sessionId);
+      }
+    });
+    return operation;
   }
 
   private async applySessionEffort(
@@ -1585,8 +1580,6 @@ export class AgentRuntime {
   ): Promise<void> {
     const effort = resolvedGrokEffort({ selected: session.thinkingLevel, modelId: session.modelId });
     session.thinkingLevel = effort;
-    const recycled = await this.ensureSpawnMatchesEffort(effort);
-    if (recycled) return;
     const conn = acp ?? this.acp;
     if (!conn || typeof conn.sessionSetModel !== "function" || !session.modelId) return;
     try {

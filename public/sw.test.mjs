@@ -92,6 +92,11 @@ test("service worker cache prefix is grok-web", async () => {
   assert.doesNotMatch(swSource, /CACHE_PREFIX = "pi-web"/);
 });
 
+test("service worker cache names include the build id from its registration URL", async () => {
+  const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+  assert.match(swSource, /new URL\(self\.location\.href\)\.searchParams\.get\("v"\)/);
+  assert.match(swSource, /CACHE_VERSION/);
+});
 test("service worker precaches the Grok mark used by the offline page", async () => {
   const swSource = await readFile(new URL("./sw.js", import.meta.url), "utf8");
   assert.match(swSource, /\/icons\/favicon\.svg/);

@@ -110,6 +110,8 @@ export const zhCNLocale: LocalePlugin = {
     "remote.error.cannot_disable_password_remotely": "只能在本机清除密码。",
     "remote.error.cannot_disable_lan_remotely": "只能在本机关闭局域网访问。",
     "appUpdate.releaseNotes": "Grok Web v{version} 可用，查看更新说明",
+    "appUpdate.newVersion": "Grok Web 新版本已就绪",
+    "appUpdate.reload": "立即刷新",
     "sidebar.hide": "隐藏侧边栏",
     "sidebar.show": "显示侧边栏",
     "theme.light": "浅色模式（点击切换到深色）",

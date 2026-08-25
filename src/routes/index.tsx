@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AppVersionGuard } from "@/components/AppVersionGuard";
 import { I18nProvider } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/")({
@@ -15,6 +16,7 @@ function Home() {
   return (
     <Suspense>
       <I18nProvider>
+        <AppVersionGuard />
         <AppShell />
       </I18nProvider>
     </Suspense>

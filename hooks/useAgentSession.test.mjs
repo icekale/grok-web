@@ -37,9 +37,19 @@ test("rolls back thinking mode after a rejected ACP update", () => {
   const handler = source.slice(source.indexOf("const handleThinkingLevelChange"), source.indexOf("const handleToolPresetChange"));
   assert.match(handler, /const previous = thinkingLevel/);
   assert.match(handler, /thinkingLevelRequestRef/);
+  assert.match(handler, /thinkingLevelOverrideRef\.current = override/);
+  assert.match(handler, /thinkingLevelOverrideSessionRef\.current = sessionIdRef\.current/);
   assert.match(handler, /setThinkingLevel\(previous\)/);
   assert.match(handler, /addNotice/);
   assert.doesNotMatch(handler, /level === "auto"\) return/);
+});
+
+test("keeps an explicit effort selection above stale session snapshots", () => {
+  assert.match(source, /const applyServerThinkingLevel = useCallback/);
+  assert.match(source, /thinkingLevelOverrideSessionRef\.current === sid/);
+  assert.match(source, /thinkingLevelOverrideRef\.current !== null/);
+  assert.match(source, /applyServerThinkingLevel\(sid, liveState\.thinkingLevel\)/);
+  assert.match(source, /applyServerThinkingLevel\(sessionIdRef\.current \?\? "", snapshot\.thinkingLevel\)/);
 });
 
 test("reconciles authoritative session snapshots and permission resolutions", () => {

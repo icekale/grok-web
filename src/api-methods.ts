@@ -33,7 +33,7 @@ export const API_ROUTE_METHODS: Record<string, readonly string[]> = {
   "/api/git/stage": ["POST"],
   "/api/git/status": ["GET"],
   "/api/home": ["GET"],
-  "/api/meta": ["POST"],
+  "/api/meta": ["GET", "POST"],
   "/api/models-config/catalog": ["GET"],
   "/api/models-config/discover": ["POST"],
   "/api/models-config": ["GET", "PUT"],

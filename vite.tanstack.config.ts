@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, sep, resolve } from "node:path";
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -42,6 +43,14 @@ function readJsonVersion(relativePath: string): string {
 const appPackageVersion = readJsonVersion("package.json");
 const piPackageVersion = "foundation";
 
+function buildIdFor(version: string): string {
+  const configured = process.env.GROK_WEB_BUILD_ID?.trim();
+  if (configured) return configured.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 128);
+  return `${version}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+const appBuildId = buildIdFor(appPackageVersion);
+
 export default defineConfig(({ command }) => {
   const outputMode = process.env.GROK_WEB_TANSTACK_OUTPUT_MODE?.trim() || "standalone";
   if (outputMode !== "standalone" && outputMode !== "publication") {
@@ -65,7 +74,10 @@ export default defineConfig(({ command }) => {
   return {
     resolve: { tsconfigPaths: true },
     define: {
+      __GROK_WEB_APP_VERSION__: JSON.stringify(appPackageVersion),
+      __GROK_WEB_BUILD_ID__: JSON.stringify(appBuildId),
       "process.env.NEXT_PUBLIC_APP_VERSION": JSON.stringify(appPackageVersion),
+      "process.env.NEXT_PUBLIC_BUILD_ID": JSON.stringify(appBuildId),
       "process.env.NEXT_PUBLIC_PI_VERSION": JSON.stringify(piPackageVersion),
     },
     server: {

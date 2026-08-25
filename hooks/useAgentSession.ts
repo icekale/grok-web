@@ -438,6 +438,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
   const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
+  const thinkingLevelOverrideSessionRef = useRef<string | null>(session?.id ?? null);
   const thinkingLevelRequestRef = useRef(0);
   const promptRunIdRef = useRef(0);
   const agentLifecycleGenerationRef = useRef(0);
@@ -569,7 +570,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } satisfies SessionStatsInfo;
   }, [messages, sessionStatsOverride, contextUsage, data?.filePath, data?.totalActiveMs, session?.id, session?.name]);
 
+  const applyServerThinkingLevel = useCallback((sid: string, level: unknown) => {
+    if (typeof level !== "string") return;
+    if (
+      thinkingLevelOverrideSessionRef.current === sid
+      && thinkingLevelOverrideRef.current !== null
+    ) return;
+    setThinkingLevel(level as ThinkingLevelOption);
+  }, []);
+
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+    if (thinkingLevelOverrideSessionRef.current !== sid) {
+      thinkingLevelOverrideSessionRef.current = sid;
+      thinkingLevelOverrideRef.current = null;
+    }
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
@@ -605,7 +619,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
       setError(null);
       if (typeof d.context.thinkingLevel === "string" && d.context.thinkingLevel !== "off") {
-        setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
+        applyServerThinkingLevel(sid, d.context.thinkingLevel);
       }
 
       messagesLoaded = true;
@@ -627,7 +641,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "high");
+          if (liveState.thinkingLevel !== undefined) applyServerThinkingLevel(sid, liveState.thinkingLevel);
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
@@ -651,10 +665,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
     }
-  // textDeltaBatcher is a stable ref-owned instance; it must be a dependency
-  // so the flush inside loadSession always sees the current instance.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textDeltaBatcher]);
+  }, [applyServerThinkingLevel, textDeltaBatcher]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null, generation?: number) => {
     try {
@@ -696,7 +707,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
       applyAdvertisedToolPresets(state?.toolPresets);
-      if (state?.thinkingLevel) setThinkingLevel(state.thinkingLevel as ThinkingLevelOption);
+      if (state?.thinkingLevel) applyServerThinkingLevel(sid, state.thinkingLevel);
       const liveModel = state ? liveAgentModel(state) : null;
       if (liveModel) {
         currentModelOverrideSessionRef.current = sid;
@@ -705,7 +716,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch {
       setToolsAdvertised([]);
     }
-  }, [applyAdvertisedToolPresets, setToolPresetState]);
+  }, [applyServerThinkingLevel, applyAdvertisedToolPresets, setToolPresetState]);
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage = "(no messages)") => {
     const sid = sessionIdRef.current;
@@ -769,6 +780,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
+      thinkingLevelOverrideSessionRef.current = realId;
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {
         setPendingModel(result.model);
         if (!selectedModel) setNewSessionDefaultModel(result.model);
@@ -1230,7 +1242,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           thinkingLevel?: unknown;
         };
         if (snapshot.contextUsage !== undefined) setContextUsage(snapshot.contextUsage as import("@/lib/pi-types").ContextUsage | null);
-        if (typeof snapshot.thinkingLevel === "string") setThinkingLevel(snapshot.thinkingLevel as ThinkingLevelOption);
+        if (typeof snapshot.thinkingLevel === "string") applyServerThinkingLevel(sessionIdRef.current ?? "", snapshot.thinkingLevel);
         if (snapshot.plan && isRecord(snapshot.plan)) setAcpPlan(snapshot.plan as unknown as AcpPlan);
         if (snapshot.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(snapshot.queuedMessages));
         if (snapshot.model && typeof snapshot.model.provider === "string" && typeof snapshot.model.id === "string") {
@@ -1592,7 +1604,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, clearConversationPlanWidget, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
+  }, [addNotice, applyServerThinkingLevel, cancelEventStreamGrace, clearConversationPlanWidget, finishPromptWithoutStream, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage, textDeltaBatcher]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2184,11 +2196,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
     const previous = thinkingLevel;
     const request = ++thinkingLevelRequestRef.current;
+    const override = level === "auto" ? null : level;
+    thinkingLevelOverrideRef.current = override;
+    thinkingLevelOverrideSessionRef.current = sessionIdRef.current;
     setThinkingLevel(level);
-    if (isNew && !sessionIdRef.current) {
-      thinkingLevelOverrideRef.current = level === "auto" ? null : level;
-    }
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+    if (sid && request === thinkingLevelRequestRef.current) {
+      thinkingLevelOverrideSessionRef.current = sid;
+    }
     if (!sid) return;
     try {
       const result = await sendAgentCommand<{ level?: string }>(sid, { type: "set_thinking_level", level });
@@ -2197,10 +2212,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
     } catch (e) {
       if (request !== thinkingLevelRequestRef.current) return;
+      thinkingLevelOverrideRef.current = previous === "auto" ? null : previous;
+      thinkingLevelOverrideSessionRef.current = sessionIdRef.current;
       setThinkingLevel(previous);
       addNotice({ type: "error", message: e instanceof Error ? e.message : "Failed to set thinking level" });
     }
-  }, [addNotice, isNew, thinkingLevel]);
+  }, [addNotice, thinkingLevel]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
     const previous = toolPresetRef.current;
@@ -2302,7 +2319,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "high");
+          if (agentState.state.thinkingLevel !== undefined) applyServerThinkingLevel(session.id, agentState.state.thinkingLevel);
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
