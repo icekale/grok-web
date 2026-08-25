@@ -362,6 +362,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.planCompleted": "已完成",
     "chat.planDeleted": "已删除",
     "chat.processCompleted": "处理完成",
+    "chat.processRunning": "正在处理",
     "chat.processErrors": "处理完成，但有错误",
     "chat.message": "条消息",
     "chat.messages": "条消息",

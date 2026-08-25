@@ -362,6 +362,7 @@ export const enLocale: LocalePlugin = {
     "chat.planCompleted": "Completed",
     "chat.planDeleted": "Deleted",
     "chat.processCompleted": "Processed",
+    "chat.processRunning": "Processing",
     "chat.processErrors": "Processed with errors",
 
     "chat.message": "message",

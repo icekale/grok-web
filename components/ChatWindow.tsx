@@ -1,6 +1,6 @@
 "use client";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { ArrowDown, ChevronRight, ExternalLink, X } from "lucide-react";
+import { ArrowDown, ChevronRight, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { Fragment, cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
@@ -233,9 +233,9 @@ function withAssistantBlocks(
   return next;
 }
 
-function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, defaultExpanded = false, children, t }: { messageCount: number; toolCallCount: number; hasError?: boolean; defaultExpanded?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
+function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, active = false, activeLabel, defaultExpanded = false, children, t }: { messageCount: number; toolCallCount: number; hasError?: boolean; active?: boolean; activeLabel?: string; defaultExpanded?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const status = hasError ? t("chat.processErrors") : t("chat.processCompleted");
+  const status = active ? (activeLabel ?? t("chat.processRunning")) : hasError ? t("chat.processErrors") : t("chat.processCompleted");
   const parts = [status, `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
   if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
 
@@ -245,6 +245,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, de
         type="button"
         className="chat-process-summary"
         aria-expanded={expanded}
+        aria-busy={active || undefined}
         onClick={() => setExpanded((v) => !v)}
         style={{
           display: "flex",
@@ -262,7 +263,16 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, hasError = false, de
         }}
         title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >
-        <ChevronRight size={12} strokeWidth={1.6} aria-hidden="true" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+        {active ? (
+          <LoaderCircle
+            size={12}
+            strokeWidth={1.8}
+            aria-hidden="true"
+            style={{ flexShrink: 0, color: "var(--accent)", animation: "spin 1s linear infinite" }}
+          />
+        ) : (
+          <ChevronRight size={12} strokeWidth={1.6} aria-hidden="true" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
+        )}
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {parts.join(" · ")}
         </span>
@@ -535,6 +545,20 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const homeCwdLabel = cwdBasename(newSessionCwd ?? session?.cwd);
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
+  const streamingDisplay = useMemo(() => {
+    const message = streamState.streamingMessage;
+    if (!message || message.role !== "assistant") return null;
+    const split = splitFinalAssistantBlocks(message, { isStreaming: true });
+    return {
+      processMessage: split.processBlocks.length > 0
+        ? withAssistantBlocks(message, split.processBlocks, { omitUsage: true })
+        : null,
+      answerMessage: split.answerBlocks.length > 0
+        ? withAssistantBlocks(message, split.answerBlocks)
+        : null,
+      toolCallCount: countToolCallBlocks(split.processBlocks),
+    };
+  }, [streamState.streamingMessage]);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const messageContentRef = useRef<HTMLDivElement | null>(null);
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
@@ -990,8 +1014,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                       hasError={processHasError}
                       toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
                     >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process", defaultToolDetailsExpanded: true, defaultThinkingDetailsExpanded: false }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, defaultToolDetailsExpanded: true, defaultThinkingDetailsExpanded: false })}
+                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process", defaultToolDetailsExpanded: false, defaultThinkingDetailsExpanded: false }))}
+                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, defaultToolDetailsExpanded: false, defaultThinkingDetailsExpanded: false })}
                     </ProcessDetailsGroup>
                   );
                   rendered.push(
@@ -1037,7 +1061,56 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               );
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming toolResults={toolResultsMap} modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} defaultToolDetailsExpanded={true} defaultThinkingDetailsExpanded={false} tokenSpeedEnabled={tokenSpeedEnabled} />
+              streamingDisplay ? (
+                <>
+                  {streamingDisplay.processMessage && (
+                    <ProcessDetailsGroup
+                      active
+                      activeLabel={phaseLabel(agentPhase, t) ?? undefined}
+                      messageCount={1}
+                      toolCallCount={streamingDisplay.toolCallCount}
+                      t={t}
+                    >
+                      <MessageView
+                        message={streamingDisplay.processMessage}
+                        isStreaming
+                        toolResults={toolResultsMap}
+                        modelNames={modelNames}
+                        cwd={messageCwd}
+                        onOpenFile={onOpenFile}
+                        defaultToolDetailsExpanded={false}
+                        defaultThinkingDetailsExpanded={false}
+                        tokenSpeedEnabled={tokenSpeedEnabled}
+                      />
+                    </ProcessDetailsGroup>
+                  )}
+                  {streamingDisplay.answerMessage ? (
+                    <MessageView
+                      message={streamingDisplay.answerMessage}
+                      isStreaming
+                      toolResults={toolResultsMap}
+                      modelNames={modelNames}
+                      cwd={messageCwd}
+                      onOpenFile={onOpenFile}
+                      defaultToolDetailsExpanded={false}
+                      defaultThinkingDetailsExpanded={false}
+                      tokenSpeedEnabled={tokenSpeedEnabled}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <MessageView
+                  message={streamState.streamingMessage as AgentMessage}
+                  isStreaming
+                  toolResults={toolResultsMap}
+                  modelNames={modelNames}
+                  cwd={messageCwd}
+                  onOpenFile={onOpenFile}
+                  defaultToolDetailsExpanded={false}
+                  defaultThinkingDetailsExpanded={false}
+                  tokenSpeedEnabled={tokenSpeedEnabled}
+                />
+              )
             )}
 
             {agentRunning && agentPhase?.kind === "stopping" && (
@@ -1045,7 +1118,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 <span className="animate-[pulse_1.5s_infinite]">{t("chat.stopping")}</span>
               </div>
             )}
-            {agentRunning && agentPhase && agentPhase.kind !== "stopping" && (
+            {agentRunning && agentPhase && agentPhase.kind !== "stopping" && !streamingDisplay?.processMessage && (
               <div className="break-words py-2 text-[13px] text-text-muted">
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
               </div>

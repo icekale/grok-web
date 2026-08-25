@@ -20,16 +20,25 @@ test("renders a Codex-style new-session home", () => {
 test("process details use a compact result row and stay collapsed", () => {
   assert.match(source, /className="chat-process-summary"/);
   assert.match(source, /defaultExpanded = false/);
+  assert.match(source, /chat\.processRunning/);
   assert.match(source, /chat\.processCompleted/);
   assert.match(source, /chat\.processErrors/);
-  assert.doesNotMatch(source, /chat\.processRunning/);
 });
 
-test("process groups separate tool expansion from thinking expansion", () => {
+test("process groups keep tool and thinking details collapsed until opened", () => {
   assert.match(source, /defaultToolDetailsExpanded/);
   assert.match(source, /defaultThinkingDetailsExpanded/);
-  assert.match(source, /defaultToolDetailsExpanded: true/);
+  assert.match(source, /defaultToolDetailsExpanded: false/);
   assert.match(source, /defaultThinkingDetailsExpanded: false/);
+});
+
+test("a live turn folds process blocks while keeping streamed answer blocks visible", () => {
+  assert.match(source, /splitFinalAssistantBlocks\(message, \{ isStreaming: true \}/);
+  assert.match(source, /const streamingDisplay = useMemo/);
+  assert.match(source, /processMessage: split\.processBlocks/);
+  assert.match(source, /answerMessage: split\.answerBlocks/);
+  assert.match(source, /<ProcessDetailsGroup[\s\S]*?\n\s+active\n/);
+  assert.doesNotMatch(source, /defaultToolDetailsExpanded=\{true\}/);
 });
 
 test("a live turn does not unroll persisted tool cards into the transcript", () => {
