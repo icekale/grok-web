@@ -80,7 +80,6 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
     return Response.json({
       sessionId: id,
       filePath: session.path,
-      totalActiveMs: 0,
       tree: [],
       leafId: entryIds.at(-1) ?? null,
       info: session,

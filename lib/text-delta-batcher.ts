@@ -1,4 +1,4 @@
-import type { ClientAssistantMessageEvent } from "@/lib/agent-event-wire";
+import type { ClientAssistantMessageEvent } from "@/lib/agent-events";
 
 type TextDelta = Extract<ClientAssistantMessageEvent, { type: "text_delta" }>;
 type Schedule = (callback: FrameRequestCallback) => number;

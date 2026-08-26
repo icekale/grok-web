@@ -1,5 +1,5 @@
 import { createAgentEventStream } from "@/lib/agent-event-stream";
-import type { AgentEventLike } from "@/lib/agent-event-wire";
+import type { AgentEventLike } from "@/lib/agent-events";
 import { getAgentRuntime } from "@/lib/acp/runtime";
 
 // GET /api/agent/[id]/events - SSE stream of agent events

@@ -1,4 +1,4 @@
-import type { AgentEventLike } from "./agent-event-wire";
+import type { AgentEventLike } from "./agent-events";
 
 export interface AgentEventSourceLike {
   readonly readyState: number;

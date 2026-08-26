@@ -41,7 +41,6 @@ import type { AcpPlan } from "@/lib/acp/plan";
 export interface SessionData {
   sessionId: string;
   filePath: string;
-  totalActiveMs: number;
   tree: SessionTreeNode[];
   leafId: string | null;
   context: {
@@ -337,7 +336,6 @@ type ModelsResponse = {
   thinkingLevelMaps?: Record<string, Record<string, string | null>>;
   thinkingLevelPins?: Record<string, string>;
   modelError?: string;
-  modelScopeWarnings?: string[];
 };
 
 type SlashCommandsResponse = {
@@ -367,7 +365,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [modelNames, setModelNames] = useState<Record<string, string>>({});
   const [modelList, setModelList] = useState<ModelEntry[]>([]);
   const [modelError, setModelError] = useState<string | null>(null);
-  const [modelScopeWarnings, setModelScopeWarnings] = useState<string[]>([]);
   const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>({});
   const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>({});
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
@@ -530,9 +527,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [newSessionDraftKey, opts.chatInputRef, resolveComposerDraftKey]);
 
   const sessionStats = useMemo(() => {
-    if (sessionStatsOverride) {
-      return { ...sessionStatsOverride, totalActiveMs: data?.totalActiveMs };
-    }
+    if (sessionStatsOverride) return sessionStatsOverride;
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
     let cost = 0;
     let userMessages = 0;
@@ -566,10 +561,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       totalMessages: messages.length,
       tokens,
       cost,
-      totalActiveMs: data?.totalActiveMs,
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
-  }, [messages, sessionStatsOverride, contextUsage, data?.filePath, data?.totalActiveMs, session?.id, session?.name]);
+  }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name]);
 
   const applyServerThinkingLevel = useCallback((sid: string, level: unknown) => {
     if (typeof level !== "string") return;
@@ -1914,7 +1908,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const d = await res.json() as ModelsResponse;
     setModelNames(d.models);
     setModelError(d.modelError ?? null);
-    setModelScopeWarnings(d.modelScopeWarnings ?? []);
     setModelThinkingLevels(d.thinkingLevels ?? {});
     setModelThinkingLevelMaps(d.thinkingLevelMaps ?? {});
     const nextModelList = d.modelList ?? [];
@@ -2449,7 +2442,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel, thinkingLevelReady,
+    agentRunning, modelNames, modelList, modelError, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel, thinkingLevelReady,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,

@@ -11,9 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAppUpdateRouteImport } from './routes/api/app-update'
-import { Route as ApiDefaultCwdRouteImport } from './routes/api/default-cwd'
 import { Route as ApiFileIndexRouteImport } from './routes/api/file-index'
-import { Route as ApiHomeRouteImport } from './routes/api/home'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
 import { Route as ApiMetaRouteImport } from './routes/api/meta'
 import { Route as ApiModelsRouteImport } from './routes/api/models'
@@ -76,19 +74,9 @@ const ApiAppUpdateRoute = ApiAppUpdateRouteImport.update({
   path: '/api/app-update',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDefaultCwdRoute = ApiDefaultCwdRouteImport.update({
-  id: '/api/default-cwd',
-  path: '/api/default-cwd',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiFileIndexRoute = ApiFileIndexRouteImport.update({
   id: '/api/file-index',
   path: '/api/file-index',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiHomeRoute = ApiHomeRouteImport.update({
-  id: '/api/home',
-  path: '/api/home',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMcpRoute = ApiMcpRouteImport.update({
@@ -353,9 +341,7 @@ const ApiSessionsIdEntriesEntryIdToolResultRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
-  '/api/default-cwd': typeof ApiDefaultCwdRoute
   '/api/file-index': typeof ApiFileIndexRoute
-  '/api/home': typeof ApiHomeRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
@@ -411,9 +397,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
-  '/api/default-cwd': typeof ApiDefaultCwdRoute
   '/api/file-index': typeof ApiFileIndexRoute
-  '/api/home': typeof ApiHomeRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
@@ -470,9 +454,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
-  '/api/default-cwd': typeof ApiDefaultCwdRoute
   '/api/file-index': typeof ApiFileIndexRoute
-  '/api/home': typeof ApiHomeRoute
   '/api/mcp': typeof ApiMcpRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
@@ -530,9 +512,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/app-update'
-    | '/api/default-cwd'
     | '/api/file-index'
-    | '/api/home'
     | '/api/mcp'
     | '/api/meta'
     | '/api/models'
@@ -588,9 +568,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/app-update'
-    | '/api/default-cwd'
     | '/api/file-index'
-    | '/api/home'
     | '/api/mcp'
     | '/api/meta'
     | '/api/models'
@@ -646,9 +624,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/app-update'
-    | '/api/default-cwd'
     | '/api/file-index'
-    | '/api/home'
     | '/api/mcp'
     | '/api/meta'
     | '/api/models'
@@ -705,9 +681,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiAppUpdateRoute: typeof ApiAppUpdateRoute
-  ApiDefaultCwdRoute: typeof ApiDefaultCwdRoute
   ApiFileIndexRoute: typeof ApiFileIndexRoute
-  ApiHomeRoute: typeof ApiHomeRoute
   ApiMcpRoute: typeof ApiMcpRoute
   ApiMetaRoute: typeof ApiMetaRoute
   ApiModelsRoute: typeof ApiModelsRoute
@@ -757,25 +731,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAppUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/default-cwd': {
-      id: '/api/default-cwd'
-      path: '/api/default-cwd'
-      fullPath: '/api/default-cwd'
-      preLoaderRoute: typeof ApiDefaultCwdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/file-index': {
       id: '/api/file-index'
       path: '/api/file-index'
       fullPath: '/api/file-index'
       preLoaderRoute: typeof ApiFileIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/home': {
-      id: '/api/home'
-      path: '/api/home'
-      fullPath: '/api/home'
-      preLoaderRoute: typeof ApiHomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/mcp': {
@@ -1252,9 +1212,7 @@ const ApiAgentRunningRouteWithChildren = ApiAgentRunningRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiAppUpdateRoute: ApiAppUpdateRoute,
-  ApiDefaultCwdRoute: ApiDefaultCwdRoute,
   ApiFileIndexRoute: ApiFileIndexRoute,
-  ApiHomeRoute: ApiHomeRoute,
   ApiMcpRoute: ApiMcpRoute,
   ApiMetaRoute: ApiMetaRoute,
   ApiModelsRoute: ApiModelsRoute,

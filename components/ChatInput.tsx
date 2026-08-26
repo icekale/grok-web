@@ -85,8 +85,6 @@ interface Props {
   modelNames?: Record<string, string>;
   modelList?: { id: string; name: string; provider: string }[];
   modelError?: string | null;
-  /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
-  modelScopeWarnings?: string[];
   onModelChange?: (provider: string, modelId: string) => void;
   modelSwitching?: boolean;
   onCompact?: () => void;
@@ -677,21 +675,8 @@ export function ModelErrorBanner({ error }: { error?: string | null }) {
   return <ModelNoticeBanner tone="error" title={t("chat.modelError")} body={error} />;
 }
 
-/** Surfaces `enabledModels` patterns that matched nothing, so a typo is visible (#307). */
-export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
-  const { t } = useI18n();
-  if (!warnings || warnings.length === 0) return null;
-  return (
-    <ModelNoticeBanner
-      tone="warning"
-      title={t(warnings.length > 1 ? "chat.modelScopeWarnings" : "chat.modelScopeWarning")}
-      body={warnings.join("\n")}
-    />
-  );
-}
-
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = [], onToolPresetChange,
   thinkingLevel, thinkingLevelReady = true, onThinkingLevelChange, modes, onModeChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [],
@@ -1800,7 +1785,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       />
       <div style={{ maxWidth: isMobile ? undefined : 780, margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
-        <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {/* Retry banner */}
         {retryInfo && (
           <div style={{

@@ -9,7 +9,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMessage, composerThinkingBadgeLevel, filterModelOptions, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, ModelErrorBanner, canRestoreUserMessage, composerThinkingBadgeLevel, filterModelOptions, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages } = await jiti.import("./ChatInput.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
 
@@ -109,25 +109,6 @@ test("renders the upstream model error", () => {
 test("does not render an empty model error", () => {
   assert.equal(
     renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ModelErrorBanner, { error: null }))),
-    "",
-  );
-});
-
-test("renders enabledModels scope warnings", () => {
-  const html = renderToStaticMarkup(
-    React.createElement(
-      I18nProvider,
-      null,
-      React.createElement(ModelScopeWarningBanner, {
-        warnings: ['No models match pattern "ghost-gateway/*"'],
-      }),
-    ),
-  );
-
-  assert.match(html, /Model scope warning/);
-  assert.match(html, /ghost-gateway/);
-  assert.equal(
-    renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ModelScopeWarningBanner, { warnings: [] }))),
     "",
   );
 });

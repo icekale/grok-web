@@ -161,7 +161,6 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       body: "{}",
     });
     await probe("GET", "/api/cwd/validate", [405]);
-    await probe("GET", "/api/default-cwd", [405]);
     await probe("GET", `/api/file-index?cwd=${encodeURIComponent(fixtureDir)}&q=`, [200, 400]);
     await probe("GET", `/api/files/${encodeURIComponent(fixtureDir)}?type=list`, [200]);
     await probe("POST", `/api/files/${encodeURIComponent(fixtureDir)}?type=upload`, [400], {
@@ -183,7 +182,6 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    await probe("GET", "/api/home", [200]);
     await probe("POST", "/api/meta", [200], {
       headers: { "content-type": "application/json" },
       body: "{}",

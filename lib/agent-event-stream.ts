@@ -1,4 +1,4 @@
-import { isEventIncludedInSnapshot, toClientAgentEvent, type AgentEventLike } from "./agent-event-wire";
+import { isEventIncludedInSnapshot, toClientAgentEvent, type AgentEventLike } from "./agent-events";
 import type { SessionSnapshotEvent } from "./agent-events";
 import type { ContextUsage } from "./pi-types";
 import { getPromptGeneration } from "./prompt-generation";
