@@ -282,12 +282,16 @@ export class AcpConnection {
     }) as Promise<{ sessionId: string }>;
   }
 
-  sessionResume(sessionId: string, cwd: string): Promise<{ sessionId?: string }> {
+  sessionResume(sessionId: string, cwd: string, meta: Record<string, unknown> = {}): Promise<{
+    sessionId?: string;
+    _meta?: Record<string, unknown>;
+  }> {
     return this.rpc.request("session/resume", {
       sessionId,
       cwd,
       mcpServers: [],
-    }) as Promise<{ sessionId?: string }>;
+      ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+    }) as Promise<{ sessionId?: string; _meta?: Record<string, unknown> }>;
   }
 
   sessionClose(sessionId: string): Promise<{ _meta?: { "x.ai/closeOutcome"?: string }; outcome?: string }> {

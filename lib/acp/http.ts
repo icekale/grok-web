@@ -58,7 +58,16 @@ export function createAgentHandlers(
           }, { status: 400 });
         }
 
-        const sessionId = await runtime.createSession(cwd);
+        const requestedModelId = typeof body.modelId === "string" && body.modelId ? body.modelId : undefined;
+        const requestedThinkingLevel = typeof body.thinkingLevel === "string" && body.thinkingLevel
+          ? body.thinkingLevel
+          : requestedModelId
+            ? resolvedGrokEffort({ modelId: requestedModelId })
+            : undefined;
+        const sessionId = await runtime.createSession(cwd, {
+          modelId: requestedModelId,
+          reasoningEffort: requestedThinkingLevel,
+        });
         allowFileRoot(cwd);
         invalidateSessionListCache();
         if (Array.isArray(body.toolNames)) {
@@ -68,18 +77,14 @@ export function createAgentHandlers(
             if (!(error instanceof AgentCapabilityError)) throw error;
           }
         }
-        if (typeof body.modelId === "string" && body.modelId) {
+        if (requestedModelId) {
           await runtime.send(sessionId, {
             type: "set_model",
             provider: typeof body.provider === "string" ? body.provider : "grok",
-            modelId: body.modelId,
+            modelId: requestedModelId,
           });
         }
-        const requestedThinkingLevel = typeof body.thinkingLevel === "string" && body.thinkingLevel
-          ? body.thinkingLevel
-          : typeof body.modelId === "string" && body.modelId
-            ? resolvedGrokEffort({ modelId: body.modelId })
-            : undefined;
+
         if (requestedThinkingLevel) {
           await runtime.send(sessionId, { type: "set_thinking_level", level: requestedThinkingLevel });
         }

@@ -99,6 +99,7 @@ interface Props {
   toolsAdvertised?: readonly ToolPreset[];
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  thinkingLevelReady?: boolean;
   onThinkingLevelChange?: (level: "auto" | "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   modes?: AcpModes;
   onModeChange?: (modeId: string) => void;
@@ -692,7 +693,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, onClearCompactFeedback, isCompacting, compactError, compactResult, toolPreset, toolsAdvertised = [], onToolPresetChange,
-  thinkingLevel, onThinkingLevelChange, modes, onModeChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
+  thinkingLevel, thinkingLevelReady = true, onThinkingLevelChange, modes, onModeChange, availableThinkingLevels, thinkingLevelMap: _thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [],
   onSteerAllQueued, onQueueRemoveItem, onQueueEditItem, onQueueSteerItem,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1735,9 +1736,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       })
     : null;
   const visibleThinkingLevels = visibleGrokEffortLevels(availableThinkingLevels, model?.modelId);
-  const activeThinkingLevel = visibleThinkingLevels.includes(thinkingLevel ?? "")
-    ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId)
-    : defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId);
+  const activeThinkingLevel = thinkingLevelReady
+    ? (visibleThinkingLevels.includes(thinkingLevel ?? "")
+      ? thinkingLevel ?? defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId)
+      : defaultGrokEffortLevel(visibleThinkingLevels, model?.modelId))
+    : null;
+  const thinkingLabel = activeThinkingLevel
+    ? thinkingEffortLabel(activeThinkingLevel, t)
+    : t("chat.thinkingLoading");
   const currentModeName = modes?.available.find((mode) => mode.id === modes.current)?.name ?? modes?.current ?? "";
 
   // Close dropdowns on outside click
@@ -2616,12 +2622,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     setModeMenuOpen(false);
                     setThinkingMenuOpen((open) => !open);
                   }}
-                  title={t("chat.changeReasoning", { level: thinkingEffortLabel(activeThinkingLevel, t) })}
+                  title={t("chat.changeReasoning", { level: thinkingLabel })}
                   aria-label={t("chat.changeReasoningLabel")}
                   aria-expanded={thinkingMenuOpen}
                 >
                   <Brain size={13} strokeWidth={2} aria-hidden="true" />
-                  <span className="composer-thinking-label" data-thinking-badge={activeThinkingLevel}>{thinkingEffortLabel(activeThinkingLevel, t)}</span>
+                  <span className="composer-thinking-label" data-thinking-badge={activeThinkingLevel} data-thinking-ready={thinkingLevelReady ? "true" : "false"}>{thinkingLabel}</span>
                   <ChevronDown className="composer-thinking-chevron" size={12} strokeWidth={2} aria-hidden="true" style={{ opacity: 0.7 }} />
                 </button>
                 {thinkingMenuOpen && (

@@ -334,6 +334,7 @@ export interface SessionInfo {
   messageCount: number;
   firstMessage: string;
   parentSessionId?: string; // set if this session was forked from another
+  reasoningEffort?: ThinkingLevel;
   sessionRole?: "primary" | "fork" | "subagent";
   rootSessionId?: string;
   subagentAgent?: string;

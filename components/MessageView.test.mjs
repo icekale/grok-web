@@ -246,6 +246,21 @@ test("collapses historical thinking and tool inputs by default", () => {
   assert.doesNotMatch(html, /<h2>Plan<\/h2>/);
   assert.doesNotMatch(html, /<li>inspect<\/li>/);
   assert.doesNotMatch(html, /command: printf/);
+  assert.match(html, />Plan</);
+});
+
+test("groups consecutive searches into one activity row", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "grok",
+    model: "grok-4.6",
+    content: [
+      { type: "toolCall", toolCallId: "c1", toolName: "grep", input: { pattern: "foo" } },
+      { type: "toolCall", toolCallId: "c2", toolName: "grep", input: { pattern: "bar" } },
+    ],
+  }, { defaultDetailsExpanded: true });
+
+  assert.match(html, /2 searches/);
 });
 
 test("expands thinking and tool inputs for a live message", () => {

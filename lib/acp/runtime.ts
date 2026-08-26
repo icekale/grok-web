@@ -20,11 +20,12 @@ import {
 } from "./connection.ts";
 import { JsonRpcConn } from "./jsonrpc.ts";
 import { AcpTurnMapper } from "./map-events.ts";
-import { pinGrokDefaultReasoningEffort, syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
+import { syncSettingsModelsToGrokConfig } from "../grok-model-table.ts";
 import { readModelsConfig } from "../models-config-store.ts";
+import { writePrivateFileAtomicSync } from "../atomic-file.ts";
 import { persistedReasoningEffort, resolvedGrokEffort } from "../grok-effort-levels.ts";
 import { sessionModelRef } from "../grok-model-label.ts";
-import { mapGrokModels, selectedGrokEffort, selectedGrokModelId } from "./models.ts";
+import { mapGrokModels, selectedGrokModelId } from "./models.ts";
 import type { PermissionUiRequest } from "./permissions.ts";
 import { grokAgentArgs, grokAgentSpawnOptions, resolveGrokBin } from "./process.ts";
 import { SessionQueue, type QueueSnapshot } from "./queue.ts";
@@ -196,6 +197,11 @@ export function extraAcpReadRoots(): string[] {
   ].map((path) => canonicalCwd(expandUserPath(path)));
 }
 
+export type SessionOpenOptions = {
+  modelId?: string;
+  reasoningEffort?: string;
+};
+
 export class AgentRuntime {
   private readonly connectFn: () => Promise<AcpConnection>;
   private readonly resolveEntries: typeof resolveSessionEntries;
@@ -246,20 +252,23 @@ export class AgentRuntime {
     if (!this.acp) throw new Error("ACP process is not available");
   }
 
-  async createSession(cwd: string): Promise<string> {
+  async createSession(cwd: string, options: SessionOpenOptions = {}): Promise<string> {
     const canonical = canonicalCwd(cwd);
     await this.ensureProcess();
     const connection = this.captureConnection();
     const created = await connection.acp.sessionNew(
       canonical,
-      sessionNewMeta(readPermissionMode()),
+      sessionNewMeta(readPermissionMode(), options),
     );
     this.assertCurrentConnection(connection, "session/new");
     const session = this.ensureSession(created.sessionId);
     session.loaded = true;
     session.cwd = canonical;
-    session.modelId = selectedGrokModelId(created) ?? "grok-4.6";
-    session.thinkingLevel = resolvedGrokEffort({ modelId: session.modelId }) ?? undefined;
+    session.modelId = selectedGrokModelId(created) ?? options.modelId ?? "grok-4.6";
+    session.thinkingLevel = resolvedGrokEffort({
+      selected: options.reasoningEffort,
+      modelId: session.modelId,
+    }) ?? undefined;
     session.configOptions = readAcpConfigOptions(created);
     const modeState = readAcpModeState(created);
     session.modes = modeState.modes;
@@ -272,10 +281,11 @@ export class AgentRuntime {
     const canonical = cwd ? canonicalCwd(cwd) : undefined;
     await this.ensureProcess();
     const connection = this.captureConnection();
+    const persistedEffort = await readPersistedReasoningEffort(sessionId);
     const loaded = await connection.acp.sessionLoad(
       sessionId,
       canonical,
-      sessionNewMeta(readPermissionMode()),
+      sessionNewMeta(readPermissionMode(), { reasoningEffort: persistedEffort }),
     );
     this.assertCurrentConnection(connection, "session/load");
     const session = this.ensureSession(sessionId);
@@ -285,8 +295,7 @@ export class AgentRuntime {
     if (modelId) session.modelId = modelId;
     if (!session.modelId) session.modelId = "grok-4.6";
     session.thinkingLevel = resolvedGrokEffort({
-      persisted: await readPersistedReasoningEffort(sessionId),
-      selected: selectedGrokEffort(loaded),
+      persisted: persistedEffort,
       modelId: session.modelId,
     });
     const options = readAcpConfigOptions(loaded);
@@ -303,11 +312,30 @@ export class AgentRuntime {
     await this.ensureProcess();
     const directory = cwd ? canonicalCwd(cwd) : this.ensureSession(sessionId).cwd || canonicalCwd(process.cwd());
     const connection = this.captureConnection();
-    await connection.acp.sessionResume(sessionId, directory);
+    const persistedEffort = await readPersistedReasoningEffort(sessionId);
+    const resumed = await connection.acp.sessionResume(
+      sessionId,
+      directory,
+      sessionNewMeta(readPermissionMode(), { reasoningEffort: persistedEffort }),
+    );
     this.assertCurrentConnection(connection, "session/resume");
     const session = this.ensureSession(sessionId);
     session.loaded = true;
     session.cwd = directory;
+    const modelId = selectedGrokModelId(resumed);
+    if (modelId) session.modelId = modelId;
+    if (!session.modelId) session.modelId = "grok-4.6";
+    session.thinkingLevel = resolvedGrokEffort({
+      persisted: persistedEffort,
+      modelId: session.modelId,
+    });
+    const options = readAcpConfigOptions(resumed);
+    if (options.length > 0) session.configOptions = options;
+    const modeState = readAcpModeState(resumed);
+    if (modeState.source || modeState.modes.available.length > 0) {
+      session.modes = modeState.modes;
+      session.modeSource = modeState.source;
+    }
     await this.applySessionEffort(sessionId, session, connection.acp);
   }
 
@@ -1356,7 +1384,6 @@ export class AgentRuntime {
     const capabilities = await discoverGrokCapabilities(bin);
     this.cliCapabilities = capabilities;
     const profile = readRuntimeProfile();
-    pinGrokDefaultReasoningEffort(this.spawnEffortArg());
     syncSettingsModelsToGrokConfig(readModelsConfig());
     const child = spawn(bin, grokAgentArgs(profile, capabilities, this.spawnEffortArg()), grokAgentSpawnOptions());
     if (!child.stdin || !child.stdout) {
@@ -1555,7 +1582,7 @@ export class AgentRuntime {
       }
       session.thinkingLevel = effort;
       try {
-        await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
+        await this.commitThinkingLevel(sessionId, session, effort);
       } catch (error) {
         session.thinkingLevel = previous;
         throw error;
@@ -1570,6 +1597,46 @@ export class AgentRuntime {
       }
     });
     return operation;
+  }
+
+  private otherSessionsBusy(sessionId: string): boolean {
+    return this.listBusyIds().some((id) => id !== sessionId);
+  }
+
+  private shouldRespawnForEffort(sessionId: string, effort: string): boolean {
+    if (!this.spawnEffortInitialized) return false;
+    if (this.spawnedReasoningEffort === effort) return false;
+    if (this.isBusy(sessionId) || this.otherSessionsBusy(sessionId)) return false;
+    return true;
+  }
+
+  private async commitThinkingLevel(sessionId: string, session: SessionState, effort: string): Promise<void> {
+    await writePersistedReasoningEffort(sessionId, effort);
+    if (!this.shouldRespawnForEffort(sessionId, effort) || !session.cwd) {
+      await this.applySessionEffort(sessionId, session, undefined, { throwOnError: true });
+      return;
+    }
+    const recoverable = this.snapshotRecoverableSessions();
+    const listeners = this.snapshotListeners();
+    this.spawnedReasoningEffort = effort;
+    this.spawnEffortInitialized = true;
+    await this.recycleProcess();
+    listeners.restore();
+    for (const entry of recoverable) {
+      try {
+        await this.loadSession(entry.id, entry.cwd);
+      } catch {
+        const restored = this.ensureSession(entry.id);
+        restored.cwd = entry.cwd;
+        restored.loaded = true;
+      }
+      const restored = this.ensureSession(entry.id);
+      if (entry.modelId) restored.modelId = entry.modelId;
+      restored.thinkingLevel = entry.id === sessionId ? effort : entry.thinkingLevel;
+      await this.applySessionEffort(entry.id, restored, undefined, {
+        throwOnError: entry.id === sessionId,
+      });
+    }
   }
 
   private async applySessionEffort(
@@ -1666,6 +1733,23 @@ async function readPersistedReasoningEffort(sessionId: string): Promise<string |
     return persistedReasoningEffort(JSON.parse(await readFile(join(found.path, "summary.json"), "utf8")));
   } catch {
     return undefined;
+  }
+}
+
+async function writePersistedReasoningEffort(sessionId: string, effort?: string): Promise<void> {
+  if (!effort) return;
+  const found = await findGrokSession(sessionId);
+  if (!found) return;
+  try {
+    const summaryPath = join(found.path, "summary.json");
+    const parsed: unknown = JSON.parse(await readFile(summaryPath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    const rec = parsed as Record<string, unknown>;
+    if (rec.reasoning_effort === effort) return;
+    rec.reasoning_effort = effort;
+    writePrivateFileAtomicSync(summaryPath, `${JSON.stringify(rec, null, 2)}\n`);
+  } catch {
+    // New sessions may not have a summary.json yet.
   }
 }
 

@@ -379,7 +379,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const toolPresetRef = useRef<ToolPreset>(toolPreset);
   const toolPresetGenerationRef = useRef(0);
   toolPresetRef.current = toolPreset;
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("high");
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("xhigh");
+  const [thinkingLevelReady, setThinkingLevelReady] = useState(isNew);
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<import("@/lib/pi-types").ContextUsage | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -572,6 +573,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const applyServerThinkingLevel = useCallback((sid: string, level: unknown) => {
     if (typeof level !== "string") return;
+    setThinkingLevelReady(true);
     if (
       thinkingLevelOverrideSessionRef.current === sid
       && thinkingLevelOverrideRef.current !== null
@@ -584,6 +586,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       thinkingLevelOverrideSessionRef.current = sid;
       thinkingLevelOverrideRef.current = null;
     }
+    setThinkingLevelReady(false);
     let messagesLoaded = false;
     try {
       if (showLoading) setLoading(true);
@@ -620,8 +623,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setError(null);
       if (typeof d.context.thinkingLevel === "string" && d.context.thinkingLevel !== "off") {
         applyServerThinkingLevel(sid, d.context.thinkingLevel);
+      } else {
+        setThinkingLevelReady(true);
       }
-
       messagesLoaded = true;
       if (showLoading) setLoading(false);
       if (!includeState) return null;
@@ -698,11 +702,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setToolPresetState(getPresetFromTools(tools));
       } else {
         setToolsAdvertised([]);
-        return;
       }
     } catch {
+      // Tool presets are unavailable on agents that do not advertise them.
       setToolsAdvertised([]);
-      return;
     }
     try {
       const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
@@ -714,7 +717,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setCurrentModelOverride(liveModel);
       }
     } catch {
-      setToolsAdvertised([]);
+      // Tool capability probing may be unsupported; state recovery is best effort.
     }
   }, [applyServerThinkingLevel, applyAdvertisedToolPresets, setToolPresetState]);
 
@@ -784,6 +787,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {
         setPendingModel(result.model);
         if (!selectedModel) setNewSessionDefaultModel(result.model);
+      }
+      if (result.thinkingLevel) {
+        setThinkingLevelReady(true);
       }
       if (
         result.thinkingLevel
@@ -1923,7 +1929,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // Like pi, apply it to the model a new session starts with.
       const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.id}`];
       if (thinkingLevelOverrideRef.current === null) {
-        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "high");
+        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "xhigh");
       }
     }
   }, [isNew, newSessionCwd, session?.cwd]);
@@ -2443,7 +2449,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, liveToolResults, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel,
+    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel, thinkingLevelReady,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,

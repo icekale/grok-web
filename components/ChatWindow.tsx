@@ -304,7 +304,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   const {
     data, loading, error, messages, entryIds, liveToolResults, streamState,
-    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel,
+    agentRunning, bashRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, toolsAdvertised, modes, acpPlan, thinkingLevel, thinkingLevelReady,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -704,6 +704,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       toolsAdvertised={toolsAdvertised}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       thinkingLevel={thinkingLevel}
+      thinkingLevelReady={thinkingLevelReady}
       modes={modes}
       onModeChange={session || isNew ? handleModeChange : undefined}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}

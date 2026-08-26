@@ -44,6 +44,10 @@ test("rolls back thinking mode after a rejected ACP update", () => {
   assert.doesNotMatch(handler, /level === "auto"\) return/);
 });
 
+test("new chats start at extra-high effort for Grok 4.6", () => {
+  assert.match(source, /useState<ThinkingLevelOption>\("xhigh"\)/);
+});
+
 test("keeps an explicit effort selection above stale session snapshots", () => {
   assert.match(source, /const applyServerThinkingLevel = useCallback/);
   assert.match(source, /thinkingLevelOverrideSessionRef\.current === sid/);
@@ -305,6 +309,23 @@ test("fresh sessions restore the preferred tool preset without overriding existi
   assert.doesNotMatch(loadToolsSource, /setPreferredToolPreset/);
 });
 
+test("get_tools failure still allows authoritative effort state to load", () => {
+  const loadToolsSource = source.slice(
+    source.indexOf("  const loadTools = useCallback"),
+    source.indexOf("  const promoteNewSession"),
+  );
+  assert.match(loadToolsSource, /get_tools/);
+  assert.match(loadToolsSource, /get_state/);
+  assert.match(loadToolsSource, /Tool presets are unavailable/);
+  assert.doesNotMatch(loadToolsSource, /catch \{\s*setToolsAdvertised\(\[\]\);\s*return;/);
+});
+
+test("existing sessions expose effort readiness instead of rendering a fallback", () => {
+  assert.match(source, /const \[thinkingLevelReady, setThinkingLevelReady\]/);
+  assert.match(source, /thinkingLevelReady/);
+  assert.match(chatWindowSource, /thinkingLevelReady=\{thinkingLevelReady\}/);
+  assert.match(chatInputSource, /thinkingLevelReady\?/);
+});
 test("submission recovery updates live refs before a possible session rekey", () => {
   const restoreMethod = chatInputSource.slice(
     chatInputSource.indexOf("    restoreSubmission(text:"),

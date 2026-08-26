@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { grokSessionsDir } from "./grok-home.ts";
 import { firstUserTitleFromUpdates } from "./history-map.ts";
+import { persistedReasoningEffort } from "./grok-effort-levels.ts";
 import type { SessionInfo } from "./types";
 
 const EMPTY_SESSION_LABEL = "(no messages)";
@@ -99,6 +100,7 @@ async function readSession(
   const parentSessionId =
     stringField(info.parent_session_id) || stringField(body.parent_session_id) || undefined;
   const sessionKind = stringField(body.session_kind);
+  const reasoningEffort = persistedReasoningEffort(body);
 
   const session: SessionInfo = {
     id,
@@ -109,6 +111,7 @@ async function readSession(
     modified,
     messageCount,
     firstMessage,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   };
   if (parentSessionId) session.parentSessionId = parentSessionId;
   if (sessionKind === "subagent" || sessionKind === "subagent_resume") {

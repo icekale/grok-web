@@ -1,13 +1,15 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useMemo } from "react";
+import { memo, useState, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { ArrowDown, Check, ChevronDown, Copy, CornerDownRight, GitBranch, LoaderCircle, Minus, X } from "lucide-react";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
+import { groupActivityBlocks } from "@/lib/activity-groups";
 import { getAssistantAbortDetail, getAssistantErrorMessage, isAbortedAssistantMessage, isAssistantContentBlock, isEmptyThinkingBlock } from "@/lib/message-display";
+import { extractThinkingSummary } from "@/lib/thinking-summary";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { grokCanonicalToolName, grokToolPreviewValue } from "@/lib/grok-tool-input";
 import { isBashToolName, isEditToolName } from "@/lib/tool-names";
@@ -538,6 +540,7 @@ function AssistantMessageView({
     )), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   const visibleBlockItems = blockItems;
+  const activityEntries = useMemo(() => groupActivityBlocks(visibleBlockItems), [visibleBlockItems]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const aborted = isAbortedAssistantMessage(message, { isStreaming });
   const abortDetail = getAssistantAbortDetail(message, { isStreaming });
@@ -702,9 +705,19 @@ function AssistantMessageView({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {visibleBlockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultToolDetailsExpanded={defaultToolDetailsExpanded} defaultThinkingDetailsExpanded={defaultThinkingDetailsExpanded} />
-        ))}
+        {activityEntries.map((entry) => {
+          if (entry.type === "group") {
+            return (
+              <ActivityGroup key={`${entryId ?? "stream"}-group-${entry.items[0].originalIndex}`} kind={entry.kind} count={entry.items.length} defaultExpanded={defaultToolDetailsExpanded}>
+                {entry.items.map(({ block, originalIndex }) => (
+                  <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultToolDetailsExpanded={defaultToolDetailsExpanded} defaultThinkingDetailsExpanded={defaultThinkingDetailsExpanded} />
+                ))}
+              </ActivityGroup>
+            );
+          }
+          const { block, originalIndex } = entry.item;
+          return <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} defaultToolDetailsExpanded={defaultToolDetailsExpanded} defaultThinkingDetailsExpanded={defaultThinkingDetailsExpanded} />;
+        })}
       </div>
 
       {providerError && (
@@ -815,6 +828,48 @@ function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent
   return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
+function ActivityGroup({
+  kind,
+  count,
+  defaultExpanded,
+  children,
+}: {
+  kind: "search" | "bash" | "edit" | "read";
+  count: number;
+  defaultExpanded: boolean;
+  children: ReactNode;
+}) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          width: "100%",
+          padding: "6px 10px",
+          background: "var(--bg-panel)",
+          border: "none",
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          fontSize: "var(--text-ui)",
+          textAlign: "left",
+        }}
+      >
+        {t(`chat.activityGroup.${kind}`, { count })}
+      </button>
+      {expanded && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, borderTop: "1px solid var(--border)" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStreaming, cwd, onOpenFile, defaultExpanded }: {
   block: ThinkingContent;
   duration?: number;
@@ -829,6 +884,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStre
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [content, setContent] = useState<string | null>(null);
+  const summary = extractThinkingSummary(block.deferred ? content : block.thinking);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -874,7 +930,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex, isStre
           textAlign: "left",
         }}
       >
-         <span>{t("i18n.thinking")}</span>
+         <span>{summary ?? t("i18n.thinking")}</span>
         {duration !== undefined && (
           <span style={{ marginLeft: "auto", fontSize: "var(--text-meta)", color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
         )}

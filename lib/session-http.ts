@@ -57,7 +57,13 @@ export async function getSessionContext(_req: Request, id: string): Promise<Resp
     if (!loaded) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
-    return Response.json({ context: { messages: loaded.messages, entryIds: loaded.entryIds } });
+    return Response.json({
+      context: {
+        messages: loaded.messages,
+        entryIds: loaded.entryIds,
+        ...(loaded.session.reasoningEffort ? { thinkingLevel: loaded.session.reasoningEffort } : {}),
+      },
+    });
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 });
   }
@@ -84,6 +90,7 @@ export async function getSessionDetail(_req: Request, id: string): Promise<Respo
         model: lastAssistant
           ? { provider: lastAssistant.provider, modelId: lastAssistant.model }
           : null,
+        ...(session.reasoningEffort ? { thinkingLevel: session.reasoningEffort } : {}),
       },
     });
   } catch (error) {

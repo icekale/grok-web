@@ -38,10 +38,16 @@ export function readPermissionMode(config: Record<string, unknown> = readGrokCon
   return "ask";
 }
 
-export function sessionNewMeta(mode: PermissionMode): Record<string, unknown> {
-  if (mode === "always-approve") return { yoloMode: true };
-  if (mode === "auto") return { autoMode: true };
-  return {};
+export function sessionNewMeta(
+  mode: PermissionMode,
+  options: { modelId?: string; reasoningEffort?: string } = {},
+): Record<string, unknown> {
+  const meta: Record<string, unknown> = {};
+  if (mode === "always-approve") meta.yoloMode = true;
+  if (mode === "auto") meta.autoMode = true;
+  if (options.modelId) meta.modelId = options.modelId;
+  if (options.reasoningEffort) meta.reasoningEffort = options.reasoningEffort;
+  return meta;
 }
 
 export function upsertUiPermissionMode(text: string, mode: PermissionMode): string {

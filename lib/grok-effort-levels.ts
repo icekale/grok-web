@@ -59,7 +59,7 @@ export function defaultGrokEffortLevel(levels: string[], modelId?: string | null
 export function familyDefaultEffort(modelId?: string | null): string | undefined {
   const family = grokEffortFamily(modelId);
   if (family === "none") return undefined;
-  if (family === "grok-4.6" && modelId?.includes("/")) return "xhigh";
+  if (family === "grok-4.6") return "xhigh";
   return "high";
 }
 
@@ -83,7 +83,7 @@ export function resolvedGrokEffort(input: {
   if (family === "none" && input.modelId) return undefined;
   if (isLegalEffortForModel(input.persisted, input.modelId)) return input.persisted;
   if (isLegalEffortForModel(input.selected, input.modelId)) return input.selected;
-  if (!input.modelId) return "high";
+  if (!input.modelId) return "xhigh";
   return familyDefaultEffort(input.modelId);
 }
 
