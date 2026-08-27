@@ -153,7 +153,7 @@ export type BuiltinSlashCommandResult =
     handled: true;
     message?: string;
     error?: string;
-    action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" | "openSkills" | "openMcp" | "openHooks" | "confirmDeleteSession" | "exportSession";
+    action?: "openSessionStats" | "openFeedback" | "openPlugins" | "openMarketplace" | "openSkills" | "openMcp" | "openHooks" | "openMemory" | "confirmDeleteSession" | "exportSession";
   };
 
 export interface UseAgentSessionOptions {
@@ -1949,6 +1949,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (commandName === "hooks") {
       onOpenSettings?.("hooks");
       return { handled: true, action: "openHooks" };
+    }
+    if (commandName === "memory" || commandName === "remember") {
+      onOpenSettings?.("memory");
+      return { handled: true, action: "openMemory" };
     }
     if (commandName === "mcp") {
       onOpenSettings?.("mcp");

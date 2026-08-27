@@ -143,7 +143,7 @@ export function AppShell() {
   const openSettings = useCallback((section: SettingsSection = "general") => {
     setSettingsSection(section);
     setSettingsVariant(
-      section === "skills" || section === "plugins" || section === "marketplace" || section === "mcp" || section === "hooks"
+      section === "skills" || section === "plugins" || section === "marketplace" || section === "mcp" || section === "hooks" || section === "memory"
         ? "tools"
         : "settings",
     );

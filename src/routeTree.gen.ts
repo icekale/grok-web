@@ -18,6 +18,7 @@ import { Route as ApiModelsRouteImport } from './routes/api/models'
 import { Route as ApiModelsConfigRouteImport } from './routes/api/models-config'
 import { Route as ApiPluginsRouteImport } from './routes/api/plugins'
 import { Route as ApiHooksRouteImport } from './routes/api/hooks'
+import { Route as ApiMemoryRouteImport } from './routes/api/memory'
 import { Route as ApiProjectTrustRouteImport } from './routes/api/project-trust'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiRemoteAccessRouteImport } from './routes/api/remote-access'
@@ -108,6 +109,11 @@ const ApiPluginsRoute = ApiPluginsRouteImport.update({
 const ApiHooksRoute = ApiHooksRouteImport.update({
   id: '/api/hooks',
   path: '/api/hooks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMemoryRoute = ApiMemoryRouteImport.update({
+  id: '/api/memory',
+  path: '/api/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProjectTrustRoute = ApiProjectTrustRouteImport.update({
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
   '/api/hooks': typeof ApiHooksRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -411,6 +418,7 @@ export interface FileRoutesByTo {
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
   '/api/hooks': typeof ApiHooksRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -469,6 +477,7 @@ export interface FileRoutesById {
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
   '/api/hooks': typeof ApiHooksRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -528,6 +537,7 @@ export interface FileRouteTypes {
     | '/api/models-config'
     | '/api/plugins'
     | '/api/hooks'
+    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -585,6 +595,7 @@ export interface FileRouteTypes {
     | '/api/models-config'
     | '/api/plugins'
     | '/api/hooks'
+    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -642,6 +653,7 @@ export interface FileRouteTypes {
     | '/api/models-config'
     | '/api/plugins'
     | '/api/hooks'
+    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -700,6 +712,7 @@ export interface RootRouteChildren {
   ApiModelsConfigRoute: typeof ApiModelsConfigRouteWithChildren
   ApiPluginsRoute: typeof ApiPluginsRoute
   ApiHooksRoute: typeof ApiHooksRoute
+  ApiMemoryRoute: typeof ApiMemoryRoute
   ApiProjectTrustRoute: typeof ApiProjectTrustRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
   ApiRemoteAccessRoute: typeof ApiRemoteAccessRoute
@@ -791,6 +804,13 @@ declare module '@tanstack/react-router' {
       path: '/api/hooks'
       fullPath: '/api/hooks'
       preLoaderRoute: typeof ApiHooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/memory': {
+      id: '/api/memory'
+      path: '/api/memory'
+      fullPath: '/api/memory'
+      preLoaderRoute: typeof ApiMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/project-trust': {
@@ -1239,6 +1259,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiModelsConfigRoute: ApiModelsConfigRouteWithChildren,
   ApiPluginsRoute: ApiPluginsRoute,
   ApiHooksRoute: ApiHooksRoute,
+  ApiMemoryRoute: ApiMemoryRoute,
   ApiProjectTrustRoute: ApiProjectTrustRoute,
   ApiProjectsRoute: ApiProjectsRoute,
   ApiRemoteAccessRoute: ApiRemoteAccessRoute,
