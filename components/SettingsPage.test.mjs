@@ -9,7 +9,7 @@ const picker = await readFile(new URL("./DirectoryPicker.tsx", import.meta.url),
 
 test("daily Grok tools open a tools panel instead of Settings chrome", () => {
   assert.match(shell, /setSettingsVariant\(/);
-  assert.match(shell, /section === "skills" \|\| section === "plugins" \|\| section === "marketplace" \|\| section === "mcp"/);
+  assert.match(shell, /section === "skills" \|\| section === "plugins" \|\| section === "marketplace" \|\| section === "mcp" \|\| section === "hooks"/);
   assert.match(shell, /variant=\{settingsVariant\}/);
   assert.match(settings, /variant === "tools"/);
   assert.match(settings, /TOOL_NAV_SECTIONS/);

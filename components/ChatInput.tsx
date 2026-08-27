@@ -228,6 +228,7 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
   { name: "export", description: "chat.commandExport", source: "builtin" },
   { name: "skills", description: "chat.commandSkills", source: "builtin" },
   { name: "plugins", description: "chat.commandPlugins", source: "builtin" },
+  { name: "hooks", description: "chat.commandHooks", source: "builtin" },
   { name: "mcp", description: "chat.commandMcp", source: "builtin" },
   { name: "compact", description: "chat.commandCompact", source: "builtin" },
   { name: "reload", description: "chat.commandReload", source: "builtin" },

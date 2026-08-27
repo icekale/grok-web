@@ -31,15 +31,16 @@ import { ModelsConfig } from "./ModelsConfig";
 import type { ModelsDraftController } from "./models-config/models-config-types";
 import type { SettingsSectionController } from "./resource-settings/resource-settings-types";
 import { PluginsConfig } from "./PluginsConfig";
+import { HooksConfig } from "./HooksConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { RemoteAccessConfig, type RemoteDraftController } from "./RemoteAccessConfig";
 import { DialogShell } from "./DialogShell";
 import { AgentRuntimeConfig } from "./AgentRuntimeConfig";
 
-export type SettingsSection = "general" | "runtime" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp";
+export type SettingsSection = "general" | "runtime" | "remote" | "archived" | "models" | "skills" | "plugins" | "marketplace" | "mcp" | "hooks";
 export type SettingsVariant = "settings" | "tools";
 
-const TOOL_NAV_SECTIONS: SettingsSection[] = ["skills", "plugins", "mcp"];
+const TOOL_NAV_SECTIONS: SettingsSection[] = ["skills", "plugins", "hooks", "mcp"];
 
 interface Props {
   cwd: string | null;
@@ -71,6 +72,7 @@ function SectionIcon({ section }: { section: SettingsSection }) {
     skills: Layers3,
     plugins: Plug,
     marketplace: Plug,
+    hooks: Plug,
     mcp: Cable,
     runtime: SlidersHorizontal,
   };
@@ -246,6 +248,7 @@ export function SettingsPage({
     { id: "models", label: t("common.models"), disabled: false },
     { id: "skills", label: t("common.skills"), disabled: !cwd },
     { id: "plugins", label: t("common.plugins"), disabled: !cwd },
+    { id: "hooks", label: t("common.hooks"), disabled: !cwd },
     { id: "mcp", label: t("common.mcp"), disabled: !cwd },
     { id: "remote", label: t("remote.nav"), disabled: false },
     { id: "archived", label: t("sidebar.archived"), disabled: false },
@@ -254,7 +257,7 @@ export function SettingsPage({
     ? allSections.filter((item) => TOOL_NAV_SECTIONS.includes(item.id))
     : allSections;
   const dialogTitle = variant === "tools"
-    ? (section === "skills" ? t("common.skills") : section === "mcp" ? t("common.mcp") : t("common.plugins"))
+    ? (section === "skills" ? t("common.skills") : section === "mcp" ? t("common.mcp") : section === "hooks" ? t("common.hooks") : t("common.plugins"))
     : t("common.settings");
 
   let content: ReactNode;
@@ -363,6 +366,8 @@ export function SettingsPage({
     );
   } else if (section === "skills") {
     content = <SkillsConfig cwd={cwd} onControllerChange={setSkillsController} />;
+  } else if (section === "hooks") {
+    content = <HooksConfig cwd={cwd} />;
   } else if (section === "mcp") {
     content = (
       <PluginsConfig
