@@ -222,6 +222,11 @@ export async function smokeAllRoutes({ origin, authHeaders = {} }) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
+    await probe("GET", "/api/hooks", [400]);
+    await probe("POST", "/api/hooks", [400], {
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
     await probe("GET", `/api/project-trust?cwd=${encodeURIComponent(fixtureDir)}`, [200]);
     await probe("POST", "/api/project-trust", [400], {
       headers: { "content-type": "application/json" },

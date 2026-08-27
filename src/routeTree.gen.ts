@@ -17,6 +17,7 @@ import { Route as ApiMetaRouteImport } from './routes/api/meta'
 import { Route as ApiModelsRouteImport } from './routes/api/models'
 import { Route as ApiModelsConfigRouteImport } from './routes/api/models-config'
 import { Route as ApiPluginsRouteImport } from './routes/api/plugins'
+import { Route as ApiHooksRouteImport } from './routes/api/hooks'
 import { Route as ApiProjectTrustRouteImport } from './routes/api/project-trust'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiRemoteAccessRouteImport } from './routes/api/remote-access'
@@ -102,6 +103,11 @@ const ApiModelsConfigRoute = ApiModelsConfigRouteImport.update({
 const ApiPluginsRoute = ApiPluginsRouteImport.update({
   id: '/api/plugins',
   path: '/api/plugins',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHooksRoute = ApiHooksRouteImport.update({
+  id: '/api/hooks',
+  path: '/api/hooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProjectTrustRoute = ApiProjectTrustRouteImport.update({
@@ -347,6 +353,7 @@ export interface FileRoutesByFullPath {
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -460,6 +468,7 @@ export interface FileRoutesById {
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -518,6 +527,7 @@ export interface FileRouteTypes {
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
+    | '/api/hooks'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -574,6 +584,7 @@ export interface FileRouteTypes {
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
+    | '/api/hooks'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -630,6 +641,7 @@ export interface FileRouteTypes {
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
+    | '/api/hooks'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -687,6 +699,7 @@ export interface RootRouteChildren {
   ApiModelsRoute: typeof ApiModelsRoute
   ApiModelsConfigRoute: typeof ApiModelsConfigRouteWithChildren
   ApiPluginsRoute: typeof ApiPluginsRoute
+  ApiHooksRoute: typeof ApiHooksRoute
   ApiProjectTrustRoute: typeof ApiProjectTrustRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
   ApiRemoteAccessRoute: typeof ApiRemoteAccessRoute
@@ -771,6 +784,13 @@ declare module '@tanstack/react-router' {
       path: '/api/plugins'
       fullPath: '/api/plugins'
       preLoaderRoute: typeof ApiPluginsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/hooks': {
+      id: '/api/hooks'
+      path: '/api/hooks'
+      fullPath: '/api/hooks'
+      preLoaderRoute: typeof ApiHooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/project-trust': {
@@ -1218,6 +1238,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiModelsRoute: ApiModelsRoute,
   ApiModelsConfigRoute: ApiModelsConfigRouteWithChildren,
   ApiPluginsRoute: ApiPluginsRoute,
+  ApiHooksRoute: ApiHooksRoute,
   ApiProjectTrustRoute: ApiProjectTrustRoute,
   ApiProjectsRoute: ApiProjectsRoute,
   ApiRemoteAccessRoute: ApiRemoteAccessRoute,

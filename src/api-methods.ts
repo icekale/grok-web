@@ -39,6 +39,7 @@ export const API_ROUTE_METHODS: Record<string, readonly string[]> = {
   "/api/models": ["GET"],
   "/api/mcp": ["GET", "POST"],
   "/api/plugins": ["GET", "POST"],
+  "/api/hooks": ["GET", "POST"],
   "/api/project-trust": ["GET", "POST"],
   "/api/projects": ["GET", "PATCH", "PUT"],
   "/api/remote-access": ["GET", "PUT"],
