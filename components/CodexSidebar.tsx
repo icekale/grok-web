@@ -601,7 +601,7 @@ export function CodexSidebar({
       const response = await fetch("/api/worktrees", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: selectedProject.path, path, force }),
+        body: JSON.stringify({ cwd: selectedProject.path, path, force, sessionId: selectedSessionId }),
       });
       const data = await response.json() as { error?: string; dirty?: boolean };
       if (data.dirty && !force) {
@@ -618,7 +618,7 @@ export function CodexSidebar({
     } finally {
       setWorktreeBusy(false);
     }
-  }, [selectedCwd, selectedProject, t, worktreeBusy]);
+  }, [selectedCwd, selectedProject, selectedSessionId, t, worktreeBusy]);
 
   useEffect(() => {
     if (projectSearchOpen) projectSearchInputRef.current?.focus();

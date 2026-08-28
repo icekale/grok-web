@@ -21,6 +21,7 @@ export type GrokInspectHook = {
 export type GrokInspectSnapshot = {
   projectTrusted: boolean;
   projectRoot: string | null;
+  folderTrustEnabled?: boolean;
   hooks: GrokInspectHook[];
 };
 
@@ -50,6 +51,7 @@ export function parseGrokInspect(value: unknown, home = grokHome()): GrokInspect
   }
   const projectRoot = typeof value.projectRoot === "string" && value.projectRoot ? value.projectRoot : null;
   const projectTrusted = value.projectTrusted === true;
+  const folderTrustEnabled = typeof value.folderTrustEnabled === "boolean" ? value.folderTrustEnabled : undefined;
   const rawHooks = Array.isArray(value.hooks) ? value.hooks : [];
   const hooks: GrokInspectHook[] = [];
   for (const row of rawHooks) {
@@ -68,7 +70,12 @@ export function parseGrokInspect(value: unknown, home = grokHome()): GrokInspect
       removable: sourceType !== "plugin" && isRemovableTarget(target, home),
     });
   }
-  return { projectTrusted, projectRoot, hooks };
+  return {
+    projectTrusted,
+    projectRoot,
+    ...(folderTrustEnabled !== undefined ? { folderTrustEnabled } : {}),
+    hooks,
+  };
 }
 
 type ExecFile = (

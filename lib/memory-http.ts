@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { peekAgentRuntime } from "@/lib/acp/runtime.ts";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { grokHome } from "@/lib/grok-home";
-import { appendRememberNote, assertSessionLogPath, pinGrokMemoryEnabled, readMemoryEnabled } from "@/lib/memory-store";
+import { appendRememberNote, assertSessionLogPath, pinGrokMemoryEnabled, readMemoryEnabled, workspaceMemoryDir } from "@/lib/memory-store";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
 export type MemoryFile = {
@@ -21,7 +21,7 @@ function envMemoryOverride(): boolean | null {
   return null;
 }
 
-function listMemoryFiles(home: string): MemoryFile[] {
+function listMemoryFiles(home: string, cwd: string): MemoryFile[] {
   const root = join(home, "memory");
   if (!existsSync(root)) return [];
   const files: MemoryFile[] = [];
@@ -29,28 +29,38 @@ function listMemoryFiles(home: string): MemoryFile[] {
   if (existsSync(globalFile)) {
     files.push({ scope: "global", path: globalFile, name: "MEMORY.md", mtime: statSync(globalFile).mtimeMs });
   }
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const workspace = join(root, entry.name, "MEMORY.md");
-    if (existsSync(workspace)) {
-      files.push({ scope: "workspace", path: workspace, name: `${entry.name}/MEMORY.md`, mtime: statSync(workspace).mtimeMs });
-    }
-    const sessions = join(root, entry.name, "sessions");
-    if (!existsSync(sessions)) continue;
+  const workspaceDir = workspaceMemoryDir(cwd, home);
+  const workspaceName = basename(workspaceDir);
+  const workspace = join(workspaceDir, "MEMORY.md");
+  if (existsSync(workspace)) {
+    files.push({
+      scope: "workspace",
+      path: workspace,
+      name: `${workspaceName}/MEMORY.md`,
+      mtime: statSync(workspace).mtimeMs,
+    });
+  }
+  const sessions = join(workspaceDir, "sessions");
+  if (existsSync(sessions)) {
     for (const log of readdirSync(sessions, { withFileTypes: true })) {
       if (!log.isFile()) continue;
       const path = join(sessions, log.name);
-      files.push({ scope: "session", path, name: `${entry.name}/sessions/${log.name}`, mtime: statSync(path).mtimeMs });
+      files.push({
+        scope: "session",
+        path,
+        name: `${workspaceName}/sessions/${log.name}`,
+        mtime: statSync(path).mtimeMs,
+      });
     }
   }
   return files.sort((left, right) => right.mtime - left.mtime);
 }
 
-function snapshot(home = grokHome(), previewPath?: string) {
+function snapshot(home = grokHome(), cwd: string, previewPath?: string) {
   const config = existsSync(join(home, "config.toml")) ? readFileSync(join(home, "config.toml"), "utf8") : "";
   const env = envMemoryOverride();
   const enabled = env ?? readMemoryEnabled(config);
-  const files = enabled ? listMemoryFiles(home) : [];
+  const files = enabled ? listMemoryFiles(home, cwd) : [];
   const previewFile = previewPath && files.some((file) => file.path === previewPath)
     ? previewPath
     : files[0]?.path;
@@ -86,14 +96,14 @@ function statusOf(error: unknown): number {
 
 async function recycleIfPresent(): Promise<void> {
   const runtime = peekAgentRuntime();
-  if (runtime) await runtime.recycleProcess();
+  if (runtime) await runtime.recycleProcessAndReload();
 }
 
 export async function GET(req: Request): Promise<Response> {
   try {
     const url = new URL(req.url);
-    await requireCwd(url.searchParams.get("cwd"));
-    return Response.json(snapshot(grokHome(), url.searchParams.get("preview") || undefined));
+    const cwd = await requireCwd(url.searchParams.get("cwd"));
+    return Response.json(snapshot(grokHome(), cwd, url.searchParams.get("preview") || undefined));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: statusOf(error) });
   }
@@ -114,22 +124,24 @@ export async function POST(req: Request): Promise<Response> {
       scope?: "workspace" | "global";
       path?: string;
     };
-    await requireCwd(body.cwd);
+    const cwd = await requireCwd(body.cwd);
     const home = grokHome();
     if (body.action === "enable" || body.action === "disable") {
       pinGrokMemoryEnabled(body.action === "enable", home);
       await recycleIfPresent();
-      return Response.json({ ok: true, ...snapshot(home) });
+      return Response.json({ ok: true, ...snapshot(home, cwd) });
     }
     if (body.action === "remember") {
-      const file = join(home, "memory", "MEMORY.md");
+      const file = body.scope === "global"
+        ? join(home, "memory", "MEMORY.md")
+        : join(workspaceMemoryDir(cwd, home), "MEMORY.md");
       appendRememberNote(file, body.text ?? "");
-      return Response.json({ ok: true, ...snapshot(home, file) });
+      return Response.json({ ok: true, ...snapshot(home, cwd, file) });
     }
     if (body.action === "delete") {
       if (!body.path) return Response.json({ error: "path required" }, { status: 400 });
       unlinkSync(assertSessionLogPath(body.path, home));
-      return Response.json({ ok: true, ...snapshot(home) });
+      return Response.json({ ok: true, ...snapshot(home, cwd) });
     }
     return Response.json({ error: "action required" }, { status: 400 });
   } catch (error) {

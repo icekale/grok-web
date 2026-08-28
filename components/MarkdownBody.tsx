@@ -44,6 +44,10 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
     a({ href, children, ...props }) {
       // `node` is react-markdown metadata, not a DOM attribute.
       delete props.node;
+      const hrefPath = typeof href === "string" ? href.split(/[?#]/, 1)[0] : "";
+      if (hrefPath.startsWith("/api/") || hrefPath.startsWith("/_next/")) {
+        return <span>{children}</span>;
+      }
       const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
       const openFile = onOpenFile;
       if (!filePath || !openFile) {

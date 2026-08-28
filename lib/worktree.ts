@@ -229,16 +229,21 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   return { path: worktreePath, branch: trimmed };
 }
 
-export async function removeWorktree(cwd: string, worktreePath: string, force = false): Promise<void> {
+export async function resolveRemovableWorktree(cwd: string, worktreePath: string): Promise<string> {
   const canonicalCwd = realPathOrSelf(resolve(cwd));
   const canonicalTarget = realPathOrSelf(resolve(worktreePath));
   const worktrees = await listWorktrees(canonicalCwd);
   const target = findWorktreeByPath(worktrees, canonicalTarget);
   if (!target) throw new Error(`Not a worktree of this repository: ${worktreePath}`);
   if (target.isMain) throw new Error("Cannot remove the main worktree");
+  return target.path;
+}
 
+export async function removeWorktree(cwd: string, worktreePath: string, force = false): Promise<void> {
+  const canonicalCwd = realPathOrSelf(resolve(cwd));
+  const targetPath = await resolveRemovableWorktree(cwd, worktreePath);
   try {
-    await git(canonicalCwd, ["worktree", "remove", ...(force ? ["--force"] : []), target.path]);
+    await git(canonicalCwd, ["worktree", "remove", ...(force ? ["--force"] : []), targetPath]);
   } catch (error) {
     throw new Error(extractGitError(error));
   }

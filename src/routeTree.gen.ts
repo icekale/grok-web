@@ -12,13 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAppUpdateRouteImport } from './routes/api/app-update'
 import { Route as ApiFileIndexRouteImport } from './routes/api/file-index'
+import { Route as ApiHooksRouteImport } from './routes/api/hooks'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
+import { Route as ApiMemoryRouteImport } from './routes/api/memory'
 import { Route as ApiMetaRouteImport } from './routes/api/meta'
 import { Route as ApiModelsRouteImport } from './routes/api/models'
 import { Route as ApiModelsConfigRouteImport } from './routes/api/models-config'
 import { Route as ApiPluginsRouteImport } from './routes/api/plugins'
-import { Route as ApiHooksRouteImport } from './routes/api/hooks'
-import { Route as ApiMemoryRouteImport } from './routes/api/memory'
 import { Route as ApiProjectTrustRouteImport } from './routes/api/project-trust'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiRemoteAccessRouteImport } from './routes/api/remote-access'
@@ -27,7 +27,6 @@ import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiSettingsRouteImport } from './routes/api/settings'
 import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiUiLocaleRouteImport } from './routes/api/ui-locale'
-import { Route as ApiVisionToolkitRouteImport } from './routes/api/vision-toolkit'
 import { Route as ApiWorktreesRouteImport } from './routes/api/worktrees'
 import { Route as ApiAgentIdRouteImport } from './routes/api/agent/$id'
 import { Route as ApiAgentNewRouteImport } from './routes/api/agent/new'
@@ -50,8 +49,6 @@ import { Route as ApiSkillsCheckRouteImport } from './routes/api/skills/check'
 import { Route as ApiSkillsInstallRouteImport } from './routes/api/skills/install'
 import { Route as ApiSkillsSearchRouteImport } from './routes/api/skills/search'
 import { Route as ApiSkillsUpdateRouteImport } from './routes/api/skills/update'
-import { Route as ApiVisionToolkitHealthRouteImport } from './routes/api/vision-toolkit/health'
-import { Route as ApiVisionToolkitRevealRouteImport } from './routes/api/vision-toolkit/reveal'
 import { Route as ApiAgentIdEventsRouteImport } from './routes/api/agent/$id/events'
 import { Route as ApiAgentIdSubagentsRouteImport } from './routes/api/agent/$id/subagents'
 import { Route as ApiAgentRunningEventsRouteImport } from './routes/api/agent/running/events'
@@ -81,9 +78,19 @@ const ApiFileIndexRoute = ApiFileIndexRouteImport.update({
   path: '/api/file-index',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHooksRoute = ApiHooksRouteImport.update({
+  id: '/api/hooks',
+  path: '/api/hooks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMcpRoute = ApiMcpRouteImport.update({
   id: '/api/mcp',
   path: '/api/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMemoryRoute = ApiMemoryRouteImport.update({
+  id: '/api/memory',
+  path: '/api/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMetaRoute = ApiMetaRouteImport.update({
@@ -104,16 +111,6 @@ const ApiModelsConfigRoute = ApiModelsConfigRouteImport.update({
 const ApiPluginsRoute = ApiPluginsRouteImport.update({
   id: '/api/plugins',
   path: '/api/plugins',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiHooksRoute = ApiHooksRouteImport.update({
-  id: '/api/hooks',
-  path: '/api/hooks',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiMemoryRoute = ApiMemoryRouteImport.update({
-  id: '/api/memory',
-  path: '/api/memory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProjectTrustRoute = ApiProjectTrustRouteImport.update({
@@ -154,11 +151,6 @@ const ApiSkillsRoute = ApiSkillsRouteImport.update({
 const ApiUiLocaleRoute = ApiUiLocaleRouteImport.update({
   id: '/api/ui-locale',
   path: '/api/ui-locale',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiVisionToolkitRoute = ApiVisionToolkitRouteImport.update({
-  id: '/api/vision-toolkit',
-  path: '/api/vision-toolkit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiWorktreesRoute = ApiWorktreesRouteImport.update({
@@ -271,16 +263,6 @@ const ApiSkillsUpdateRoute = ApiSkillsUpdateRouteImport.update({
   path: '/update',
   getParentRoute: () => ApiSkillsRoute,
 } as any)
-const ApiVisionToolkitHealthRoute = ApiVisionToolkitHealthRouteImport.update({
-  id: '/health',
-  path: '/health',
-  getParentRoute: () => ApiVisionToolkitRoute,
-} as any)
-const ApiVisionToolkitRevealRoute = ApiVisionToolkitRevealRouteImport.update({
-  id: '/reveal',
-  path: '/reveal',
-  getParentRoute: () => ApiVisionToolkitRoute,
-} as any)
 const ApiAgentIdEventsRoute = ApiAgentIdEventsRouteImport.update({
   id: '/events',
   path: '/events',
@@ -354,13 +336,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
   '/api/file-index': typeof ApiFileIndexRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
-  '/api/hooks': typeof ApiHooksRoute
-  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -369,7 +351,6 @@ export interface FileRoutesByFullPath {
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/ui-locale': typeof ApiUiLocaleRoute
-  '/api/vision-toolkit': typeof ApiVisionToolkitRouteWithChildren
   '/api/worktrees': typeof ApiWorktreesRoute
   '/api/agent/$id': typeof ApiAgentIdRouteWithChildren
   '/api/agent/new': typeof ApiAgentNewRoute
@@ -392,8 +373,6 @@ export interface FileRoutesByFullPath {
   '/api/skills/install': typeof ApiSkillsInstallRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/skills/update': typeof ApiSkillsUpdateRoute
-  '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
-  '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -412,13 +391,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
   '/api/file-index': typeof ApiFileIndexRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
-  '/api/hooks': typeof ApiHooksRoute
-  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -427,7 +406,6 @@ export interface FileRoutesByTo {
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/ui-locale': typeof ApiUiLocaleRoute
-  '/api/vision-toolkit': typeof ApiVisionToolkitRouteWithChildren
   '/api/worktrees': typeof ApiWorktreesRoute
   '/api/agent/$id': typeof ApiAgentIdRouteWithChildren
   '/api/agent/new': typeof ApiAgentNewRoute
@@ -450,8 +428,6 @@ export interface FileRoutesByTo {
   '/api/skills/install': typeof ApiSkillsInstallRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/skills/update': typeof ApiSkillsUpdateRoute
-  '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
-  '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -471,13 +447,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/app-update': typeof ApiAppUpdateRoute
   '/api/file-index': typeof ApiFileIndexRoute
+  '/api/hooks': typeof ApiHooksRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/memory': typeof ApiMemoryRoute
   '/api/meta': typeof ApiMetaRoute
   '/api/models': typeof ApiModelsRoute
   '/api/models-config': typeof ApiModelsConfigRouteWithChildren
   '/api/plugins': typeof ApiPluginsRoute
-  '/api/hooks': typeof ApiHooksRoute
-  '/api/memory': typeof ApiMemoryRoute
   '/api/project-trust': typeof ApiProjectTrustRoute
   '/api/projects': typeof ApiProjectsRoute
   '/api/remote-access': typeof ApiRemoteAccessRoute
@@ -486,7 +462,6 @@ export interface FileRoutesById {
   '/api/settings': typeof ApiSettingsRoute
   '/api/skills': typeof ApiSkillsRouteWithChildren
   '/api/ui-locale': typeof ApiUiLocaleRoute
-  '/api/vision-toolkit': typeof ApiVisionToolkitRouteWithChildren
   '/api/worktrees': typeof ApiWorktreesRoute
   '/api/agent/$id': typeof ApiAgentIdRouteWithChildren
   '/api/agent/new': typeof ApiAgentNewRoute
@@ -509,8 +484,6 @@ export interface FileRoutesById {
   '/api/skills/install': typeof ApiSkillsInstallRoute
   '/api/skills/search': typeof ApiSkillsSearchRoute
   '/api/skills/update': typeof ApiSkillsUpdateRoute
-  '/api/vision-toolkit/health': typeof ApiVisionToolkitHealthRoute
-  '/api/vision-toolkit/reveal': typeof ApiVisionToolkitRevealRoute
   '/api/agent/$id/events': typeof ApiAgentIdEventsRoute
   '/api/agent/$id/subagents': typeof ApiAgentIdSubagentsRoute
   '/api/agent/running/events': typeof ApiAgentRunningEventsRoute
@@ -531,13 +504,13 @@ export interface FileRouteTypes {
     | '/'
     | '/api/app-update'
     | '/api/file-index'
+    | '/api/hooks'
     | '/api/mcp'
+    | '/api/memory'
     | '/api/meta'
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
-    | '/api/hooks'
-    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -546,7 +519,6 @@ export interface FileRouteTypes {
     | '/api/settings'
     | '/api/skills'
     | '/api/ui-locale'
-    | '/api/vision-toolkit'
     | '/api/worktrees'
     | '/api/agent/$id'
     | '/api/agent/new'
@@ -569,8 +541,6 @@ export interface FileRouteTypes {
     | '/api/skills/install'
     | '/api/skills/search'
     | '/api/skills/update'
-    | '/api/vision-toolkit/health'
-    | '/api/vision-toolkit/reveal'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -589,13 +559,13 @@ export interface FileRouteTypes {
     | '/'
     | '/api/app-update'
     | '/api/file-index'
+    | '/api/hooks'
     | '/api/mcp'
+    | '/api/memory'
     | '/api/meta'
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
-    | '/api/hooks'
-    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -604,7 +574,6 @@ export interface FileRouteTypes {
     | '/api/settings'
     | '/api/skills'
     | '/api/ui-locale'
-    | '/api/vision-toolkit'
     | '/api/worktrees'
     | '/api/agent/$id'
     | '/api/agent/new'
@@ -627,8 +596,6 @@ export interface FileRouteTypes {
     | '/api/skills/install'
     | '/api/skills/search'
     | '/api/skills/update'
-    | '/api/vision-toolkit/health'
-    | '/api/vision-toolkit/reveal'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -647,13 +614,13 @@ export interface FileRouteTypes {
     | '/'
     | '/api/app-update'
     | '/api/file-index'
+    | '/api/hooks'
     | '/api/mcp'
+    | '/api/memory'
     | '/api/meta'
     | '/api/models'
     | '/api/models-config'
     | '/api/plugins'
-    | '/api/hooks'
-    | '/api/memory'
     | '/api/project-trust'
     | '/api/projects'
     | '/api/remote-access'
@@ -662,7 +629,6 @@ export interface FileRouteTypes {
     | '/api/settings'
     | '/api/skills'
     | '/api/ui-locale'
-    | '/api/vision-toolkit'
     | '/api/worktrees'
     | '/api/agent/$id'
     | '/api/agent/new'
@@ -685,8 +651,6 @@ export interface FileRouteTypes {
     | '/api/skills/install'
     | '/api/skills/search'
     | '/api/skills/update'
-    | '/api/vision-toolkit/health'
-    | '/api/vision-toolkit/reveal'
     | '/api/agent/$id/events'
     | '/api/agent/$id/subagents'
     | '/api/agent/running/events'
@@ -706,13 +670,13 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiAppUpdateRoute: typeof ApiAppUpdateRoute
   ApiFileIndexRoute: typeof ApiFileIndexRoute
+  ApiHooksRoute: typeof ApiHooksRoute
   ApiMcpRoute: typeof ApiMcpRoute
+  ApiMemoryRoute: typeof ApiMemoryRoute
   ApiMetaRoute: typeof ApiMetaRoute
   ApiModelsRoute: typeof ApiModelsRoute
   ApiModelsConfigRoute: typeof ApiModelsConfigRouteWithChildren
   ApiPluginsRoute: typeof ApiPluginsRoute
-  ApiHooksRoute: typeof ApiHooksRoute
-  ApiMemoryRoute: typeof ApiMemoryRoute
   ApiProjectTrustRoute: typeof ApiProjectTrustRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
   ApiRemoteAccessRoute: typeof ApiRemoteAccessRoute
@@ -721,7 +685,6 @@ export interface RootRouteChildren {
   ApiSettingsRoute: typeof ApiSettingsRoute
   ApiSkillsRoute: typeof ApiSkillsRouteWithChildren
   ApiUiLocaleRoute: typeof ApiUiLocaleRoute
-  ApiVisionToolkitRoute: typeof ApiVisionToolkitRouteWithChildren
   ApiWorktreesRoute: typeof ApiWorktreesRoute
   ApiAgentIdRoute: typeof ApiAgentIdRouteWithChildren
   ApiAgentNewRoute: typeof ApiAgentNewRoute
@@ -764,11 +727,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFileIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/hooks': {
+      id: '/api/hooks'
+      path: '/api/hooks'
+      fullPath: '/api/hooks'
+      preLoaderRoute: typeof ApiHooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/mcp': {
       id: '/api/mcp'
       path: '/api/mcp'
       fullPath: '/api/mcp'
       preLoaderRoute: typeof ApiMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/memory': {
+      id: '/api/memory'
+      path: '/api/memory'
+      fullPath: '/api/memory'
+      preLoaderRoute: typeof ApiMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/meta': {
@@ -797,20 +774,6 @@ declare module '@tanstack/react-router' {
       path: '/api/plugins'
       fullPath: '/api/plugins'
       preLoaderRoute: typeof ApiPluginsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/hooks': {
-      id: '/api/hooks'
-      path: '/api/hooks'
-      fullPath: '/api/hooks'
-      preLoaderRoute: typeof ApiHooksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/memory': {
-      id: '/api/memory'
-      path: '/api/memory'
-      fullPath: '/api/memory'
-      preLoaderRoute: typeof ApiMemoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/project-trust': {
@@ -867,13 +830,6 @@ declare module '@tanstack/react-router' {
       path: '/api/ui-locale'
       fullPath: '/api/ui-locale'
       preLoaderRoute: typeof ApiUiLocaleRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/vision-toolkit': {
-      id: '/api/vision-toolkit'
-      path: '/api/vision-toolkit'
-      fullPath: '/api/vision-toolkit'
-      preLoaderRoute: typeof ApiVisionToolkitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/worktrees': {
@@ -1029,20 +985,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/skills/update'
       preLoaderRoute: typeof ApiSkillsUpdateRouteImport
       parentRoute: typeof ApiSkillsRoute
-    }
-    '/api/vision-toolkit/health': {
-      id: '/api/vision-toolkit/health'
-      path: '/health'
-      fullPath: '/api/vision-toolkit/health'
-      preLoaderRoute: typeof ApiVisionToolkitHealthRouteImport
-      parentRoute: typeof ApiVisionToolkitRoute
-    }
-    '/api/vision-toolkit/reveal': {
-      id: '/api/vision-toolkit/reveal'
-      path: '/reveal'
-      fullPath: '/api/vision-toolkit/reveal'
-      preLoaderRoute: typeof ApiVisionToolkitRevealRouteImport
-      parentRoute: typeof ApiVisionToolkitRoute
     }
     '/api/agent/$id/events': {
       id: '/api/agent/$id/events'
@@ -1210,18 +1152,10 @@ const ApiSkillsRouteWithChildren = ApiSkillsRoute._addFileChildren(
   ApiSkillsRouteChildren,
 )
 
-interface ApiVisionToolkitRouteChildren {
-  ApiVisionToolkitHealthRoute: typeof ApiVisionToolkitHealthRoute
-  ApiVisionToolkitRevealRoute: typeof ApiVisionToolkitRevealRoute
 }
 
-const ApiVisionToolkitRouteChildren: ApiVisionToolkitRouteChildren = {
-  ApiVisionToolkitHealthRoute: ApiVisionToolkitHealthRoute,
-  ApiVisionToolkitRevealRoute: ApiVisionToolkitRevealRoute,
 }
 
-const ApiVisionToolkitRouteWithChildren =
-  ApiVisionToolkitRoute._addFileChildren(ApiVisionToolkitRouteChildren)
 
 interface ApiAgentIdRouteChildren {
   ApiAgentIdEventsRoute: typeof ApiAgentIdEventsRoute
@@ -1253,13 +1187,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiAppUpdateRoute: ApiAppUpdateRoute,
   ApiFileIndexRoute: ApiFileIndexRoute,
+  ApiHooksRoute: ApiHooksRoute,
   ApiMcpRoute: ApiMcpRoute,
+  ApiMemoryRoute: ApiMemoryRoute,
   ApiMetaRoute: ApiMetaRoute,
   ApiModelsRoute: ApiModelsRoute,
   ApiModelsConfigRoute: ApiModelsConfigRouteWithChildren,
   ApiPluginsRoute: ApiPluginsRoute,
-  ApiHooksRoute: ApiHooksRoute,
-  ApiMemoryRoute: ApiMemoryRoute,
   ApiProjectTrustRoute: ApiProjectTrustRoute,
   ApiProjectsRoute: ApiProjectsRoute,
   ApiRemoteAccessRoute: ApiRemoteAccessRoute,
@@ -1268,7 +1202,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSettingsRoute: ApiSettingsRoute,
   ApiSkillsRoute: ApiSkillsRouteWithChildren,
   ApiUiLocaleRoute: ApiUiLocaleRoute,
-  ApiVisionToolkitRoute: ApiVisionToolkitRouteWithChildren,
   ApiWorktreesRoute: ApiWorktreesRoute,
   ApiAgentIdRoute: ApiAgentIdRouteWithChildren,
   ApiAgentNewRoute: ApiAgentNewRoute,

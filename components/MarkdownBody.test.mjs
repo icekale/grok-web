@@ -30,6 +30,14 @@ test("opens non-file markdown links in a safe new tab", () => {
   assert.doesNotMatch(html, /\snode=/);
 });
 
+test("does not turn same-origin /api/ markdown hrefs into navigable links", () => {
+  const html = renderMarkdown("[x](/api/files/tmp/evil.svg?type=read)");
+
+  assert.doesNotMatch(html, /href="\/api\//);
+  assert.doesNotMatch(html, /target="_blank"/);
+  assert.match(html, />x</);
+});
+
 test("keeps local file markdown links in the app", () => {
   const html = renderMarkdown("[file](components/MarkdownBody.tsx)");
 

@@ -1,4 +1,5 @@
 import { grokCanonicalToolName, sanitizeGrokToolInput } from "../grok-tool-input.ts";
+import { parseGrokTurnUsage, type GrokAssistantUsage } from "../grok-usage.ts";
 
 export type AcpSseEvent = {
   type: string;
@@ -14,6 +15,7 @@ export class AcpTurnMapper {
   private readonly toolNameById = new Map<string, string>();
   private readonly partialContent: unknown[] = [];
   private lastPromptError = "";
+  private turnUsage: GrokAssistantUsage | undefined;
 
   begin(): void {
     this.started = false;
@@ -24,6 +26,7 @@ export class AcpTurnMapper {
     this.toolNameById.clear();
     this.partialContent.length = 0;
     this.lastPromptError = "";
+    this.turnUsage = undefined;
   }
 
   push(update: unknown): AcpSseEvent[] {
@@ -50,6 +53,7 @@ export class AcpTurnMapper {
           ? this.promptError(stringField(update.message) || "The model request failed")
           : [];
       case "turn_completed": {
+        this.turnUsage = parseGrokTurnUsage(update.usage);
         const stop = stringField(update.stop_reason) || stringField(update.stopReason);
         if (stop !== "error") return [];
         return this.promptError(
@@ -61,13 +65,20 @@ export class AcpTurnMapper {
     }
   }
 
-  snapshot(): { role: "assistant"; content: unknown[]; model: string; provider: string } | null {
+  snapshot(): {
+    role: "assistant";
+    content: unknown[];
+    model: string;
+    provider: string;
+    usage?: GrokAssistantUsage;
+  } | null {
     if (!this.started) return null;
     return {
       role: "assistant",
       content: this.partialContent.filter((block) => block != null),
       model: "",
       provider: "grok",
+      ...(this.turnUsage ? { usage: this.turnUsage } : {}),
     };
   }
 

@@ -31,6 +31,7 @@ test("discard asks for confirmation before writing git", async () => {
   assert.match(source, /files\.confirmDeleteUntrackedCopy/);
   assert.match(source, /files\.deleteUntrackedFile/);
   assert.match(source, /setDiscardOpen\(true\)/);
+  assert.match(source, /sessionId: sourceSessionId/);
   assert.match(source, /runGitWrite\("discard"\)/);
   assert.doesNotMatch(source, /runGitWrite\("discard"\)\.then\(\(\) => setDiscardOpen\(false\)\)/);
   assert.match(source, /action === "discard"/);

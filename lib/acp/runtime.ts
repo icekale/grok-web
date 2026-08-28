@@ -356,6 +356,25 @@ export class AgentRuntime {
     await this.ensureProcess();
   }
 
+  async recycleProcessAndReload(): Promise<void> {
+    if (this.listBusyIds().length > 0) throw new AgentCommandError(409, "runtime_busy", "Grok is busy");
+    const recoverable = this.snapshotRecoverableSessions();
+    const listeners = this.snapshotListeners();
+    await this.recycleProcess();
+    listeners.restore();
+    for (const entry of recoverable) {
+      try {
+        await this.loadSession(entry.id, entry.cwd);
+      } catch {
+        const restored = this.ensureSession(entry.id);
+        restored.cwd = entry.cwd;
+        restored.loaded = true;
+        restored.modelId = entry.modelId;
+        restored.thinkingLevel = entry.thinkingLevel;
+      }
+    }
+  }
+
   async applyRuntimeProfile(next: RuntimeProfile, store: { read: () => RuntimeProfile; write: (profile: RuntimeProfile) => void } = {
     read: () => readRuntimeProfile(),
     write: (profile) => { writeRuntimeProfile(profile); },
@@ -607,9 +626,9 @@ export class AgentRuntime {
     return result;
   }
 
-  async worktreeRemove(worktreePath: string): Promise<unknown> {
+  async worktreeRemove(worktreePath: string, force = false): Promise<unknown> {
     await this.ensureProcess();
-    return this.requireAcp().worktreeRemove(worktreePath);
+    return this.requireAcp().worktreeRemove(worktreePath, force);
   }
 
   async listRunningSubagents(sessionId: string) {
@@ -1244,10 +1263,20 @@ export class AgentRuntime {
       const text = await readFile(join(found.path, "updates.jsonl"), "utf8");
       const { messages } = mapUpdatesJsonl(text);
       let toolCalls = 0;
+      const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+      let cost = 0;
       for (const message of messages) {
         if (message.role !== "assistant") continue;
         toolCalls += message.content.filter((part) => part.type === "toolCall").length;
+        const usage = "usage" in message ? message.usage : undefined;
+        if (!usage) continue;
+        tokens.input += usage.input;
+        tokens.output += usage.output;
+        tokens.cacheRead += usage.cacheRead;
+        tokens.cacheWrite += usage.cacheWrite;
+        cost += usage.cost.total;
       }
+      tokens.total = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
       const userMessages = messages.filter((message) => message.role === "user").length;
       const assistantMessages = messages.filter((message) => message.role === "assistant").length;
       return {
@@ -1258,6 +1287,8 @@ export class AgentRuntime {
         toolCalls: contextUsage?.toolCalls ?? toolCalls,
         toolResults: contextUsage?.toolCalls ?? toolCalls,
         totalMessages: messages.length,
+        tokens,
+        cost,
       };
     } catch {
       return { ...withUsage, sessionName: found.name || undefined };

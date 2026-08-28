@@ -451,8 +451,8 @@ function AddSkillPanel({
 
   const installPath =
     scope === "global"
-      ? "~/.pi/agent/skills/"
-      : `${shortenPath(cwd)}/.pi/skills/`;
+      ? "~/.grok/skills/"
+      : `${shortenPath(cwd)}/.agents/skills/`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>

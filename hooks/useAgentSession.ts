@@ -37,6 +37,7 @@ import {
 import { createTextDeltaBatcher } from "@/lib/text-delta-batcher";
 import type { AcpModes } from "@/lib/acp/modes";
 import type { AcpPlan } from "@/lib/acp/plan";
+import { queueRememberNote } from "@/lib/remember-draft";
 
 export interface SessionData {
   sessionId: string;
@@ -1950,7 +1951,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       onOpenSettings?.("hooks");
       return { handled: true, action: "openHooks" };
     }
-    if (commandName === "memory" || commandName === "remember") {
+    if (commandName === "remember") {
+      queueRememberNote(args);
+      onOpenSettings?.("memory");
+      return { handled: true, action: "openMemory" };
+    }
+    if (commandName === "memory") {
       onOpenSettings?.("memory");
       return { handled: true, action: "openMemory" };
     }

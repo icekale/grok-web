@@ -27,7 +27,7 @@ async function loadModels(): Promise<ModelsData> {
   const officialGrokConnected = await resolveOfficialGrokConnected();
   try {
     const wrote = syncSettingsModelsToGrokConfig(settings);
-    if (wrote.length > 0) await getAgentRuntime().recycleProcess();
+    if (wrote.length > 0) await getAgentRuntime().recycleProcessAndReload();
     const pickerId = settingsPickerIdResolver();
     let listed = await getAgentRuntime().listModels();
     const needed = collectSettingsComposerModels(settings)
@@ -35,7 +35,7 @@ async function loadModels(): Promise<ModelsData> {
       .map((row) => pickerId(row));
     const have = new Set(listed.modelList.map((model) => model.id));
     if (needed.some((id) => !have.has(id))) {
-      await getAgentRuntime().recycleProcess();
+      await getAgentRuntime().recycleProcessAndReload();
       listed = await getAgentRuntime().listModels();
     }
     return mergeComposerModels(listed, settings, pickerId, officialGrokConnected);

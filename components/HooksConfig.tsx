@@ -18,6 +18,7 @@ type HookRow = {
 type HooksResponse = {
   projectTrusted: boolean;
   projectRoot: string | null;
+  folderTrustEnabled?: boolean;
   hooks: HookRow[];
   error?: string;
 };
@@ -89,10 +90,12 @@ export function HooksConfig({ cwd }: { cwd: string }) {
           <p>{t("hooks.description")}</p>
         </div>
       </div>
-      <div className="settings-form-section" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="codex-dialog-button" disabled={busy} onClick={() => post({ action: data?.projectTrusted ? "untrust" : "trust" })}>
-          {data?.projectTrusted ? t("hooks.untrust") : t("hooks.trust")}
-        </button>
+      <div className="settings-form-actions">
+        {data?.folderTrustEnabled !== false && (
+          <button type="button" className="codex-dialog-button" disabled={busy} onClick={() => post({ action: data?.projectTrusted ? "untrust" : "trust" })}>
+            {data?.projectTrusted ? t("hooks.untrust") : t("hooks.trust")}
+          </button>
+        )}
         <button type="button" className="codex-dialog-button" data-variant="primary" disabled={busy} onClick={() => setAddOpen(true)}>
           {t("hooks.add")}
         </button>
@@ -100,28 +103,31 @@ export function HooksConfig({ cwd }: { cwd: string }) {
           {t("hooks.reload")}
         </button>
       </div>
+      {data?.folderTrustEnabled === false && <p role="status">{t("hooks.ungated")}</p>}
       {error && <div role="alert" className="settings-inline-error">{error}</div>}
       {grouped.length === 0 && <p className="settings-page-empty">{t("hooks.empty")}</p>}
       {grouped.map((entry) => (
-        <section key={entry.group} className="settings-form-section">
+        <section key={entry.group} className="settings-hook-group">
           <h4>{t(`hooks.group.${entry.group}`)}</h4>
-          {entry.hooks.map((hook) => (
-            <div key={`${hook.sourceType}:${hook.target}:${hook.event}`} className="settings-archived-row">
-              <div>
-                <strong>{hook.pluginName || hook.event}</strong>
-                <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: "var(--text-meta)" }}>
-                  {shortenPath(hook.target)}{hook.matcher ? ` · ${hook.matcher}` : ""}
-                </span>
+          <div className="settings-archived-list">
+            {entry.hooks.map((hook) => (
+              <div key={`${hook.sourceType}:${hook.target}:${hook.event}`} className="settings-archived-row">
+                <div>
+                  <strong>{hook.pluginName || hook.event}</strong>
+                  <span className="settings-hook-target">
+                    {shortenPath(hook.target)}{hook.matcher ? ` · ${hook.matcher}` : ""}
+                  </span>
+                </div>
+                {hook.removable ? (
+                  <button type="button" className="codex-dialog-button" disabled={busy} onClick={() => post({ action: "remove", target: hook.target })}>
+                    {t("hooks.remove")}
+                  </button>
+                ) : (
+                  <span className="settings-hook-readonly">{t("hooks.readOnly")}</span>
+                )}
               </div>
-              {hook.removable ? (
-                <button type="button" className="codex-dialog-button" disabled={busy} onClick={() => post({ action: "remove", target: hook.target })}>
-                  {t("hooks.remove")}
-                </button>
-              ) : (
-                <span>{t("hooks.readOnly")}</span>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </section>
       ))}
       {addOpen && (

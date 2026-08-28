@@ -299,6 +299,7 @@ function streamFile(filePath: string, stat: fs.Stats, contentType: string, range
     "Cache-Control": "no-cache",
     "Accept-Ranges": "bytes",
     "Content-Disposition": getContentDisposition(filePath, asDownload),
+    "X-Content-Type-Options": "nosniff",
   };
 
   if (!rangeHeader) {
@@ -444,6 +445,9 @@ export async function GET(
     if (type === "read") {
       if (!stat?.isFile()) {
         return Response.json({ error: "Not a file" }, { status: 400 });
+      }
+      if (getFileExt(filePath) === "svg") {
+        return streamFile(filePath, stat, "text/plain; charset=utf-8", request.headers.get("range"), true);
       }
       const imageMime = getImageMime(filePath);
       if (imageMime) {

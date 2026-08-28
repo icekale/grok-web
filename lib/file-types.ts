@@ -10,7 +10,6 @@ export const IMAGE_EXT_TO_MIME: Record<string, string> = {
   jpeg: "image/jpeg",
   gif: "image/gif",
   webp: "image/webp",
-  svg: "image/svg+xml",
   bmp: "image/bmp",
   ico: "image/x-icon",
   avif: "image/avif",

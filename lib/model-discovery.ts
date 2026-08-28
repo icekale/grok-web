@@ -109,6 +109,14 @@ function isLanIpv4(address: string): boolean {
   return false;
 }
 
+/** RFC 2544 benchmark space; Clash/Surge/sing-box fake-ip DNS uses 198.18.0.0/15. */
+function isFakeIpV4(address: string): boolean {
+  const octets = address.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false;
+  const [a, b] = octets;
+  return a === 198 && (b === 18 || b === 19);
+}
+
 function isLanHostname(hostname: string): boolean {
   const normalized = normalizeDiscoveryHostname(hostname);
   const mapped = mappedIpv4(normalized);
@@ -120,6 +128,13 @@ function isLanHostname(hostname: string): boolean {
     if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
   }
   return false;
+}
+
+function isFakeIpHostname(hostname: string): boolean {
+  const normalized = normalizeDiscoveryHostname(hostname);
+  const mapped = mappedIpv4(normalized);
+  if (mapped) return isFakeIpV4(mapped);
+  return isIP(normalized) === 4 && isFakeIpV4(normalized);
 }
 
 function isPrivateHostname(hostname: string): boolean {
@@ -168,8 +183,8 @@ const REQUEST_BODY_HEADERS = ["content-encoding", "content-language", "content-l
 /**
  * Guards discovery/test fetches against SSRF. Scheme is restricted to http(s).
  * Link-local and special-use destinations (cloud metadata, unspecified,
- * multicast) are never allowed. Loopback and RFC1918/ULA LAN addresses stay
- * allowed so local and LAN OpenAI-compatible proxies work.
+ * multicast) are never allowed. Loopback, RFC1918/ULA LAN, and RFC 2544
+ * 198.18.0.0/15 (Clash/Surge fake-ip) stay allowed so local proxies work.
  */
 export function assertSafeDiscoveryTarget(target: URL, _auth: DiscoveryTargetAuth = {}): void {
   void _auth;
@@ -180,6 +195,7 @@ export function assertSafeDiscoveryTarget(target: URL, _auth: DiscoveryTargetAut
     isPrivateHostname(target.hostname)
     && !isLoopbackHostname(target.hostname)
     && !isLanHostname(target.hostname)
+    && !isFakeIpHostname(target.hostname)
   ) {
     throw new Error("Base URL must not target a link-local or special-use address");
   }
@@ -188,8 +204,8 @@ export function assertSafeDiscoveryTarget(target: URL, _auth: DiscoveryTargetAut
 function assertSafeResolvedAddress(address: string): void {
   const family = isIP(address);
   const allowed = family === 4
-    ? isLoopbackHostname(address) || isLanIpv4(address)
-    : family === 6 && (isLoopbackHostname(address) || isLanHostname(address));
+    ? isLoopbackHostname(address) || isLanIpv4(address) || isFakeIpV4(address)
+    : family === 6 && (isLoopbackHostname(address) || isLanHostname(address) || isFakeIpHostname(address));
   const special = family === 4 ? isPrivateIpv4(address) : family === 6 && isPrivateIpv6(address);
   if (!family || (special && !allowed)) {
     throw new Error(`Base URL resolved to a link-local or special-use address: ${address}`);

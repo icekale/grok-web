@@ -88,7 +88,9 @@ export function parseEnvAllowedHosts(
 export function envPasswordEnabled(
   password: string | undefined = process.env.GROK_WEB_PASSWORD,
 ): password is string {
-  return typeof password === "string" && password.length > 0;
+  return typeof password === "string"
+    && password.length >= PASSWORD_MIN_LENGTH
+    && password.length <= PASSWORD_MAX_LENGTH;
 }
 
 export function parseAllowedHostname(value: string): { ok: true; hostname: string } | { ok: false; error: string } {

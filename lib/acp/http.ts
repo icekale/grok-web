@@ -208,8 +208,9 @@ export async function loadSessionIfNeeded(runtime: AgentRuntime, id: string): Pr
   try {
     await runtime.loadSession(id, session.cwd);
   } catch (error) {
-    const message = errorMessage(error);
-    if (message.includes("already loaded")) return;
+    if (/already loaded|in use|owned/i.test(errorMessage(error))) {
+      throw new AgentCommandError(409, "session_in_use", "Session is in use");
+    }
     throw error;
   }
 }
@@ -246,9 +247,10 @@ function agentErrorResponse(
     : 500;
   return Response.json({
     error: formatHandlerError(error),
-    ...(error instanceof AgentCommandError ? { code: error.code } : {}),
-    ...(extras.commandType === "prompt" && !extras.promptAccepted
-      ? { code: "prompt_rejected", accepted: false }
-      : {}),
+    ...(error instanceof AgentCommandError
+      ? { code: error.code }
+      : extras.commandType === "prompt" && !extras.promptAccepted
+        ? { code: "prompt_rejected", accepted: false }
+        : {}),
   }, { status });
 }

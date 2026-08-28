@@ -1,7 +1,8 @@
 import { existsSync } from "fs";
 import { getAgentRuntime } from "@/lib/acp/runtime.ts";
 import { canonicalizePath } from "@/lib/git-http";
-import { findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { loadSessionIfNeeded } from "@/lib/acp/http.ts";
+import { findCurrentWorktreePath, invalidateProjectCache, listWorktrees, resolveProject, resolveRemovableWorktree } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
 import {
   createWorkspaceWorktree,
@@ -94,15 +95,25 @@ export async function POST(req: Request) {
   }
 }
 
-// DELETE /api/worktrees  body: { cwd, path, force? }
+function methodNotFound(error: unknown): boolean {
+  return /-32601|method not found|unknown method|not supported/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
+}
+
+// DELETE /api/worktrees  body: { cwd, path, sessionId, force? }
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json() as { cwd?: string; path?: string; force?: boolean };
+    const body = await req.json() as { cwd?: string; path?: string; sessionId?: string; force?: boolean };
     if (!body.cwd || typeof body.cwd !== "string") {
       return Response.json({ error: "cwd is required" }, { status: 400 });
     }
     if (!body.path || typeof body.path !== "string") {
       return Response.json({ error: "path is required" }, { status: 400 });
+    }
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    if (!sessionId) {
+      return Response.json({ error: "sessionId is required" }, { status: 400 });
     }
     const allowedRoots = await getAllowedFileRoots();
     for (const candidate of [body.cwd, body.path]) {
@@ -117,7 +128,19 @@ export async function DELETE(req: Request) {
         return Response.json({ error: "Access denied" }, { status: 403 });
       }
     }
-    await removeWorktree(cwd, target, body.force === true);
+    const removable = await resolveRemovableWorktree(cwd, target);
+    const runtime = getAgentRuntime();
+    await runtime.ensureProcess();
+    await loadSessionIfNeeded(runtime, sessionId);
+    try {
+      await runtime.worktreeRemove(removable, body.force === true);
+    } catch (error) {
+      if (methodNotFound(error)) {
+        return Response.json({ error: "ACP worktree remove is not supported", code: "unsupported" }, { status: 501 });
+      }
+      throw error;
+    }
+    invalidateProjectCache();
     return Response.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

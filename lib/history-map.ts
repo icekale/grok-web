@@ -1,5 +1,6 @@
 import { epochMillis } from "./epoch-ms.ts";
 import { grokCanonicalToolName, sanitizeGrokToolInput } from "./grok-tool-input.ts";
+import { parseGrokTurnUsage, type GrokAssistantUsage } from "./grok-usage.ts";
 
 export type HistoryToolResult = {
   role: "toolResult";
@@ -43,6 +44,7 @@ export type HistoryMessage =
       model: string;
       provider: "grok";
       timestamp?: number;
+      usage?: GrokAssistantUsage;
     }
   | HistoryToolResult;
 
@@ -101,6 +103,10 @@ export function mapUpdatesJsonl(text: string): {
     const kind = update.sessionUpdate;
 
     if (kind === "turn_completed") {
+      const usage = parseGrokTurnUsage(update.usage);
+      if (usage && open.current?.role === "assistant") {
+        open.current.usage = usage;
+      }
       flush();
       continue;
     }

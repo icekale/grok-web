@@ -1157,7 +1157,9 @@ function TextFileViewer({
       const res = await fetch(`/api/git/${action}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(action === "commit" ? { cwd, message } : { cwd, path: filePath }),
+        body: JSON.stringify(action === "commit"
+          ? { cwd, message, sessionId: sourceSessionId }
+          : { cwd, path: filePath, sessionId: sourceSessionId }),
       });
       const body = await res.json() as { error?: string };
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -1172,7 +1174,7 @@ function TextFileViewer({
     } finally {
       setGitBusy(false);
     }
-  }, [cwd, filePath]);
+  }, [cwd, filePath, sourceSessionId]);
 
   useEffect(() => {
     void fetchGitDiff(filePath);

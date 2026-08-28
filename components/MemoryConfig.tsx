@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { takeQueuedRememberNote } from "@/lib/remember-draft";
 import { DialogShell } from "./DialogShell";
 
 type MemoryFile = { scope: string; path: string; name: string; mtime: number };
@@ -21,6 +22,13 @@ export function MemoryConfig({ cwd }: { cwd: string }) {
   const [note, setNote] = useState("");
   const [rememberOpen, setRememberOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+
+  useEffect(() => {
+    const queued = takeQueuedRememberNote();
+    if (!queued) return;
+    setNote(queued);
+    setRememberOpen(true);
+  }, []);
 
   const load = useCallback(async (preview?: string) => {
     const query = new URLSearchParams({ cwd });
@@ -62,6 +70,7 @@ export function MemoryConfig({ cwd }: { cwd: string }) {
         <div>
           <h3>{t("common.memory")}</h3>
           <p>{t("memory.description")}</p>
+          <p>{t("memory.flushTui")}</p>
         </div>
       </div>
       <div className="settings-form-section" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

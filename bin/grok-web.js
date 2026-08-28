@@ -49,7 +49,7 @@ async function main() {
   let password = process.env.GROK_WEB_PASSWORD;
   try {
     const { isWebPasswordEnabled } = await importLib("web-auth");
-    password = process.env.GROK_WEB_PASSWORD || isWebPasswordEnabled();
+    password = isWebPasswordEnabled();
   } catch {
     // Incomplete installs (and the CLI fixture) only see the env password.
   }

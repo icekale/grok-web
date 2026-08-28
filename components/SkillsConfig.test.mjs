@@ -30,3 +30,9 @@ test("SkillsConfig search never uses a filtered array index as identity", () => 
   assert.match(source, /onSelect=\{\(filePath\) => openDetail\(filePath\)\}/);
   assert.doesNotMatch(source, /skills\[index\]\.filePath/);
 });
+
+test("Skills install chrome shows Grok skill paths, not Pi", () => {
+  assert.doesNotMatch(source, /~\/\.pi/);
+  assert.match(source, /~\/\.grok\/skills\//);
+  assert.match(source, /\.agents\/skills\//);
+});

@@ -22,30 +22,43 @@ function canonicalFolder(path: string): string {
   return resolved;
 }
 
-export function encodeTrustedFolders(paths: string[], decidedAt = new Date().toISOString()): string {
+function escapeTomlKey(path: string): string {
+  return path.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function unescapeTomlKey(path: string): string {
+  return path.replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+}
+
+export function encodeTrustedFolders(paths: string[], decidedAt = Math.floor(Date.now() / 1000)): string {
   const unique = [...new Set(paths.map((path) => canonicalFolder(path)))].sort();
   if (unique.length === 0) return "";
-  return unique.map((path) => {
-    const escaped = path.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-    return `[[folders]]\npath = "${escaped}"\ndecided_at = "${decidedAt}"\n`;
-  }).join("\n");
+  const stamp = Number.isFinite(decidedAt) ? Math.trunc(decidedAt) : Math.floor(Date.now() / 1000);
+  return unique.map((path) => (
+    `[folders."${escapeTomlKey(path)}"]\ntrusted = true\ndecided_at = ${stamp}\n`
+  )).join("\n");
 }
 
 export function parseTrustedFolders(text: string): string[] {
   const folders: string[] = [];
   let current: string | null = null;
+  let trusted = false;
+  const flush = () => {
+    if (current && trusted) folders.push(current);
+    current = null;
+    trusted = false;
+  };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    if (line === "[[folders]]") {
-      current = "";
+    const header = /^\[folders\."(.*)"\]$/.exec(line);
+    if (header) {
+      flush();
+      current = unescapeTomlKey(header[1]);
       continue;
     }
-    const match = /^path\s*=\s*"(.*)"$/.exec(line);
-    if (match && current !== null) {
-      folders.push(match[1].replaceAll('\\"', '"').replaceAll("\\\\", "\\"));
-      current = null;
-    }
+    if (current !== null && /^trusted\s*=\s*true\b/.test(line)) trusted = true;
   }
+  flush();
   return [...new Set(folders)];
 }
 
@@ -59,11 +72,10 @@ export function readFolderTrust(home = grokHome()): string[] {
   }
 }
 
-function writeFolderTrust(folders: string[], home: string, decidedAt?: string): void {
+function writeFolderTrust(folders: string[], home: string): void {
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const file = join(home, "trusted_folders.toml");
-  const text = encodeTrustedFolders(folders, decidedAt);
-  writePrivateFileAtomicSync(file, text);
+  writePrivateFileAtomicSync(file, encodeTrustedFolders(folders));
 }
 
 export function trustFolder(path: string, home = grokHome()): void {
@@ -74,4 +86,17 @@ export function trustFolder(path: string, home = grokHome()): void {
 export function untrustFolder(path: string, home = grokHome()): void {
   const next = canonicalFolder(path);
   writeFolderTrust(readFolderTrust(home).filter((folder) => folder !== next), home);
+}
+
+export function readFolderTrustEnabled(
+  home = grokHome(),
+  env = process.env.GROK_FOLDER_TRUST,
+): boolean {
+  const raw = env?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") return true;
+  const file = join(home, "config.toml");
+  if (!existsSync(file)) return true;
+  const block = /^\[folder_trust\][^\[]*/m.exec(readFileSync(file, "utf8"))?.[0] ?? "";
+  return !/^[ \t]*enabled\s*=\s*false\b/m.test(block);
 }

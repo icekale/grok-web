@@ -420,8 +420,11 @@ export class AcpConnection {
     return this.rpc.request("_x.ai/git/worktree/create", { sessionId, sourcePath }).then((raw) => unwrapResult(raw) as never);
   }
 
-  worktreeRemove(worktreePath: string): Promise<unknown> {
-    return this.rpc.request("_x.ai/git/worktree/remove", { worktreePath }).then(unwrapResult);
+  worktreeRemove(worktreePath: string, force = false): Promise<unknown> {
+    return this.rpc.request("_x.ai/git/worktree/remove", {
+      worktreePath,
+      ...(force ? { force: true } : {}),
+    }).then(unwrapResult);
   }
 
   authCheck(): Promise<{ authenticated: boolean; meta?: unknown }> {

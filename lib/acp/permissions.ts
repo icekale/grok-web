@@ -137,13 +137,7 @@ function allowOptionId(request: unknown): string {
     const id = optionId(option);
     return id === "allow-once" || id === "allow_once";
   });
-  if (byId) return optionId(byId) ?? "allow-once";
-  const byNameKind = items.find((option) => {
-    const name = typeof option.name === "string" ? option.name : "";
-    const kind = typeof option.kind === "string" ? option.kind : "";
-    return name.toLowerCase().includes("allow") || kind.toLowerCase().includes("allow");
-  });
-  return (byNameKind && optionId(byNameKind)) || "allow-once";
+  return (byId && optionId(byId)) || "allow-once";
 }
 
 function optionId(option: Record<string, unknown>): string | undefined {
