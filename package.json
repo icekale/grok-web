@@ -74,7 +74,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@tailwindcss/vite": "4.3.3",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25",
+    "@types/node": "^26",
     "@types/proper-lockfile": "4.1.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
